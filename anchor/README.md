@@ -1,76 +1,44 @@
-# Anchor Vault Program
+# Anchor Options (Financial Derivatives) Program
 
-This template includes a simple SOL vault program built with [Anchor](https://www.anchor-lang.com/).
+## Project guide
 
-## Pre-deployed Program
+- `src/libs.rs` program entrypoint, instructions specific code goes to `src/instructions/*`
+- `src/state.rs` account structs and PDA seeds
+- `src/instructions/*.rs` instruction handlers, keep instructions modular — one Rust file per instruction
+- `src/events.rs` for emitted events 
+- `src/errors.rs` for error handling
+- `src/*.rs` for specific utility modules, e.g. `math.rs`
+- `tests/*.rs` place for tests
 
-The vault program is deployed on **devnet** at:
+Write integration tests that simulate real-world flows, not just unit tests.
 
-```
-F4jZpgbtTb6RWNWq6v35fUeiAsRJMrDczVPv9U23yXjB
-```
+## Testing best practices to follow
 
-You can interact with it immediately by connecting your wallet to devnet.
+Full test coverage is mandatory.
 
-## Deploying Your Own Program
+Go beyond happy paths: Don’t just test the expected “success” cases — intentionally break things.
 
-To deploy your own version of the program:
+Handle edge cases: Think about missing accounts, incorrect bumps, wrong signers, and invalid inputs.
 
-### 1. Generate a new program keypair
+Shuffle accounts: Instruction accounts may come in different orders, so simulate that to catch unexpected behavior.
 
-```bash
-cd anchor
-solana-keygen new -o target/deploy/vault-keypair.json
-```
+Fail gracefully: Verify that your program errors out cleanly when constraints are violated.
 
-### 2. Get the new program ID
+Rust Unit Tests
+— Great for testing pure logic functions (e.g. math utilities, validation helpers) without needing a Solana runtime.
+— Fast and lightweight — ideal for TDD (Test Driven Development).
 
-```bash
-solana address -k target/deploy/vault-keypair.json
-```
+Anchor Integration Tests (with Local Validator)
+— Use anchor test, which spins up a local Solana test validator.
+— Best for simulating real-world flows: account initialization, PDAs, CPIs, closing accounts, etc.
+— Lets you write tests in TypeScript/JavaScript (or Rust) that mimic actual client interactions.
 
-### 3. Update the program ID
+Rust Runtime / Local Validator Tests
+— Write tests in Rust that interact directly with solana-program-test.
+— Gives finer control compared to anchor test, but requires more boilerplate.
+— Useful if you want to stay purely in Rust (no TS) while still hitting program logic.
 
-Update the program ID in these files:
-
-- `anchor/Anchor.toml` - Update `vault = "..."` under `[programs.devnet]`
-- `anchor/programs/vault/src/lib.rs` - Update `declare_id!("...")`
-
-### 4. Build and deploy
-
-```bash
-# Build the program
-anchor build
-
-# Get devnet SOL for deployment (~2 SOL needed)
-solana airdrop 2 --url devnet
-
-# Deploy to devnet
-anchor deploy --provider.cluster devnet
-```
-
-### 5. Regenerate the TypeScript client
-
-```bash
-cd ..
-npm run codama:js
-```
-
-This updates the generated client code in `src/generated/vault/` with your new program ID.
-
-## Program Overview
-
-The vault program allows users to:
-
-- **Deposit**: Send SOL to a personal vault PDA (Program Derived Address)
-- **Withdraw**: Retrieve all SOL from your vault
-
-Each user gets their own vault derived from their wallet address.
-
-## Testing
-
-Run the Anchor tests:
-
-```bash
-anchor test --skip-deploy
-```
+Fuzz Tests
+— Randomize inputs to your program (e.g., wrong accounts, invalid bumps, extreme values).
+— Helps catch unexpected corner cases that normal unit/integration tests may miss.
+— Tools like cargo-fuzz , Turbine can integrate into your workflow.

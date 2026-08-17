@@ -8,6 +8,10 @@ Aim to build a strong projects that grounded in real user needs. Show deep produ
 - typescript specific
   - avoid using `as <SomeType>` and `any` if this weakens type-safety
 
+### Solana Programs
+
+If you work on Solana programs then follow `./anchor/README.md` instructions on how to write solana programs in this repo.
+
 ### Frontend
 
 Always prefer to use Shadcn components if they exists in Shadcn library of component, install missing component instead writing your own component like so `corepack pnpm dlx shadcn@latest add tabs table`. Do not make copies of shadcn components yourself always install. Only write your own components if Shadcn library missing it. Use Radix-UI with Shadcn.
