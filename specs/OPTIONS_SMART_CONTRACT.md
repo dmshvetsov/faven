@@ -148,13 +148,11 @@ Each `SellerVault` MUST store:
 
 ## Long Token for Option Series
 
-Each `Long` token MUST be SPL fungible token with deterministic PDA mint address `["option_series_mint", market_address, call_put_marker, expiry, strike_price]`.
+Each `Long` token MUST be SPL fungible token with deterministic PDA mint address `["option_series_mint", market_address, call_put_marker, expiry, strike_price]`. This PDA is mint authority for `Long` SPL token. `Long` freeze authority is none.
 
 `Long` quantity represents a claim amount only. Actual `BaseCoin` and `QuoteCoin` collateral MUST remain in the `Series` PDA token accounts
 
 `Long` tokens MUST have the same decimal scale as Base Coin.
-
-`Series` PDA is `Long` mint authority. `Long` freeze authority is none.
 
 ## Underwriting
 
@@ -262,14 +260,13 @@ The series finalization module MUST expose fixed-arity helpers for batching:
 The accepted price MUST satisfy:
 - publish time is after or equal to `expiry_ms`,
 - price is positive,
+- price has default strike scale used in the protocol 1e6,
 - `oracle` name and `oracle_feed_id` matches the `Market` `oracle_name` and `oracle_feed_id`,
 - every finalized `Series` in a single transaction has the same `market_id` and `expiry_ms` as `ExpiryPrice`.
 
 Once stored, the expiry price MUST be immutable.
 
 Finalizing a valid expiration price MUST move the series from `Open` to `ExpirationPriceFinalized`.
-
-If not valid bounded price is finalized, exercise MUST remain blocked.
 
 The contract MUST emit `ExpiryPriceFinalized` with:
 - series id,
@@ -333,7 +330,7 @@ Series batched settlement MUST be allowed when the series is settle-ready:
 - immediately after price finalization for ATM or OTM series,
 - after `exercise_window_end_ms`
 
-Seller settlement MUST close seller vault records and transfer proceeds directly to the seller addresses stored in those records.
+Seller settlement MUST close seller vault records and transfer proceeds directly to the seller addresses stored in those records. Rent rebate for closed account goes to the fee payer of a settlement transactions. If ATA account for payout token does not exists it MUST be created, fee payer of a settlement transaction must fund ATA creation.
 
 When all seller vault records for the series are closed, the series MUST move to `Closed`.
 
