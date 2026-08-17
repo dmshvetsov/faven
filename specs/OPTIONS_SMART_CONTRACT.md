@@ -16,7 +16,9 @@ This document uses `./DOMAIN-LANGUAGE.md` as the language for product and implem
 
 ## Market
 
-Market program manages available markets for options series. Each market MUST support exactly one `OracleBase / QuoteCoin / BaseCoin` combination. Market creation MUST reject a duplicate market with the same `OracleBase / QuoteCoin / BaseCoin` combination.
+The market program manages markets available for option series. Each market supports exactly one `OracleBase / QuoteCoin / BaseCoin` option class, one configured operator, and oracle configuration. Different operators MAY create independent markets for the same option class. Market creation MUST reject a duplicate with the same operator, oracle configuration, `QuoteCoin` mint address, and `BaseCoin` mint address.
+
+Market must be PDA `["market", oracle_constant_id, price_source_id, quote_coin_mint, base_coin_mint, operator_address]`. Where oracle_constant_id is enum variant name, like "PythUnverified".
 
 `Market` and hence the protocol supports only SPL tokens. Other types of tokens like native SOL and Token-2022 is out of support. `QuoteCoin` and `BaseCoin` MUST be SPL tokens, native SOL is out of support, wrapped SOL tokens can be used instead.
 
@@ -32,26 +34,60 @@ Examples:
 
 Different wrapped versions of the same oracle asset MUST be different markets. A `BTC / USDC / WBTC` long token has different mint from `BTC / USDC / xBTC` token and `BTC / USDT / WBTC` token because they are different option class tokens. Same way tokens of the same option class but different option series must have different token mint, for example two different tokens are `BTC / USDC / WBTC` with expiry June 12 2026 and expiry June 26 2026, even if they have the same strike 62000 and both are call options.
 
+`Market` MUST use a tagged `OracleConfig` so common market accounting is independent from oracle-specific finalization logic. MVP supports exactly:
+
+```rust
+OracleConfig::PythUnverified { feed_id: [u8; 32] }
+```
+
+`feed_id` is the 32-byte Pyth price-feed ID for the `OracleBase / QuoteCoin` pair. Future oracle integrations MAY add configuration variants.
+
 The market MUST only store:
-- oracle `oracle` name
-- oracle `oracle_feed_id` for `OracleBase / QuoteCoin` pair,
+- `oracle_config`,
 - base coin scale,
 - quote coin scale,
-- operator address
+- operator address,
 - pause flag,
-- `QuoteCoin` mint address
-- `BaseCoin` mint address
-- `min_fee`
-- `min_operational_fee_bps`
-- `max_operational_fee_bps`
+- `QuoteCoin` mint address,
+- `BaseCoin` mint address,
+- `min_fee`,
+- `min_operational_fee_bps`,
+- `max_operational_fee_bps`.
+
+`QuoteCoin` and `BaseCoin` MUST be distinct mints owned by the canonical SPL Token Program. Native SOL and Token-2022 are unsupported; wrapped SOL MAY be used. The program MUST derive on-chain each stored coin scale as `10 ^ mint.decimals`, and MUST reject a mint with more than 19 decimals because its scale cannot fit in `u64`.
+
+Market creation is permissionless. The transaction payer and supplied operator MUST both sign. The payer funds account creation; the supplied operator is stored immutably as the market operator. A newly created market MUST be unpaused and usable immediately.
+
+`min_fee` is a `QuoteCoin` amount in base units and MAY be zero, `min_fee` is required. `min_operational_fee_bps` and `max_operational_fee_bps` are required values in `0..=10_000`; the program MUST enforce `min_operational_fee_bps <= max_operational_fee_bps`. Zero values support a zero-fee market.
+
+### Market Creation
+
+`create_market` MUST accept:
+- the operator signer,
+- the BaseCoin and QuoteCoin SPL mint accounts,
+- `OracleConfig::PythUnverified { feed_id }`,
+- `min_fee: u64`,
+- `min_operational_fee_bps: u16`, and
+- `max_operational_fee_bps: u16`.
+
+The payer signer creates and funds the market PDA. The instruction MUST reject:
+- a missing payer signature,
+- a missing operator signature if operator different from payer,
+- a BaseCoin or QuoteCoin mint not owned by the canonical SPL Token Program,
+- if BaseCoin mint is the same QuoteCoin mint,
+- a mint with more than 19 decimals,
+- an invalid fee-bps range, and
+- an existing market PDA.
+
+On success, it MUST persist the passed oracle configuration, mints, operator, and fee configuration; derived token scales; and `paused = false`. The operator address and market identity fields are immutable because this MVP exposes no market-update instruction.
 
 The contract MUST emit `MarketCreated` with:
 - market address,
-- oracle name,
-- oracle feed id.
-- oracle base symbol or id,
+- operator address,
+- oracle kind,
+- oracle feed id,
 - quote coin mint address,
-- base coin mint address,
+- base coin mint address.
 
 ## Option Series
 
@@ -243,7 +279,7 @@ The contract MUST receive `expiry_price` finalization from off-chain with a tran
 
 Expiry price finalization MUST be permissioned. Only the configured market operator MUST be able to finalize expiry prices.
 
-Only Pyth oracle finalization is supported. Pyth Oracle adapter MUST be named as an unverifiable Pyth oracle adapter, for example `pyth_oracle_unverifiable`, because no checks are performed on-chain.
+Only `OracleConfig::PythUnverified` finalization is supported. Its adapter MUST be named as an unverifiable Pyth oracle adapter, for example `pyth_oracle_unverifiable`, because no checks are performed on-chain.
 
 The Pyth unverifiable adapter MUST NOT treat `binary.data[]` as on-chain proof. It MUST accept it as it is and emit the Pyth benchmark payload or payload hash as audit metadata in the event for so this proof binary data MAY be verified in the future. The adapter SHOULD NOT implement any verification utilities and methods.
 
@@ -261,7 +297,7 @@ The accepted price MUST satisfy:
 - publish time is after or equal to `expiry_ms`,
 - price is positive,
 - price has default strike scale used in the protocol 1e6,
-- `oracle` name and `oracle_feed_id` matches the `Market` `oracle_name` and `oracle_feed_id`,
+- the market `oracle_config` is `PythUnverified` and its `feed_id` matches the finalized Pyth feed ID,
 - every finalized `Series` in a single transaction has the same `market_id` and `expiry_ms` as `ExpiryPrice`.
 
 Once stored, the expiry price MUST be immutable.
@@ -270,7 +306,7 @@ Finalizing a valid expiration price MUST move the series from `Open` to `Expirat
 
 The contract MUST emit `ExpiryPriceFinalized` with:
 - series id,
-- oracle name,
+- oracle kind,
 - oracle feed id,
 - settlement price,
 - publish time,
@@ -398,7 +434,7 @@ When a market is paused:
 - exercise MUST be disabled
 - settlement MUST be disabled
 
-Pause authority MUST be held by an operator capability.
+Pause authority MUST be held by the configured operator address, which MUST sign the instruction.
 
 Pausing a market MUST emit `MarketPaused` with:
 - operator address.
