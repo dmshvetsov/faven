@@ -1,4 +1,4 @@
-Option class - is a underlying base asset and quote asset plus an asset that is used as a proxy for underlying in case if that assets is not present natively, like WBTC or HTBC that acts as physical delivery for BTC on Sui Network.
+Option class - is a underlying base asset and quote asset plus an asset that is used as a proxy for underlying in case if that assets is not present natively on the protocol's blockchain or used as derivative for a token, like wrapped BTC, wrapped ETH, or wrapped SOL, or staked derivatives of a token, such proxy assets acts as physical delivery for BTC on Sui Network; base and proxy asset may be the same token.
 
 Option series - is a specific group of financial options contracts in a market that share the same type call or put, expiration date, and strike price for an option class.
 
@@ -60,28 +60,22 @@ On-chain Protocol - it is software code that stored in a blockchain and called s
 
 Mobile first - is a design and software development strategy that prioritizes creating software application user interfaces for mobile devices before adapting them for larger desktop screens.
 
-PTB - programmable transaction block, a Sui blockchain transaction that can be grouped and broadcasted to Sui blockchain together as a single unit (execute all or nothing)
-
-BSC (Binary Canonical Serialization) - Sui’s deterministic binary format for serializing signed data and transaction values.
-
 EOA - externally owned account is a user-controlled blockchain wallet controlled by a private key.
 
 Physical settlement of an option - is a process at contract expiration where the buyer and seller exchange the actual underlying asset rather than just transferring cash profits or losses.
 
 Cash settlement of an option - is a mechanism in derivatives trading where a contract is resolved at expiration through a monetary exchange, rather than the physical delivery of the underlying asset.
 
-BaseCoin - the physically delivered asset coin type, for example `SUI`, `DEEP`, `WBTC`, or another wrapped BTC coin.
+BaseCoin - the physically delivered asset coin type, for example `ETH`, `SOL`, `PUMP`, `WBTC`, or another wrapped BTC coin.
 
 QuoteCoin - the cash/strike/premium coin type, for example `USDC`.
 
-OracleBase - the asset represented by the Pyth feed, for example `BTC` even when `BaseCoin` is `WBTC`.
+OracleCoin - the asset represented by an oracle, for example `BTC` may be different from `BaseCoin`.
 
 Market - one deployed market instance for one `OracleBase / QuoteCoin / BaseCoin` combination.
 
-LongToken - transferable semi-fungible option object with a `series_id` and `quantity`.
+Long token - transferable fungible token that represents long position in a specific asset market, must belong to an option class.
 
 SellerVault - non-transferable seller short-position accounting record for one seller and one series.
 
-CollateralPool - holds all `BaseCoin` and `QuoteCoin` collateral per series.
-
-Series object - is the protocol’s shared accounting/state object for one option contract definition.
+Series - is the protocol’s shared accounting/state for one option contract definition.
