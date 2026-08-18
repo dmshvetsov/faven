@@ -1,10 +1,10 @@
 {
-  "idl": "./anchor/target/idl/vault.json",
+  "idl": "./anchor/target/idl/options.json",
   "scripts": {
     "js": [
       {
         "from": "@codama/renderers-js",
-        "args": ["./src/generated/vault"]
+        "args": ["./src/generated/options"]
       }
     ]
   }

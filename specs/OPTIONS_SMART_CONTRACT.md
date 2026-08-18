@@ -215,12 +215,13 @@ For a cash-secured put underwrite transaction:
 Seller collateral MUST be deposited in full 1:1, all underwrites are fully collateralize.
 
 Premium and fee handling:
-- total premium calculation `premium_total = premium_per_contract * contracts_quantity` where `contracts_quantity = (contracts_in_base_units / contract_decimal_scale)` with checked `u64` overflow and abort on overflow.
+- 
+- total premium calculation `premium_total = premium_per_contract * contracts_quantity` where `contracts_quantity = (contracts_in_base_units / contract_decimal_scale)` with checked `u64` overflow and abort on overflow, and `premium_per_contract` how much buyer pays in `QuoteCoin` to buy one `Long` whole option token (one token in integer units).
 - buyer pays `premium_total` in `QuoteCoin`,
 - `operational_fee` is deducted from `premium_total`,
-- seller receives `premium_total - operational_fee`, resulted fee MUST NOT be less than minimal fee set in the market `operational_fee = MAX(operational_fee, min_fee)`.
+- seller receives `premium_total - operational_fee`, resulted fee MUST NOT be less than minimal fee set in the market `operational_fee = MAX((amount * fee_bps) / 10_000, min_fee)`.
 - protocol fee is transferred to `fee_recipient`,
-- `fee_recipient` and `operational_fee` MUST be part of underwriting transaction signed by Buyer and Seller.
+- `fee_recipient` and `operational_fee_bps` MUST be part of underwriting transaction signed by Buyer and Seller.
 
 `operational_fee` MUST NOT exceed `premium_total`.
 

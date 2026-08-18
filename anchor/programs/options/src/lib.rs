@@ -13,7 +13,7 @@ pub use state::OracleConfig;
 declare_id!("Hvfbh72e5Vw1Gq8RFsKLj9BLq1m5y9WFzBYn2fZR8UYX");
 
 #[program]
-pub mod vault {
+pub mod options {
     use super::*;
 
     pub fn create_market(

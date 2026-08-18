@@ -7,7 +7,7 @@ use solana_sdk::{
     transaction::Transaction,
 };
 use spl_token::state::Mint;
-use vault::{accounts, instruction, state::Market, OracleConfig, ID as PROGRAM_ID};
+use options::{accounts, instruction, state::Market, OracleConfig, ID as PROGRAM_ID};
 
 const LAMPORTS_PER_SOL: u64 = 1_000_000_000;
 
@@ -63,13 +63,12 @@ fn create_market_instruction(
     min_operational_fee_bps: u16,
     max_operational_fee_bps: u16,
 ) -> Instruction {
-    let feed_id = oracle_config.feed_id();
     let accounts = accounts::CreateMarket {
         payer,
         operator,
         quote_coin_mint: quote_mint,
         base_coin_mint: base_mint,
-        market: market_address(&operator, &quote_mint, &base_mint, &feed_id),
+        market: market_address(&operator, &quote_mint, &base_mint, &oracle_config.feed_id()),
         token_program: TOKEN_PROGRAM_ID,
         system_program: anchor_lang::system_program::ID,
     };
@@ -90,7 +89,7 @@ fn new_svm() -> LiteSVM {
     let mut svm = LiteSVM::new();
     svm.add_program(
         PROGRAM_ID,
-        include_bytes!("../../../target/deploy/vault.so"),
+        include_bytes!("../../../target/deploy/options.so"),
     )
     .unwrap();
     svm
