@@ -7,8 +7,10 @@ pub mod math;
 pub mod state;
 
 pub(crate) use instructions::__client_accounts_create_market;
-pub use instructions::CreateMarket;
-pub use state::OracleConfig;
+pub(crate) use instructions::__client_accounts_create_series;
+pub(crate) use instructions::__client_accounts_underwrite;
+pub use instructions::{CreateMarket, CreateSeries, Underwrite};
+pub use state::{OptionType, OracleConfig};
 
 declare_id!("Hvfbh72e5Vw1Gq8RFsKLj9BLq1m5y9WFzBYn2fZR8UYX");
 
@@ -30,5 +32,32 @@ pub mod options {
             min_operational_fee_bps,
             max_operational_fee_bps,
         )
+    }
+
+    pub fn create_series(
+        ctx: Context<CreateSeries>,
+        option_type_marker: u8,
+        strike_price: u64,
+        expiry_ms: i64,
+    ) -> Result<()> {
+        instructions::create_series(ctx, option_type_marker, strike_price, expiry_ms)
+    }
+
+    pub fn underwrite_call(
+        ctx: Context<Underwrite>,
+        quantity: u64,
+        premium_per_contract: u64,
+        operational_fee_bps: u16,
+    ) -> Result<()> {
+        instructions::underwrite_call(ctx, quantity, premium_per_contract, operational_fee_bps)
+    }
+
+    pub fn underwrite_put(
+        ctx: Context<Underwrite>,
+        quantity: u64,
+        premium_per_contract: u64,
+        operational_fee_bps: u16,
+    ) -> Result<()> {
+        instructions::underwrite_put(ctx, quantity, premium_per_contract, operational_fee_bps)
     }
 }
