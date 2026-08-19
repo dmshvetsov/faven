@@ -96,18 +96,16 @@ PDA mint address `["option_series", market_address, call_put_marker, expiry, str
 The minimum underwriting time to expiry is 8 hours.
 
 A series MUST only store:
+- series state flag,
 - `market_address`
 - `call_put_marker` (option type): 1 for CALL, 2 for PUT
 - `strike_price`,
 - `expiry_ms`,
 - `exercise_window_end_ms = expiry_ms + 1 hour`,
-- total short quantity,
-- total manual exercised quantity,
 - finalized oracle `expiry_price`,
-- series state flag,
-- `total_contracts_quantity`
-- `total_exercised_quantity`
-- `seller_index_batch_num` number of existed seller index batches
+- `total_contracts_quantity`,
+- `total_manual_exercised_quantity`,
+- `total_settled_quantity`
 
 Series states:
 - `Open`: series exists and expiration price has not been finalized.
@@ -120,7 +118,7 @@ Derived phases:
 - price pending: `state == Open` and current time is greater than or equal to `expiry_ms`,
 - no-exercise expiry, options expired worthless: `state == ExpirationPriceFinalized` and the series is ATM or OTM,
 - manual exercise: `state == ExpirationPriceFinalized`, the series is ITM, and current time is < to `exercise_window_end_ms`,
-- full settlement: `state == ExpirationPriceFinalized` the series is ITM and `total_manual_exercised_quantity` == `total_short_quantity`.
+- full settlement: `state == ExpirationPriceFinalized` the series is ITM and `total_manual_exercised_quantity` == `total_contracts_quantity`.
 - partial settlement: `state == ExpirationPriceFinalized`, the series is ITM and current time >= than `exercise_window_end_ms`,
 
 Manual exercise MUST be allowed only when:
@@ -145,9 +143,9 @@ QuoteCoin Series token account:
 - token authority = Series PDA
 - token program = SPL Token Program
 
-After the `Series` is `Closed`, all related PDAs that can be closed (this excludes mint account, and `Long` token holders accounts) to rebate storage MUST be destroyed to release used on-chain memory and rent cost. `Series` can be closed only when all holders of short side of the pool are settled. Dust and excess of collateral goes to operator that closes the `Swries`.
+After the `Series` is `Closed`, all related PDAs that can be closed (this excludes mint account, and `Long` token holders accounts) to rebate storage MUST be destroyed to release used on-chain memory and rent cost. `Series` can be closed only when `total_settled_quantity == total_contracts_quantity`. Dust and excess collateral goes to the operator that closes the `Series`.
 
-`Series` stores all public addresses of sellers (underwriters) in sellers index PDA `["option_series_seller_index", market_address, call_put_marker, expiry, strike_price, batch_num]` that acts as a batch of 16 public key addresses. When one batch is full `Series` must allocate a new batch. Each underwrite appends a wallet to current seller index batch. These batches are used to iterate over during sellers settlement. Memory for these batches must be released during settlement, storage rebate goes to operator that triggers settlement for a seller index batch.
+The protocol MUST NOT maintain an on-chain seller index. Off-chain indexers discover seller vaults from `Underwritten` events.
 
 ### Option Series Creation
 
@@ -158,6 +156,8 @@ The contract MUST enforce:
 - strike is greater than zero,
 - option type is valid,
 - no duplicate series exists for the same market, option type, strike, and expiry.
+
+On success option series creation, the contract MUST create the deterministic `Long` mint with `BaseCoin` decimals, Series PDA mint authority, and no freeze authority. It MUST also create the Series PDA's `BaseCoin` and `QuoteCoin` associated token accounts.
 
 The contract MUST emit `SeriesCreated` with:
 - series id,
@@ -196,36 +196,39 @@ Underwriting creates `Long` tokens for a buyer and records a seller short obliga
 
 Underwriting MUST be rejected when the series expiry is less than or equal to the minimum underwriting time to expiry after the current time.
 
-The contract verifies buyers, sellers signatures.
+The contract MUST verify buyer and seller signatures and MUST reject an underwrite where buyer and seller are the same wallet. Contracts `quantity` MUST be greater than zero.
+
+Buyer and seller funding accounts MAY be any SPL Token accounts owned by the respective signer with the required mint. The contract MUST create a missing buyer `Long` ATA, seller `QuoteCoin` ATA, or fee-recipient `QuoteCoin` ATA. The seller MUST fund all such ATA creation in the underwriting transaction.
 
 For a covered call underwrite transaction:
 - seller deposits from his account `BaseCoin` collateral equal to the option quantity into `Series` PDA token account,
 - buyer pays premium in `QuoteCoin` from his account,
 - contract mints and transfers `Long` token to buyer's account,
-- if seller's vault PDA does not exists sellers account public address appended to `Series` sellers index and seller's vault must be created,
+- if the seller's vault PDA does not exist, the contract creates it,
 - seller vault short accounting increases in `SellerVault` PDA.
 
 For a cash-secured put underwrite transaction:
 - seller deposits from his account `QuoteCoin` collateral equal to `strike_payment(quantity)` into `Series` PDA token account,
 - buyer pays premium from his account in `QuoteCoin`,
 - contract mints and transfers `Long` token to buyer's account,
-- if seller's vault PDA does not exists sellers account public address appended to `Series` sellers index and seller's vault must be created,
+- if the seller's vault PDA does not exist, the contract creates it,
 - seller vault short accounting increases in `SellerVault` PDA.
 
 Seller collateral MUST be deposited in full 1:1, all underwrites are fully collateralize.
 
 Premium and fee handling:
-- 
-- total premium calculation `premium_total = premium_per_contract * contracts_quantity` where `contracts_quantity = (contracts_in_base_units / contract_decimal_scale)` with checked `u64` overflow and abort on overflow, and `premium_per_contract` how much buyer pays in `QuoteCoin` to buy one `Long` whole option token (one token in integer units).
+- total premium calculation `premium_total = ceil_div(quantity * premium_per_contract, base_coin_scale)` with checked arithmetic, this rounding favors the seller, where `contracts_quantity = (contracts_in_base_units / contract_decimal_scale)` with checked `u64` overflow and abort on overflow, and `premium_per_contract` how much buyer pays in `QuoteCoin` to buy one `Long` whole option token (one token in integer units).
 - buyer pays `premium_total` in `QuoteCoin`,
-- `operational_fee` is deducted from `premium_total`,
-- seller receives `premium_total - operational_fee`, resulted fee MUST NOT be less than minimal fee set in the market `operational_fee = MAX((amount * fee_bps) / 10_000, min_fee)`.
-- protocol fee is transferred to `fee_recipient`,
+- `operational_fee` is deducted from `premium_total` and calculated on-chain, resulted fee MUST NOT be less than minimal fee set in the market `operational_fee = MAX((premium_total * operational_fee_bps) / 10_000, min_fee)`,
+- `operational_fee` is transferred to `fee_recipient`,
+- seller receives `premium_total - operational_fee`,
 - `fee_recipient` and `operational_fee_bps` MUST be part of underwriting transaction signed by Buyer and Seller.
 
 `operational_fee` MUST NOT exceed `premium_total`.
 
-The market MAY operator-configured maximum fee basis points. If present, the smart contract MUST reject underwriting if fees above that maximum fee basis points, if fees below minimal fees basis points. 
+The smart contract MUST reject underwriting when `operational_fee_bps` is outside the market's inclusive minimum and maximum operational-fee-bps range. `fee_recipient` MAY be any wallet, including buyer, seller, or the market operator.
+
+Zero-premium underwrites are allowed only when the calculated `operational_fee` is also zero.
 
 The contract MUST emit `Underwritten` with:
 - series id,
@@ -235,8 +238,8 @@ The contract MUST emit `Underwritten` with:
 - long token mint address,
 - collateral deposited,
 - premium total,
-- protocol fee,
-- free recipient.
+- operational fee,
+- fee recipient.
 
 ## Strike Payment Calculation
 
@@ -359,17 +362,17 @@ The contract MUST emit `Exercised` with:
 
 Seller settlement MUST be permissionless and MUST NOT require seller action.
 
-Seller payout MUST be performed in permissionless settlement using `Series` seller index batches. Each settlement must consume one seller index batch.
+Seller payout MUST be performed from `SellerVault` accounts supplied to the settlement transaction. Off-chain indexers discover those accounts from `Underwritten` events; the contract MUST validate every supplied vault and its relation to the Series on-chain. A settlement invocation MAY process one or more seller vaults.
 
 Sellers MUST NOT claim, withdraw, or settle their own vaults. Seller vault records are accounting inputs only; they are closed by protocol settlement and proceeds are transferred directly to seller addresses.
 
-Series batched settlement MUST be allowed when the series is settle-ready:
+Seller settlement MUST be allowed when the series is settle-ready:
 - immediately after price finalization for ATM or OTM series,
 - after `exercise_window_end_ms`
 
 Seller settlement MUST close seller vault records and transfer proceeds directly to the seller addresses stored in those records. Rent rebate for closed account goes to the fee payer of a settlement transactions. If ATA account for payout token does not exists it MUST be created, fee payer of a settlement transaction must fund ATA creation.
 
-When all seller vault records for the series are closed, the series MUST move to `Closed`.
+When `total_settled_quantity == total_contracts_quantity`, the series MUST move to `Closed`. Each settled seller vault MUST increase `total_settled_quantity` by its short contracts quantity exactly once.
 
 Because `Long` tokens are fungible by series and are not matched to seller vaults, manual exercises quantities MUST be allocated across seller pro-rata by each vault's short quantity during seller settlement. Seller settlement amounts MUST be rounded down, any resulting dust MUST remain in the `Series` PDA token account.
 
@@ -385,7 +388,8 @@ For ITM settled series where remaining unexercised quantity exists sellers recei
 
 Seller settlement MUST abort if:
 - series is not settle-ready,
-- seller vault record in the requested batch is already closed,
+- a requested seller vault is already closed,
+- `total_settled_quantity` would exceed `total_contracts_quantity`,
 - series does not exist,
 - settlement arithmetic would overdraw the internal `Series` balance of base or quote tokens.
 
@@ -400,7 +404,7 @@ Each seller payout MUST emit `SellerPayoutSettled` with:
 - base paid,
 - quote paid.
 
-Each completed settlement batch MUST emit `SeriesSettlementBatchCompleted` with:
+Each settlement invocation that processes more than one seller vault MUST emit `SeriesSettlementBatchCompleted` with:
 - series id,
 - settled seller count,
 - base paid total,
@@ -413,9 +417,10 @@ Rules that must always stay true so the contract cannot lose track of who is owe
 At all times, each `Series` PDA accounted balances MUST be greater than or equal to the active obligations required by that option series.
 
 For each series:
-- `total_manual_exercised_quantity <= total_short_quantity`,
+- `total_manual_exercised_quantity <= total_contracts_quantity`,
+- `total_settled_quantity <= total_contracts_quantity`,
 - manually exercised MUST burn `Long` token.
-- `SellerVault` short quantities MUST sum to series total short quantity, excluding settled vaults only after their obligations are paid,
+- active `SellerVault` short quantities plus `total_settled_quantity` MUST equal `total_contracts_quantity`,
 - pool transfers MUST use only the balance that `Series` PDA,
 - pool transfers MUST never exceed accounted balances.
 
