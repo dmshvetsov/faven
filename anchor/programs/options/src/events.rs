@@ -19,7 +19,7 @@ pub struct SeriesCreated {
     pub market: Pubkey,
     pub option_type: OptionType,
     pub strike_price: u64,
-    pub expiry_ms: i64,
+    pub expiry_ms: u64,
 }
 
 #[event]
