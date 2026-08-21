@@ -18,7 +18,7 @@ This document uses `./DOMAIN-LANGUAGE.md` as the language for product and implem
 
 The market program manages markets available for option series. Each market supports exactly one `OracleBase / QuoteCoin / BaseCoin` option class, one configured operator, and oracle configuration. Different operators MAY create independent markets for the same option class. Market creation MUST reject a duplicate with the same operator, oracle configuration, `QuoteCoin` mint address, and `BaseCoin` mint address.
 
-Market must be PDA `["market", oracle_constant_id, price_source_id, quote_coin_mint, base_coin_mint, operator_address]`. Where oracle_constant_id is enum variant name, like "PythUnverified".
+Market must be PDA `["market", oracle_constant_id, price_source_id, quote_coin_mint, base_coin_mint, operator_address]`. `oracle_constant_id` is the enum variant name `"PythTwap"`string.
 
 `Market` and hence the protocol supports only SPL tokens. Other types of tokens like native SOL and Token-2022 is out of support. `QuoteCoin` and `BaseCoin` MUST be SPL tokens, native SOL is out of support, wrapped SOL tokens can be used instead.
 
@@ -37,10 +37,12 @@ Different wrapped versions of the same oracle asset MUST be different markets. A
 `Market` MUST use a tagged `OracleConfig` so common market accounting is independent from oracle-specific finalization logic. MVP supports exactly:
 
 ```rust
-OracleConfig::PythUnverified { feed_id: [u8; 32] }
+OracleConfig::PythTwap { feed_id: [u8; 32] }
 ```
 
-`feed_id` is the 32-byte Pyth price-feed ID for the `OracleBase / QuoteCoin` pair. Future oracle integrations MAY add configuration variants.
+`feed_id` is the 32-byte Pyth price-feed ID for the `OracleBase / QuoteCoin` pair.
+
+`PythUnverified` is not a market configuration; it is an always-deployed, operator-only fallback finalization method for a `PythTwap` market. Future oracle integrations MAY add configuration variants.
 
 The market MUST only store:
 - `oracle_config`,
@@ -65,7 +67,7 @@ Market creation is permissionless. The transaction payer and supplied operator M
 `create_market` MUST accept:
 - the operator signer,
 - the BaseCoin and QuoteCoin SPL mint accounts,
-- `OracleConfig::PythUnverified { feed_id }`,
+- `OracleConfig::PythTwap { feed_id }`,
 - `min_fee: u64`,
 - `min_operational_fee_bps: u16`, and
 - `max_operational_fee_bps: u16`.
@@ -153,6 +155,7 @@ Series creation MUST be permissionless.
 
 The contract MUST enforce:
 - expiry is more than the minimum underwriting time to expiry after the current time,
+- expiry is aligned to a whole second: `expiry_ms % 1_000 == 0`,
 - strike is greater than zero,
 - option type is valid,
 - no duplicate series exists for the same market, option type, strike, and expiry.
@@ -273,48 +276,75 @@ Rounding MUST favor solvency:
 
 ## Price Finalization
 
-### Pyth Unverified Expiry Price Finalization
+The oracle is used only once per `Series` to finalize and store the expiry price; after that, all ITM/OTM checks read the stored `Series` expiry price. Contracts MUST NOT support a dispute window or a finalization reward.
 
-Protocol participants trust operator for price settlement and able to audit it on-chain and with `ExpiryPriceFinalized` event and open dispute with the operator directly off-chain. Contracts MUST NOT support dispute window.
+Every finalization method MUST require:
+- the market is not paused,
+- current time is `>= expiry_ms`,
+- every supplied series is `Open` 
+- every supplied series has the same market and expiry.
 
-The oracle is used only once per `Series` to finalize and store the expiry price; after that, all ITM/OTM checks read the stored `Series` expiry price.
+One finalization transaction MAY finalize one or more series. The stored 1e6-scale expiry price is immutable; successful finalization moves every supplied series from `Open` to `ExpirationPriceFinalized`.
 
-The contract MUST receive `expiry_price` finalization from off-chain with a transaction that sets expiry price for one or more `Series`.
+### Price Representation
 
-Expiry price finalization MUST be permissioned. Only the configured market operator MUST be able to finalize expiry prices.
+Pyth raw prices are `raw_price * 10^expo`. Every finalization MUST require a positive raw price and convert it to the protocol's 1e6 strike scale using checked arithmetic and round-half-up. The conversion MUST reject values that cannot be represented as a positive `u64` at the 1e6 scale.
 
-Only `OracleConfig::PythUnverified` finalization is supported. Its adapter MUST be named as an unverifiable Pyth oracle adapter, for example `pyth_oracle_unverifiable`, because no checks are performed on-chain.
+### Permissionless Pyth TWAP Finalization
 
-The Pyth unverifiable adapter MUST NOT treat `binary.data[]` as on-chain proof. It MUST accept it as it is and emit the Pyth benchmark payload or payload hash as audit metadata in the event for so this proof binary data MAY be verified in the future. The adapter SHOULD NOT implement any verification utilities and methods.
+For `PythTwap` markets signer MUST finalize a series from any suitable, already-posted Pyth Receiver `TwapUpdate` on-chain account; the update account's write authority MUST NOT restrict Options finalization. 
 
-Finalization legitimacy comes from operator authority.
+The Options program MUST hardcode the canonical Pyth Receiver program identity (`rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ`). The passed `TwapUpdate` MUST be owned by that program and have been produced through Pyth's full VAA-verification path. `TwapUpdate` has no `VerificationLevel` field.
 
-One finalization transaction MAY finalize multiple `Series` when all finalized series have the same `market_id` and `expiry_ms`.
+For every Pyth TWAP finalization, the program MUST require:
+- `twap.feed_id == market.oracle_config.feed_id`,
+- `twap.start_time == expiry_ms / 1_000 - 60`,
+- `twap.end_time == expiry_ms / 1_000`,
+- `twap.down_slots_ratio <= 500_000`, meaning at least 50% data coverage over the 60-second window,
+- a positive raw price, and
+- all batch series have the specified market and expiry.
 
-The series finalization module MUST expose fixed-arity helpers for batching:
-- `finalize_one_series`
-- `finalize_two_series`
-- `finalize_four_series`
-- `finalize_eight_series`
+The program MUST emit exactly one `PythTwapPrice` per finalized batch with:
+- market id,
+- Pyth Receiver `TwapUpdate` address,
+- Pyth feed id,
+- raw price, 
+- confidence,
+- exponent,
+- TWAP start time and end time,
+- down-slots ratio,
+- normalized 1e6 settlement price.
 
-The accepted price MUST satisfy:
-- publish time is after or equal to `expiry_ms`,
-- price is positive,
-- price has default strike scale used in the protocol 1e6,
-- the market `oracle_config` is `PythUnverified` and its `feed_id` matches the finalized Pyth feed ID,
-- every finalized `Series` in a single transaction has the same `market_id` and `expiry_ms` as `ExpiryPrice`.
+### Permissioned Pyth Unverified Fallback
 
-Once stored, the expiry price MUST be immutable.
+`PythUnverified` an operator-only fallback. It MAY be used after expiry only while the series remains `Open`. Its authority is the market's configured operator, not any Pyth account.
 
-Finalizing a valid expiration price MUST move the series from `Open` to `ExpirationPriceFinalized`.
+The fallback MUST accept exactly the reported Pyth Hermes API payload as instruction arguments:
+- `id: [u8; 32]`,
+- `price: i64`,
+- `conf: u64`,
+- `expo: i32`, and
+- `publish_time: i64`.
 
-The contract MUST emit `ExpiryPriceFinalized` with:
+The fallback price finalization logic MUST NOT implement any checks.
+
+The program MUST emit exactly one `PythUnverifiedPrice` per finalized batch with:
+- market id,
+- market operator,
+- reported id, raw price, confidence, exponent, and publish time, and
+- normalized 1e6 settlement price.
+
+### Shared Finalization Events and API
+
+Both methods MUST emit one `ExpiryPriceFinalized` per series with:
 - series id,
-- oracle kind,
-- oracle feed id,
-- settlement price,
-- publish time,
-- price payload hash.
+- normalized 1e6 settlement price,
+- market oracle configuration, and
+- actual finalization method (`PythTwap` or `PythUnverified`).
+
+The series finalization module MUST expose fixed-arity instruction helpers for each method:
+- `finalize_pyth_twap_one_series`, `finalize_pyth_twap_two_series`, `finalize_pyth_twap_four_series`, and `finalize_pyth_twap_eight_series`, and
+- `finalize_pyth_unverified_one_series`, `finalize_pyth_unverified_two_series`, `finalize_pyth_unverified_four_series`, and `finalize_pyth_unverified_eight_series`.
 
 ## Manual Physical Exercise
 
@@ -470,13 +500,16 @@ The contract MUST expose exactly API:
 - `close_series`
 - `underwrite_call`
 - `underwrite_put`
-- `finalize_one_series`
-- `finalize_two_series`
-- `finalize_four_series`
-- `finalize_eight_series`
+- `finalize_pyth_twap_one_series`
+- `finalize_pyth_twap_two_series`
+- `finalize_pyth_twap_four_series`
+- `finalize_pyth_twap_eight_series`
+- `finalize_pyth_unverified_one_series`
+- `finalize_pyth_unverified_two_series`
+- `finalize_pyth_unverified_four_series`
+- `finalize_pyth_unverified_eight_series`
 - `exercise`
 - `settle_sellers_batch`
-- `pyth_oracle_unverifiable::create_expiry_price`
 
 ## Non-Goals For MVP
 
