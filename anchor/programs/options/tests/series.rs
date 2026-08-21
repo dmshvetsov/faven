@@ -233,7 +233,7 @@ struct UnderwriteAccounts {
 
 fn underwrite_instruction(
     is_call: bool,
-    terms: (Pubkey, Pubkey, Pubkey, u8, u64, i64),
+    terms: (Pubkey, Pubkey, Pubkey, u8, u64, u64),
     participants: UnderwriteAccounts,
     quantity: u64,
     premium_per_contract: u64,
