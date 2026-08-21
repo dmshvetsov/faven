@@ -4,8 +4,8 @@ pub mod errors;
 pub mod events;
 pub mod instructions;
 pub mod math;
-pub mod state;
 pub mod options_rules;
+pub mod state;
 
 pub(crate) use instructions::__client_accounts_create_market;
 pub(crate) use instructions::__client_accounts_create_series;

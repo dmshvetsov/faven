@@ -5,7 +5,7 @@ use anchor_spl::{
 };
 
 use crate::{
-    errors::MarketError,
+    errors::OptionsError,
     events::Underwritten,
     math::{operational_fee, premium_total, put_collateral},
     state::{
@@ -53,37 +53,37 @@ fn underwrite(
 ) -> Result<()> {
     let market = &ctx.accounts.market;
     let series = &ctx.accounts.series;
-    require!(!market.paused, MarketError::MarketPaused);
+    require!(!market.paused, OptionsError::MarketPaused);
     require!(
         series.market == market.key(),
-        MarketError::InvalidFundingAccount
+        OptionsError::InvalidFundingAccount
     );
     require!(
         series.state == SeriesState::Open,
-        MarketError::SeriesNotOpen
+        OptionsError::SeriesNotOpen
     );
     require!(
         series.option_type == expected_option_type,
-        MarketError::InvalidOptionType
+        OptionsError::InvalidOptionType
     );
-    require!(quantity > 0, MarketError::ZeroQuantity);
+    require!(quantity > 0, OptionsError::ZeroQuantity);
     require!(
         ctx.accounts.buyer.key() != ctx.accounts.seller.key(),
-        MarketError::BuyerAndSellerMustDiffer
+        OptionsError::BuyerAndSellerMustDiffer
     );
     require!(
         operational_fee_bps >= market.min_operational_fee_bps
             && operational_fee_bps <= market.max_operational_fee_bps,
-        MarketError::OperationalFeeBpsOutOfRange
+        OptionsError::OperationalFeeBpsOutOfRange
     );
 
     let now_ms = current_time_ms()?;
     let minimum_expiry = now_ms
         .checked_add(MIN_UNDERWRITING_LEAD_TIME_MS)
-        .ok_or(error!(MarketError::ArithmeticOverflow))?;
+        .ok_or(error!(OptionsError::ArithmeticOverflow))?;
     require!(
         series.expiry_ms > minimum_expiry,
-        MarketError::ExpiryTooSoon
+        OptionsError::ExpiryTooSoon
     );
 
     let (collateral_mint, collateral_mint_account, collateral_vault, collateral_decimals) =
@@ -104,15 +104,15 @@ fn underwrite(
     require!(
         ctx.accounts.seller_collateral_source.owner == ctx.accounts.seller.key()
             && ctx.accounts.seller_collateral_source.mint == collateral_mint,
-        MarketError::InvalidFundingAccount
+        OptionsError::InvalidFundingAccount
     );
 
     let premium = premium_total(quantity, premium_per_contract, market.base_coin_scale)?;
     let fee = operational_fee(premium, operational_fee_bps, market.min_fee)?;
-    require!(fee <= premium, MarketError::FeeExceedsPremium);
+    require!(fee <= premium, OptionsError::FeeExceedsPremium);
     let seller_premium = premium
         .checked_sub(fee)
-        .ok_or(error!(MarketError::ArithmeticOverflow))?;
+        .ok_or(error!(OptionsError::ArithmeticOverflow))?;
     let collateral = match expected_option_type {
         OptionType::Call => quantity,
         OptionType::Put => put_collateral(
@@ -130,7 +130,7 @@ fn underwrite(
     }
     require!(
         seller_vault.owner == ctx.accounts.seller.key() && seller_vault.series == series.key(),
-        MarketError::InvalidSellerVault
+        OptionsError::InvalidSellerVault
     );
 
     transfer_tokens(
@@ -192,16 +192,16 @@ fn underwrite(
     seller_vault.short_quantity = seller_vault
         .short_quantity
         .checked_add(quantity)
-        .ok_or(error!(MarketError::ArithmeticOverflow))?;
+        .ok_or(error!(OptionsError::ArithmeticOverflow))?;
     seller_vault.collateral_quantity = seller_vault
         .collateral_quantity
         .checked_add(collateral)
-        .ok_or(error!(MarketError::ArithmeticOverflow))?;
+        .ok_or(error!(OptionsError::ArithmeticOverflow))?;
     let series = &mut ctx.accounts.series;
     series.total_contracts_quantity = series
         .total_contracts_quantity
         .checked_add(quantity)
-        .ok_or(error!(MarketError::ArithmeticOverflow))?;
+        .ok_or(error!(OptionsError::ArithmeticOverflow))?;
 
     emit!(Underwritten {
         series: series.key(),
@@ -284,8 +284,8 @@ pub struct Underwrite<'info> {
     pub buyer_long_ata: Box<Account<'info, TokenAccount>>,
     #[account(
         mut,
-        constraint = buyer_quote_source.owner == buyer.key() @ MarketError::InvalidFundingAccount,
-        constraint = buyer_quote_source.mint == market.quote_coin_mint @ MarketError::InvalidFundingAccount,
+        constraint = buyer_quote_source.owner == buyer.key() @ OptionsError::InvalidFundingAccount,
+        constraint = buyer_quote_source.mint == market.quote_coin_mint @ OptionsError::InvalidFundingAccount,
     )]
     pub buyer_quote_source: Box<Account<'info, TokenAccount>>,
     #[account(mut)]

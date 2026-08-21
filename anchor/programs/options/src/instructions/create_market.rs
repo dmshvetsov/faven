@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::{Mint, Token};
 
 use crate::{
-    errors::MarketError,
+    errors::OptionsError,
     events::MarketCreated,
     math::token_scale,
     state::{Market, OracleConfig},
@@ -17,23 +17,23 @@ pub fn create_market(
 ) -> Result<()> {
     require!(
         ctx.accounts.quote_coin_mint.key() != ctx.accounts.base_coin_mint.key(),
-        MarketError::CoinMintsMustDiffer
+        OptionsError::CoinMintsMustDiffer
     );
     require!(
         ctx.accounts.quote_coin_mint.decimals <= 19,
-        MarketError::MintDecimalsTooLarge
+        OptionsError::MintDecimalsTooLarge
     );
     require!(
         ctx.accounts.base_coin_mint.decimals <= 19,
-        MarketError::MintDecimalsTooLarge
+        OptionsError::MintDecimalsTooLarge
     );
     require!(
         min_operational_fee_bps <= max_operational_fee_bps,
-        MarketError::InvalidOperationalFeeRange
+        OptionsError::InvalidOperationalFeeRange
     );
     require!(
         max_operational_fee_bps <= 10_000,
-        MarketError::OperationalFeeBpsTooLarge
+        OptionsError::OperationalFeeBpsTooLarge
     );
 
     let market = &mut ctx.accounts.market;

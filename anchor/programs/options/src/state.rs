@@ -9,9 +9,9 @@ pub const EXERCISE_WINDOW_MS: u64 = 60 * 60 * 1_000;
 
 pub fn current_time_ms() -> Result<u64> {
     u64::try_from(Clock::get()?.unix_timestamp)
-        .map_err(|_| error!(crate::errors::ConfigurationError::ClockNegativeTimestamp))?
+        .map_err(|_| error!(crate::errors::OptionsError::ClockNegativeTimestamp))?
         .checked_mul(1_000)
-        .ok_or(error!(crate::errors::MarketError::ArithmeticOverflow))
+        .ok_or(error!(crate::errors::OptionsError::ArithmeticOverflow))
 }
 
 #[account]
@@ -35,7 +35,7 @@ impl Market {
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OptionType {
     Call, // 0 call flag
-    Put, // 1 put flag
+    Put,  // 1 put flag
 }
 
 impl OptionType {

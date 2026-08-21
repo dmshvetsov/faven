@@ -1,11 +1,11 @@
 use anchor_lang::prelude::*;
 
-use crate::errors::MarketError;
+use crate::errors::OptionsError;
 
 pub fn token_scale(decimals: u8) -> Result<u64> {
     10_u64
         .checked_pow(u32::from(decimals))
-        .ok_or(error!(MarketError::MintDecimalsTooLarge))
+        .ok_or(error!(OptionsError::MintDecimalsTooLarge))
 }
 
 pub const STRIKE_SCALE: u64 = 1_000_000;
@@ -14,7 +14,7 @@ pub fn premium_total(quantity: u64, premium_per_contract: u64, base_scale: u64) 
     ceil_div(
         u128::from(quantity)
             .checked_mul(u128::from(premium_per_contract))
-            .ok_or(error!(MarketError::ArithmeticOverflow))?,
+            .ok_or(error!(OptionsError::ArithmeticOverflow))?,
         u128::from(base_scale),
     )
 }
@@ -28,32 +28,34 @@ pub fn put_collateral(
     let numerator = u128::from(quantity)
         .checked_mul(u128::from(strike_price))
         .and_then(|value| value.checked_mul(u128::from(quote_scale)))
-        .ok_or(error!(MarketError::ArithmeticOverflow))?;
+        .ok_or(error!(OptionsError::ArithmeticOverflow))?;
     let denominator = u128::from(base_scale)
         .checked_mul(u128::from(STRIKE_SCALE))
-        .ok_or(error!(MarketError::ArithmeticOverflow))?;
+        .ok_or(error!(OptionsError::ArithmeticOverflow))?;
     ceil_div(numerator, denominator)
 }
 
 pub fn operational_fee(premium: u64, fee_bps: u16, min_fee: u64) -> Result<u64> {
     let proportional_fee = u128::from(premium)
         .checked_mul(u128::from(fee_bps))
-        .ok_or(error!(MarketError::ArithmeticOverflow))?
+        .ok_or(error!(OptionsError::ArithmeticOverflow))?
         / 10_000;
     let fee = proportional_fee.max(u128::from(min_fee));
-    u64::try_from(fee).map_err(|_| error!(MarketError::ArithmeticOverflow))
+    u64::try_from(fee).map_err(|_| error!(OptionsError::ArithmeticOverflow))
 }
 
 fn ceil_div(numerator: u128, denominator: u128) -> Result<u64> {
+    require!(denominator != 0, OptionsError::ZeroDivision);
+
     let value = numerator
         .checked_add(
             denominator
                 .checked_sub(1)
-                .ok_or(error!(MarketError::ArithmeticOverflow))?,
+                .ok_or(error!(OptionsError::ArithmeticOverflow))?,
         )
-        .ok_or(error!(MarketError::ArithmeticOverflow))?
+        .ok_or(error!(OptionsError::ArithmeticOverflow))?
         / denominator;
-    u64::try_from(value).map_err(|_| error!(MarketError::ArithmeticOverflow))
+    u64::try_from(value).map_err(|_| error!(OptionsError::ArithmeticOverflow))
 }
 
 #[cfg(test)]

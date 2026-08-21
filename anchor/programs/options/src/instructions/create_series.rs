@@ -5,7 +5,7 @@ use anchor_spl::{
 };
 
 use crate::{
-    errors::MarketError,
+    errors::OptionsError,
     events::SeriesCreated,
     options_rules::ensure_min_expiry,
     state::{
@@ -19,12 +19,12 @@ pub fn create_series(
     strike_price: u64,
     target_expiry_ms: u64,
 ) -> Result<()> {
-    require!(strike_price > 0, MarketError::InvalidStrikePrice);
+    require!(strike_price > 0, OptionsError::InvalidStrikePrice);
 
     let expiry_ms = ensure_min_expiry(target_expiry_ms)?;
     let exercise_window_end_ms = expiry_ms
         .checked_add(EXERCISE_WINDOW_MS)
-        .ok_or(error!(MarketError::ArithmeticOverflow))?;
+        .ok_or(error!(OptionsError::ArithmeticOverflow))?;
     let series = &mut ctx.accounts.series;
 
     series.state = SeriesState::Open;

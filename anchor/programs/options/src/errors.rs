@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 
 #[error_code]
-pub enum MarketError {
+pub enum OptionsError {
     #[msg("Base coin and quote coin mints must differ")]
     CoinMintsMustDiffer,
     #[msg("Mint decimals must not exceed 19")]
@@ -34,10 +34,8 @@ pub enum MarketError {
     FeeExceedsPremium,
     #[msg("Seller vault does not match the seller or series")]
     InvalidSellerVault,
-}
-
-#[error_code]
-pub enum ConfigurationError {
     #[msg("Negative clock timestamp")]
     ClockNegativeTimestamp,
+    #[msg("Zero division")]
+    ZeroDivision,
 }
