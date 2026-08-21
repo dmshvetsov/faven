@@ -1,4 +1,4 @@
-use anchor_lang::{AccountDeserialize, InstructionData, ToAccountMetas};
+use anchor_lang::{AccountDeserialize, AccountSerialize, InstructionData, ToAccountMetas};
 use anchor_spl::{
     associated_token::{get_associated_token_address, ID as ASSOCIATED_TOKEN_PROGRAM_ID},
     token::{spl_token, ID as TOKEN_PROGRAM_ID},
@@ -382,6 +382,107 @@ fn user_cannot_create_a_series_with_invalid_terms() {
 }
 
 #[test]
+fn user_cannot_create_a_duplicate_series() {
+    let mut svm = new_svm();
+    let payer = Keypair::new();
+    let operator = Keypair::new();
+    let quote_mint = Pubkey::new_unique();
+    let base_mint = Pubkey::new_unique();
+    svm.airdrop(&payer.pubkey(), 10 * LAMPORTS_PER_SOL).unwrap();
+    add_mint(&mut svm, quote_mint, 6);
+    add_mint(&mut svm, base_mint, 9);
+    let market = create_market(&mut svm, &payer, &operator, quote_mint, base_mint);
+    let instruction = create_series_instruction(
+        payer.pubkey(),
+        market,
+        quote_mint,
+        base_mint,
+        OptionType::Call,
+        3_500_000,
+        EXPIRY_MS,
+    );
+
+    let create_series = Transaction::new_signed_with_payer(
+        &[instruction.clone()],
+        Some(&payer.pubkey()),
+        &[&payer],
+        svm.latest_blockhash(),
+    );
+    assert!(svm.send_transaction(create_series).is_ok());
+    svm.expire_blockhash();
+
+    let duplicate_series = Transaction::new_signed_with_payer(
+        &[instruction],
+        Some(&payer.pubkey()),
+        &[&payer],
+        svm.latest_blockhash(),
+    );
+    assert!(svm.send_transaction(duplicate_series).is_err());
+}
+
+#[test]
+fn user_cannot_create_a_series_with_shuffled_accounts() {
+    let mut svm = new_svm();
+    let payer = Keypair::new();
+    let operator = Keypair::new();
+    let quote_mint = Pubkey::new_unique();
+    let base_mint = Pubkey::new_unique();
+    svm.airdrop(&payer.pubkey(), 10 * LAMPORTS_PER_SOL).unwrap();
+    add_mint(&mut svm, quote_mint, 6);
+    add_mint(&mut svm, base_mint, 9);
+    let market = create_market(&mut svm, &payer, &operator, quote_mint, base_mint);
+    let mut instruction = create_series_instruction(
+        payer.pubkey(),
+        market,
+        quote_mint,
+        base_mint,
+        OptionType::Call,
+        3_500_000,
+        EXPIRY_MS,
+    );
+    instruction.accounts.swap(2, 3);
+
+    let transaction = Transaction::new_signed_with_payer(
+        &[instruction],
+        Some(&payer.pubkey()),
+        &[&payer],
+        svm.latest_blockhash(),
+    );
+    assert!(svm.send_transaction(transaction).is_err());
+}
+
+#[test]
+fn user_cannot_create_a_series_with_an_incorrect_pda() {
+    let mut svm = new_svm();
+    let payer = Keypair::new();
+    let operator = Keypair::new();
+    let quote_mint = Pubkey::new_unique();
+    let base_mint = Pubkey::new_unique();
+    svm.airdrop(&payer.pubkey(), 10 * LAMPORTS_PER_SOL).unwrap();
+    add_mint(&mut svm, quote_mint, 6);
+    add_mint(&mut svm, base_mint, 9);
+    let market = create_market(&mut svm, &payer, &operator, quote_mint, base_mint);
+    let mut instruction = create_series_instruction(
+        payer.pubkey(),
+        market,
+        quote_mint,
+        base_mint,
+        OptionType::Call,
+        3_500_000,
+        EXPIRY_MS,
+    );
+    instruction.accounts[4].pubkey = Pubkey::new_unique();
+
+    let transaction = Transaction::new_signed_with_payer(
+        &[instruction],
+        Some(&payer.pubkey()),
+        &[&payer],
+        svm.latest_blockhash(),
+    );
+    assert!(svm.send_transaction(transaction).is_err());
+}
+
+#[test]
 fn buyer_and_seller_can_underwrite_a_call_and_reuse_the_seller_vault() {
     let mut svm = new_svm();
     let payer = Keypair::new();
@@ -501,6 +602,101 @@ fn buyer_and_seller_can_underwrite_a_call_and_reuse_the_seller_vault() {
     let series_account = svm.get_account(&series).unwrap();
     let series = Series::try_deserialize(&mut series_account.data.as_slice()).unwrap();
     assert_eq!(series.total_contracts_quantity, 2_000_000_000);
+}
+
+#[test]
+fn underwriting_rejects_a_seller_vault_with_invalid_owner_or_series() {
+    let mut svm = new_svm();
+    let payer = Keypair::new();
+    let operator = Keypair::new();
+    let buyer = Keypair::new();
+    let seller = Keypair::new();
+    let fee_recipient = Pubkey::new_unique();
+    let quote_mint = Pubkey::new_unique();
+    let base_mint = Pubkey::new_unique();
+    for wallet in [&payer, &buyer, &seller] {
+        svm.airdrop(&wallet.pubkey(), 10 * LAMPORTS_PER_SOL)
+            .unwrap();
+    }
+    add_mint(&mut svm, quote_mint, 6);
+    add_mint(&mut svm, base_mint, 9);
+    let market = create_market(&mut svm, &payer, &operator, quote_mint, base_mint);
+    let strike = 3_500_000;
+    let create_series = Transaction::new_signed_with_payer(
+        &[create_series_instruction(
+            payer.pubkey(),
+            market,
+            quote_mint,
+            base_mint,
+            OptionType::Call,
+            strike,
+            EXPIRY_MS,
+        )],
+        Some(&payer.pubkey()),
+        &[&payer],
+        svm.latest_blockhash(),
+    );
+    svm.send_transaction(create_series).unwrap();
+
+    let buyer_quote_source = Pubkey::new_unique();
+    let seller_base_source = Pubkey::new_unique();
+    add_token_account(
+        &mut svm,
+        buyer_quote_source,
+        quote_mint,
+        buyer.pubkey(),
+        1_000_000,
+    );
+    add_token_account(
+        &mut svm,
+        seller_base_source,
+        base_mint,
+        seller.pubkey(),
+        1_000_000_000,
+    );
+    let series = series_address(&market, 1, strike, EXPIRY_MS);
+    let seller_vault = seller_vault_address(&market, 1, strike, EXPIRY_MS, &seller.pubkey());
+    let mut seller_vault_data = Vec::new();
+    SellerVault {
+        owner: Pubkey::new_unique(),
+        series,
+        short_quantity: 0,
+        collateral_quantity: 0,
+    }
+    .try_serialize(&mut seller_vault_data)
+    .unwrap();
+    svm.set_account(
+        seller_vault,
+        Account {
+            lamports: 1_000_000,
+            data: seller_vault_data,
+            owner: PROGRAM_ID,
+            executable: false,
+            rent_epoch: 0,
+        },
+    )
+    .unwrap();
+
+    let transaction = Transaction::new_signed_with_payer(
+        &[underwrite_instruction(
+            true,
+            (market, quote_mint, base_mint, 1, strike, EXPIRY_MS),
+            UnderwriteAccounts {
+                buyer: buyer.pubkey(),
+                seller: seller.pubkey(),
+                buyer_quote_source,
+                seller_collateral_source: seller_base_source,
+                fee_recipient,
+            },
+            1_000_000_000,
+            0,
+            0,
+        )],
+        Some(&buyer.pubkey()),
+        &[&buyer, &seller],
+        svm.latest_blockhash(),
+    );
+    assert!(svm.send_transaction(transaction).is_err());
 }
 
 #[test]
