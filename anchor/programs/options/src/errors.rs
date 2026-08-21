@@ -28,6 +28,8 @@ pub enum OptionsError {
     ZeroQuantity,
     #[msg("Funding token account has an invalid owner or mint")]
     InvalidFundingAccount,
+    #[msg("Series does not belong to the provided market")]
+    SeriesMarketMismatch,
     #[msg("Operational fee bps is outside the market range")]
     OperationalFeeBpsOutOfRange,
     #[msg("Operational fee cannot exceed premium")]

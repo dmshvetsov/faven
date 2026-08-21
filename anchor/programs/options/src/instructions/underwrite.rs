@@ -55,10 +55,6 @@ fn underwrite(
     let series = &ctx.accounts.series;
     require!(!market.paused, OptionsError::MarketPaused);
     require!(
-        series.market == market.key(),
-        OptionsError::InvalidFundingAccount
-    );
-    require!(
         series.state == SeriesState::Open,
         OptionsError::SeriesNotOpen
     );
@@ -253,6 +249,7 @@ pub struct Underwrite<'info> {
     pub quote_coin_mint: Box<Account<'info, Mint>>,
     #[account(
         mut,
+        has_one = market @ OptionsError::SeriesMarketMismatch,
         seeds = [
             SERIES_SEED,
             market.key().as_ref(),
