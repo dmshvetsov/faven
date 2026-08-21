@@ -238,7 +238,6 @@ fn transfer_tokens<'info>(
 
 #[derive(Accounts)]
 pub struct Underwrite<'info> {
-    #[account(mut)]
     pub buyer: Signer<'info>,
     #[account(mut)]
     pub seller: Signer<'info>,
