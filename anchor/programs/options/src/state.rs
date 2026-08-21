@@ -4,8 +4,15 @@ pub const PYTH_UNVERIFIED_SEED: &[u8] = b"PythUnverified";
 pub const SERIES_SEED: &[u8] = b"option_series";
 pub const LONG_MINT_SEED: &[u8] = b"option_series_mint";
 pub const SELLER_VAULT_SEED: &[u8] = b"option_series_seller_vault";
-pub const MIN_UNDERWRITING_LEAD_TIME_MS: i64 = 8 * 60 * 60 * 1_000;
-pub const EXERCISE_WINDOW_MS: i64 = 60 * 60 * 1_000;
+pub const MIN_UNDERWRITING_LEAD_TIME_MS: u64 = 8 * 60 * 60 * 1_000;
+pub const EXERCISE_WINDOW_MS: u64 = 60 * 60 * 1_000;
+
+pub fn current_time_ms() -> Result<u64> {
+    u64::try_from(Clock::get()?.unix_timestamp)
+        .map_err(|_| error!(crate::errors::ConfigurationError::ClockNegativeTimestamp))?
+        .checked_mul(1_000)
+        .ok_or(error!(crate::errors::MarketError::ArithmeticOverflow))
+}
 
 #[account]
 pub struct Market {
@@ -27,19 +34,11 @@ impl Market {
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OptionType {
-    Call,
-    Put,
+    Call, // 0 call flag
+    Put, // 1 put flag
 }
 
 impl OptionType {
-    pub fn from_marker(marker: u8) -> Result<Self> {
-        match marker {
-            1 => Ok(Self::Call),
-            2 => Ok(Self::Put),
-            _ => err!(crate::errors::MarketError::InvalidOptionType),
-        }
-    }
-
     pub fn marker(self) -> u8 {
         match self {
             Self::Call => 1,
@@ -61,17 +60,16 @@ pub struct Series {
     pub market: Pubkey,
     pub option_type: OptionType,
     pub strike_price: u64,
-    pub expiry_ms: i64,
-    pub exercise_window_end_ms: i64,
+    pub expiry_ms: u64,
+    pub exercise_window_end_ms: u64,
     pub expiry_price: Option<u64>,
-    pub total_short_quantity: u64,
     pub total_contracts_quantity: u64,
     pub total_manual_exercised_quantity: u64,
     pub total_settled_quantity: u64,
 }
 
 impl Series {
-    pub const SPACE: usize = 8 + 1 + 32 + 1 + 8 + 8 + 8 + 9 + (8 * 4);
+    pub const SPACE: usize = 8 + 1 + 32 + 1 + 8 + 8 + 8 + 9 + (8 * 3);
 }
 
 #[account]

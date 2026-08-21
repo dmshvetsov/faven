@@ -35,3 +35,9 @@ pub enum MarketError {
     #[msg("Seller vault does not match the seller or series")]
     InvalidSellerVault,
 }
+
+#[error_code]
+pub enum ConfigurationError {
+    #[msg("Negative clock timestamp")]
+    ClockNegativeTimestamp,
+}

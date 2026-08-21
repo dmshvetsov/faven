@@ -5,6 +5,7 @@ pub mod events;
 pub mod instructions;
 pub mod math;
 pub mod state;
+pub mod options_rules;
 
 pub(crate) use instructions::__client_accounts_create_market;
 pub(crate) use instructions::__client_accounts_create_series;
@@ -36,11 +37,11 @@ pub mod options {
 
     pub fn create_series(
         ctx: Context<CreateSeries>,
-        option_type_marker: u8,
+        option_type: OptionType,
         strike_price: u64,
-        expiry_ms: i64,
+        expiry_ms: u64,
     ) -> Result<()> {
-        instructions::create_series(ctx, option_type_marker, strike_price, expiry_ms)
+        instructions::create_series(ctx, option_type, strike_price, expiry_ms)
     }
 
     pub fn underwrite_call(

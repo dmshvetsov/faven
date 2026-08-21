@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
-    token::{self, Mint, MintTo, Token, TokenAccount, Transfer},
+    token::{self, Mint, MintTo, Token, TokenAccount, TransferChecked},
 };
 
 use crate::{
@@ -9,7 +9,7 @@ use crate::{
     events::Underwritten,
     math::{operational_fee, premium_total, put_collateral},
     state::{
-        Market, OptionType, SellerVault, Series, SeriesState, LONG_MINT_SEED,
+        current_time_ms, Market, OptionType, SellerVault, Series, SeriesState, LONG_MINT_SEED,
         MIN_UNDERWRITING_LEAD_TIME_MS, SELLER_VAULT_SEED, SERIES_SEED,
     },
 };
@@ -77,10 +77,7 @@ fn underwrite(
         MarketError::OperationalFeeBpsOutOfRange
     );
 
-    let now_ms = Clock::get()?
-        .unix_timestamp
-        .checked_mul(1_000)
-        .ok_or(error!(MarketError::ArithmeticOverflow))?;
+    let now_ms = current_time_ms()?;
     let minimum_expiry = now_ms
         .checked_add(MIN_UNDERWRITING_LEAD_TIME_MS)
         .ok_or(error!(MarketError::ArithmeticOverflow))?;
@@ -89,10 +86,21 @@ fn underwrite(
         MarketError::ExpiryTooSoon
     );
 
-    let collateral_mint = match expected_option_type {
-        OptionType::Call => market.base_coin_mint,
-        OptionType::Put => market.quote_coin_mint,
-    };
+    let (collateral_mint, collateral_mint_account, collateral_vault, collateral_decimals) =
+        match expected_option_type {
+            OptionType::Call => (
+                market.base_coin_mint,
+                ctx.accounts.base_coin_mint.to_account_info(),
+                ctx.accounts.base_collateral_vault.to_account_info(),
+                ctx.accounts.base_coin_mint.decimals,
+            ),
+            OptionType::Put => (
+                market.quote_coin_mint,
+                ctx.accounts.quote_coin_mint.to_account_info(),
+                ctx.accounts.quote_collateral_vault.to_account_info(),
+                ctx.accounts.quote_coin_mint.decimals,
+            ),
+        };
     require!(
         ctx.accounts.seller_collateral_source.owner == ctx.accounts.seller.key()
             && ctx.accounts.seller_collateral_source.mint == collateral_mint,
@@ -127,27 +135,30 @@ fn underwrite(
 
     transfer_tokens(
         ctx.accounts.seller_collateral_source.to_account_info(),
-        match expected_option_type {
-            OptionType::Call => ctx.accounts.base_collateral_vault.to_account_info(),
-            OptionType::Put => ctx.accounts.quote_collateral_vault.to_account_info(),
-        },
+        collateral_mint_account,
+        collateral_vault,
         ctx.accounts.seller.to_account_info(),
         collateral,
+        collateral_decimals,
     )?;
     if seller_premium > 0 {
         transfer_tokens(
             ctx.accounts.buyer_quote_source.to_account_info(),
+            ctx.accounts.quote_coin_mint.to_account_info(),
             ctx.accounts.seller_quote_ata.to_account_info(),
             ctx.accounts.buyer.to_account_info(),
             seller_premium,
+            ctx.accounts.quote_coin_mint.decimals,
         )?;
     }
     if fee > 0 {
         transfer_tokens(
             ctx.accounts.buyer_quote_source.to_account_info(),
+            ctx.accounts.quote_coin_mint.to_account_info(),
             ctx.accounts.fee_recipient_quote_ata.to_account_info(),
             ctx.accounts.buyer.to_account_info(),
             fee,
+            ctx.accounts.quote_coin_mint.decimals,
         )?;
     }
 
@@ -187,10 +198,6 @@ fn underwrite(
         .checked_add(collateral)
         .ok_or(error!(MarketError::ArithmeticOverflow))?;
     let series = &mut ctx.accounts.series;
-    series.total_short_quantity = series
-        .total_short_quantity
-        .checked_add(quantity)
-        .ok_or(error!(MarketError::ArithmeticOverflow))?;
     series.total_contracts_quantity = series
         .total_contracts_quantity
         .checked_add(quantity)
@@ -212,20 +219,24 @@ fn underwrite(
 
 fn transfer_tokens<'info>(
     from: AccountInfo<'info>,
+    mint: AccountInfo<'info>,
     to: AccountInfo<'info>,
     authority: AccountInfo<'info>,
     amount: u64,
+    decimals: u8,
 ) -> Result<()> {
-    token::transfer(
+    token::transfer_checked(
         CpiContext::new(
             token::ID,
-            Transfer {
+            TransferChecked {
                 from,
+                mint,
                 to,
                 authority,
             },
         ),
         amount,
+        decimals,
     )
 }
 

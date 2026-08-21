@@ -7,7 +7,7 @@ use litesvm::LiteSVM;
 use options::{
     accounts, instruction,
     state::{SellerVault, Series, SeriesState, LONG_MINT_SEED, SELLER_VAULT_SEED, SERIES_SEED},
-    OracleConfig, ID as PROGRAM_ID,
+    OptionType, OracleConfig, ID as PROGRAM_ID,
 };
 use solana_program_pack::Pack;
 use solana_sdk::{
@@ -17,7 +17,7 @@ use solana_sdk::{
 use spl_token::state::{Account as SplTokenAccount, AccountState, Mint};
 
 const LAMPORTS_PER_SOL: u64 = 1_000_000_000;
-const EXPIRY_MS: i64 = 2_000_000_000_000;
+const EXPIRY_MS: u64 = 2_000_000_000_000;
 
 fn add_mint(svm: &mut LiteSVM, mint_key: Pubkey, decimals: u8) {
     let mint = Mint {
@@ -88,7 +88,7 @@ fn market_address(operator: &Pubkey, quote_mint: &Pubkey, base_mint: &Pubkey) ->
     .0
 }
 
-fn series_address(market: &Pubkey, marker: u8, strike: u64, expiry: i64) -> Pubkey {
+fn series_address(market: &Pubkey, marker: u8, strike: u64, expiry: u64) -> Pubkey {
     Pubkey::find_program_address(
         &[
             SERIES_SEED,
@@ -102,7 +102,7 @@ fn series_address(market: &Pubkey, marker: u8, strike: u64, expiry: i64) -> Pubk
     .0
 }
 
-fn long_mint_address(market: &Pubkey, marker: u8, strike: u64, expiry: i64) -> Pubkey {
+fn long_mint_address(market: &Pubkey, marker: u8, strike: u64, expiry: u64) -> Pubkey {
     Pubkey::find_program_address(
         &[
             LONG_MINT_SEED,
@@ -120,7 +120,7 @@ fn seller_vault_address(
     market: &Pubkey,
     marker: u8,
     strike: u64,
-    expiry: i64,
+    expiry: u64,
     seller: &Pubkey,
 ) -> Pubkey {
     Pubkey::find_program_address(
@@ -190,10 +190,11 @@ fn create_series_instruction(
     market: Pubkey,
     quote_mint: Pubkey,
     base_mint: Pubkey,
-    marker: u8,
+    option_type: OptionType,
     strike: u64,
-    expiry: i64,
+    expiry: u64,
 ) -> Instruction {
+    let marker = option_type.marker();
     let series = series_address(&market, marker, strike, expiry);
     let long_mint = long_mint_address(&market, marker, strike, expiry);
     let accounts = accounts::CreateSeries {
@@ -213,7 +214,7 @@ fn create_series_instruction(
         program_id: PROGRAM_ID,
         accounts: accounts.to_account_metas(None),
         data: instruction::CreateSeries {
-            option_type_marker: marker,
+            option_type,
             strike_price: strike,
             expiry_ms: expiry,
         }
@@ -302,7 +303,7 @@ fn user_can_create_a_series_with_long_mint_and_collateral_vaults() {
         market,
         quote_mint,
         base_mint,
-        1,
+        OptionType::Call,
         3_500_000,
         EXPIRY_MS,
     );
@@ -320,7 +321,6 @@ fn user_can_create_a_series_with_long_mint_and_collateral_vaults() {
     let series = Series::try_deserialize(&mut series_account.data.as_slice()).unwrap();
     assert_eq!(series.state, SeriesState::Open);
     assert_eq!(series.market, market);
-    assert_eq!(series.total_short_quantity, 0);
     assert_eq!(series.total_contracts_quantity, 0);
     assert_eq!(series.total_manual_exercised_quantity, 0);
     assert_eq!(series.total_settled_quantity, 0);
@@ -352,7 +352,8 @@ fn user_can_create_a_series_with_long_mint_and_collateral_vaults() {
 
 #[test]
 fn user_cannot_create_a_series_with_invalid_terms() {
-    for (marker, strike, expiry) in [(3, 1, EXPIRY_MS), (1, 0, EXPIRY_MS), (2, 1, 1)] {
+    for (option_type, strike, expiry) in [(OptionType::Call, 0, EXPIRY_MS), (OptionType::Put, 1, 1)]
+    {
         let mut svm = new_svm();
         let payer = Keypair::new();
         let operator = Keypair::new();
@@ -368,7 +369,7 @@ fn user_cannot_create_a_series_with_invalid_terms() {
                 market,
                 quote_mint,
                 base_mint,
-                marker,
+                option_type,
                 strike,
                 expiry,
             )],
@@ -403,7 +404,7 @@ fn buyer_and_seller_can_underwrite_a_call_and_reuse_the_seller_vault() {
         market,
         quote_mint,
         base_mint,
-        1,
+        OptionType::Call,
         strike,
         EXPIRY_MS,
     );
@@ -499,7 +500,6 @@ fn buyer_and_seller_can_underwrite_a_call_and_reuse_the_seller_vault() {
     assert_eq!(seller_vault.collateral_quantity, 2_000_000_000);
     let series_account = svm.get_account(&series).unwrap();
     let series = Series::try_deserialize(&mut series_account.data.as_slice()).unwrap();
-    assert_eq!(series.total_short_quantity, 2_000_000_000);
     assert_eq!(series.total_contracts_quantity, 2_000_000_000);
 }
 
@@ -527,7 +527,7 @@ fn buyer_and_seller_can_underwrite_a_put_with_rounded_up_collateral() {
             market,
             quote_mint,
             base_mint,
-            2,
+            OptionType::Put,
             strike,
             EXPIRY_MS,
         )],
@@ -611,7 +611,7 @@ fn underwriting_rejects_invalid_inputs_and_allows_zero_premium_without_a_fee() {
             market,
             quote_mint,
             base_mint,
-            1,
+            OptionType::Call,
             strike,
             EXPIRY_MS,
         )],
@@ -714,7 +714,7 @@ fn underwriting_rejects_invalid_inputs_and_allows_zero_premium_without_a_fee() {
     svm.expire_blockhash();
 
     let mut clock = svm.get_sysvar::<Clock>();
-    clock.unix_timestamp = EXPIRY_MS / 1_000 - 8 * 60 * 60;
+    clock.unix_timestamp = i64::try_from(EXPIRY_MS / 1_000 - 8 * 60 * 60).unwrap();
     svm.set_sysvar(&clock);
     let expiry_boundary = Transaction::new_signed_with_payer(
         &[underwrite_instruction(true, terms, participants, 1, 0, 0)],
