@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::errors::OptionsError;
+use crate::{errors::OptionsError, options_rules::STRIKE_SCALE};
 
 pub fn token_scale(decimals: u8) -> Result<u64> {
     10_u64
@@ -8,28 +8,27 @@ pub fn token_scale(decimals: u8) -> Result<u64> {
         .ok_or(error!(OptionsError::MintDecimalsTooLarge))
 }
 
-pub const STRIKE_SCALE: u64 = 1_000_000;
-
-pub fn normalize_pyth_price_to_strike_scale(price: i64, expo: i32) -> Result<u64> {
-    require!(price > 0, OptionsError::InvalidPythPrice);
-
-    let strike_expo = expo
-        .checked_add(6)
+pub fn rescale_fixed_point_round_half_up(
+    value: u128,
+    exponent: i32,
+    target_decimals: i32,
+) -> Result<u64> {
+    let scale_exponent = exponent
+        .checked_add(target_decimals)
         .ok_or(error!(OptionsError::PythPriceOutOfRange))?;
-    let raw_price = u128::try_from(price).map_err(|_| error!(OptionsError::InvalidPythPrice))?;
 
-    let normalized = if strike_expo >= 0 {
+    let normalized = if scale_exponent >= 0 {
         let factor = 10_u128
             .checked_pow(
-                u32::try_from(strike_expo)
+                u32::try_from(scale_exponent)
                     .map_err(|_| error!(OptionsError::PythPriceOutOfRange))?,
             )
             .ok_or(error!(OptionsError::PythPriceOutOfRange))?;
-        raw_price
+        value
             .checked_mul(factor)
             .ok_or(error!(OptionsError::PythPriceOutOfRange))?
     } else {
-        let precision = strike_expo
+        let precision = scale_exponent
             .checked_abs()
             .ok_or(error!(OptionsError::PythPriceOutOfRange))?;
         let divisor = 10_u128
@@ -37,8 +36,8 @@ pub fn normalize_pyth_price_to_strike_scale(price: i64, expo: i32) -> Result<u64
                 u32::try_from(precision).map_err(|_| error!(OptionsError::PythPriceOutOfRange))?,
             )
             .ok_or(error!(OptionsError::PythPriceOutOfRange))?;
-        let quotient = raw_price / divisor;
-        let remainder = raw_price % divisor;
+        let quotient = value / divisor;
+        let remainder = value % divisor;
 
         if remainder >= divisor / 2 {
             quotient
@@ -106,7 +105,7 @@ fn ceil_div(numerator: u128, denominator: u128) -> Result<u64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        normalize_pyth_price_to_strike_scale, operational_fee, premium_total, put_collateral,
+        operational_fee, premium_total, put_collateral, rescale_fixed_point_round_half_up,
     };
 
     #[test]
@@ -135,31 +134,31 @@ mod tests {
     }
 
     #[test]
-    fn pyth_prices_normalize_to_the_strike_scale() {
+    fn fixed_point_values_rescale_to_the_target_precision() {
         assert_eq!(
-            normalize_pyth_price_to_strike_scale(5, 0).unwrap(),
+            rescale_fixed_point_round_half_up(5, 0, 6).unwrap(),
             5_000_000
         );
         assert_eq!(
-            normalize_pyth_price_to_strike_scale(12_345_678, -6).unwrap(),
+            rescale_fixed_point_round_half_up(12_345_678, -6, 6).unwrap(),
             12_345_678
         );
     }
 
     #[test]
-    fn pyth_prices_round_half_up_when_reducing_precision() {
+    fn fixed_point_values_round_half_up_when_reducing_precision() {
         assert_eq!(
-            normalize_pyth_price_to_strike_scale(12_345_678, -7).unwrap(),
+            rescale_fixed_point_round_half_up(12_345_678, -7, 6).unwrap(),
             1_234_568
         );
-        assert_eq!(normalize_pyth_price_to_strike_scale(15, -7).unwrap(), 2);
-        assert_eq!(normalize_pyth_price_to_strike_scale(14, -7).unwrap(), 1);
+        assert_eq!(rescale_fixed_point_round_half_up(15, -7, 6).unwrap(), 2);
+        assert_eq!(rescale_fixed_point_round_half_up(14, -7, 6).unwrap(), 1);
     }
 
     #[test]
-    fn pyth_price_normalization_rejects_invalid_or_unrepresentable_values() {
-        for (price, expo) in [(0, 0), (-1, 0), (1, 14), (1, i32::MIN)] {
-            assert!(normalize_pyth_price_to_strike_scale(price, expo).is_err());
+    fn fixed_point_rescaling_rejects_unrepresentable_values() {
+        for (value, exponent) in [(1, 14), (1, i32::MIN)] {
+            assert!(rescale_fixed_point_round_half_up(value, exponent, 6).is_err());
         }
     }
 }

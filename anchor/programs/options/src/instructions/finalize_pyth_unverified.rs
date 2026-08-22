@@ -4,7 +4,7 @@ use crate::{
     errors::OptionsError,
     events::PythUnverifiedPrice,
     finalization::finalize_series,
-    math::normalize_pyth_price_to_strike_scale,
+    options_rules::price_to_strike_scale,
     state::{FinalizationMethod, Market, Series},
 };
 
@@ -16,7 +16,7 @@ pub fn finalize_pyth_unverified_one_series(
     expo: i32,
     publish_time: i64,
 ) -> Result<()> {
-    let normalized_price = normalize_pyth_price_to_strike_scale(price, expo)?;
+    let normalized_price = price_to_strike_scale(price, expo)?;
     emit_unverified_price(
         ctx.accounts.market.key(),
         ctx.accounts.operator.key(),
@@ -124,7 +124,7 @@ fn finalize_unverified_batch(
     expo: i32,
     publish_time: i64,
 ) -> Result<()> {
-    let normalized_price = normalize_pyth_price_to_strike_scale(price, expo)?;
+    let normalized_price = price_to_strike_scale(price, expo)?;
     emit_unverified_price(
         market_key,
         operator,

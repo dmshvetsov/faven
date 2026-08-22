@@ -5,7 +5,7 @@ use crate::{
     errors::OptionsError,
     events::PythTwapPrice,
     finalization::finalize_series,
-    math::normalize_pyth_price_to_strike_scale,
+    options_rules::price_to_strike_scale,
     state::{FinalizationMethod, Market, Series, PYTH_RECEIVER_PROGRAM_ID},
 };
 
@@ -89,7 +89,7 @@ fn finalize_twap_batch(
         OptionsError::InsufficientPythTwapCoverage
     );
 
-    let normalized_price = normalize_pyth_price_to_strike_scale(twap.price, twap.exponent)?;
+    let normalized_price = price_to_strike_scale(twap.price, twap.exponent)?;
     emit!(PythTwapPrice {
         market: market_key,
         twap_update: twap_update.key(),
