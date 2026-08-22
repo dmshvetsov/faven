@@ -58,4 +58,12 @@ pub enum OptionsError {
     PythTwapWindowMismatch,
     #[msg("Pyth TWAP does not have sufficient coverage")]
     InsufficientPythTwapCoverage,
+    #[msg("Finalization requires at least one series")]
+    EmptyFinalizationBatch,
+    #[msg("Finalization supports at most sixteen series")]
+    FinalizationBatchTooLarge,
+    #[msg("The same series cannot appear more than once in a finalization batch")]
+    DuplicateFinalizationSeries,
+    #[msg("Finalization series accounts must be writable")]
+    FinalizationSeriesNotWritable,
 }

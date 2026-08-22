@@ -6,10 +6,48 @@ use crate::{
     state::{current_time_ms, FinalizationMethod, Market, Series, SeriesState},
 };
 
+pub const MAX_FINALIZATION_SERIES: usize = 16;
+
+pub(crate) fn load_finalization_series<'info>(
+    account_infos: &'info [AccountInfo<'info>],
+) -> Result<Vec<Account<'info, Series>>> {
+    require!(
+        !account_infos.is_empty(),
+        OptionsError::EmptyFinalizationBatch
+    );
+    require!(
+        account_infos.len() <= MAX_FINALIZATION_SERIES,
+        OptionsError::FinalizationBatchTooLarge
+    );
+
+    for (index, account_info) in account_infos.iter().enumerate() {
+        require!(
+            account_info.is_writable,
+            OptionsError::FinalizationSeriesNotWritable
+        );
+        for other_account_info in account_infos.iter().skip(index + 1) {
+            require_keys_neq!(
+                account_info.key(),
+                other_account_info.key(),
+                OptionsError::DuplicateFinalizationSeries
+            );
+        }
+    }
+
+    account_infos.iter().map(Account::try_from).collect()
+}
+
+pub(crate) fn persist_finalized_series(series_accounts: &[Account<Series>]) -> Result<()> {
+    for series in series_accounts {
+        series.exit(&crate::ID)?;
+    }
+    Ok(())
+}
+
 pub(crate) fn finalize_series(
     market_key: Pubkey,
     market: &Market,
-    series_accounts: &mut [&mut Account<Series>],
+    series_accounts: &mut [Account<Series>],
     normalized_price: u64,
     method: FinalizationMethod,
 ) -> Result<()> {

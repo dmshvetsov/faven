@@ -7,8 +7,13 @@ use options::{
 };
 use pyth_solana_receiver_sdk::price_update::{TwapPrice, TwapUpdate};
 use solana_sdk::{
-    account::Account, clock::Clock, instruction::Instruction, pubkey::Pubkey, signature::Keypair,
-    signer::Signer, transaction::Transaction,
+    account::Account,
+    clock::Clock,
+    instruction::{AccountMeta, Instruction},
+    pubkey::Pubkey,
+    signature::Keypair,
+    signer::Signer,
+    transaction::Transaction,
 };
 
 const EXPIRY_MS: u64 = 2_000_000_000_000;
@@ -49,7 +54,6 @@ fn fixture(series_count: usize) -> Fixture {
     let mut clock = svm.get_sysvar::<Clock>();
     clock.unix_timestamp = i64::try_from(EXPIRY_MS / 1_000).unwrap();
     svm.set_sysvar(&clock);
-
     let caller = Keypair::new();
     let market = Pubkey::new_unique();
     let twap = Pubkey::new_unique();
@@ -120,22 +124,25 @@ fn fixture(series_count: usize) -> Fixture {
     }
 }
 
-fn send<T: InstructionData>(
-    fixture: &mut Fixture,
-    accounts: Vec<solana_sdk::instruction::AccountMeta>,
-    data: T,
-) {
+fn submit(fixture: &mut Fixture, series: &[Pubkey]) -> bool {
+    let accounts = accounts::FinalizePythTwapSeries {
+        caller: fixture.caller.pubkey(),
+        market: fixture.market,
+        twap_update: fixture.twap,
+    };
+    let mut account_metas = accounts.to_account_metas(None);
+    account_metas.extend(series.iter().map(|key| AccountMeta::new(*key, false)));
     let transaction = Transaction::new_signed_with_payer(
         &[Instruction {
             program_id: PROGRAM_ID,
-            accounts,
-            data: data.data(),
+            accounts: account_metas,
+            data: instruction::FinalizePythTwapSeries {}.data(),
         }],
         Some(&fixture.caller.pubkey()),
         &[&fixture.caller],
         fixture.svm.latest_blockhash(),
     );
-    assert!(fixture.svm.send_transaction(transaction).is_ok());
+    fixture.svm.send_transaction(transaction).is_ok()
 }
 
 fn assert_finalized(fixture: &Fixture) {
@@ -147,63 +154,31 @@ fn assert_finalized(fixture: &Fixture) {
 }
 
 #[test]
-fn any_signer_can_finalize_two_series_from_one_twap() {
+fn any_signer_can_finalize_nine_series_from_one_twap() {
+    let mut fixture = fixture(9);
+    let series = fixture.series.clone();
+    assert!(submit(&mut fixture, &series));
+    assert_finalized(&fixture);
+}
+
+#[test]
+fn any_signer_can_finalize_sixteen_series_from_one_twap() {
+    let mut fixture = fixture(16);
+    let series = fixture.series.clone();
+    assert!(submit(&mut fixture, &series));
+    assert_finalized(&fixture);
+}
+
+#[test]
+fn twap_finalization_rejects_more_than_sixteen_series() {
+    let mut fixture = fixture(17);
+    let series = fixture.series.clone();
+    assert!(!submit(&mut fixture, &series));
+}
+
+#[test]
+fn twap_finalization_rejects_duplicate_series() {
     let mut fixture = fixture(2);
-    let accounts = accounts::FinalizePythTwapTwoSeries {
-        caller: fixture.caller.pubkey(),
-        market: fixture.market,
-        twap_update: fixture.twap,
-        series_one: fixture.series[0],
-        series_two: fixture.series[1],
-    };
-    send(
-        &mut fixture,
-        accounts.to_account_metas(None),
-        instruction::FinalizePythTwapTwoSeries {},
-    );
-    assert_finalized(&fixture);
-}
-
-#[test]
-fn any_signer_can_finalize_four_series_from_one_twap() {
-    let mut fixture = fixture(4);
-    let accounts = accounts::FinalizePythTwapFourSeries {
-        caller: fixture.caller.pubkey(),
-        market: fixture.market,
-        twap_update: fixture.twap,
-        series_one: fixture.series[0],
-        series_two: fixture.series[1],
-        series_three: fixture.series[2],
-        series_four: fixture.series[3],
-    };
-    send(
-        &mut fixture,
-        accounts.to_account_metas(None),
-        instruction::FinalizePythTwapFourSeries {},
-    );
-    assert_finalized(&fixture);
-}
-
-#[test]
-fn any_signer_can_finalize_eight_series_from_one_twap() {
-    let mut fixture = fixture(8);
-    let accounts = accounts::FinalizePythTwapEightSeries {
-        caller: fixture.caller.pubkey(),
-        market: fixture.market,
-        twap_update: fixture.twap,
-        series_one: fixture.series[0],
-        series_two: fixture.series[1],
-        series_three: fixture.series[2],
-        series_four: fixture.series[3],
-        series_five: fixture.series[4],
-        series_six: fixture.series[5],
-        series_seven: fixture.series[6],
-        series_eight: fixture.series[7],
-    };
-    send(
-        &mut fixture,
-        accounts.to_account_metas(None),
-        instruction::FinalizePythTwapEightSeries {},
-    );
-    assert_finalized(&fixture);
+    let series = [fixture.series[0], fixture.series[0]];
+    assert!(!submit(&mut fixture, &series));
 }

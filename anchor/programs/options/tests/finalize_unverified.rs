@@ -6,8 +6,13 @@ use options::{
     OracleConfig, ID as PROGRAM_ID,
 };
 use solana_sdk::{
-    account::Account, clock::Clock, instruction::Instruction, pubkey::Pubkey, signature::Keypair,
-    signer::Signer, transaction::Transaction,
+    account::Account,
+    clock::Clock,
+    instruction::{AccountMeta, Instruction},
+    pubkey::Pubkey,
+    signature::Keypair,
+    signer::Signer,
+    transaction::Transaction,
 };
 
 const EXPIRY_MS: u64 = 2_000_000_000_000;
@@ -88,15 +93,13 @@ fn finalize_instruction(
     id: [u8; 32],
     publish_time: i64,
 ) -> Instruction {
-    let accounts = accounts::FinalizePythUnverifiedOneSeries {
-        operator,
-        market,
-        series_one: series,
-    };
+    let accounts = accounts::FinalizePythUnverifiedSeries { operator, market };
+    let mut account_metas = accounts.to_account_metas(None);
+    account_metas.push(AccountMeta::new(series, false));
     Instruction {
         program_id: PROGRAM_ID,
-        accounts: accounts.to_account_metas(None),
-        data: instruction::FinalizePythUnverifiedOneSeries {
+        accounts: account_metas,
+        data: instruction::FinalizePythUnverifiedSeries {
             id,
             price: 12_345_678,
             conf: u64::MAX,

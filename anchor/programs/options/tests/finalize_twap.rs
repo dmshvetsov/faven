@@ -7,8 +7,13 @@ use options::{
 };
 use pyth_solana_receiver_sdk::price_update::{TwapPrice, TwapUpdate};
 use solana_sdk::{
-    account::Account, clock::Clock, instruction::Instruction, pubkey::Pubkey, signature::Keypair,
-    signer::Signer, transaction::Transaction,
+    account::Account,
+    clock::Clock,
+    instruction::{AccountMeta, Instruction},
+    pubkey::Pubkey,
+    signature::Keypair,
+    signer::Signer,
+    transaction::Transaction,
 };
 
 const EXPIRY_MS: u64 = 2_000_000_000_000;
@@ -114,16 +119,17 @@ fn finalize_instruction(
     twap_update: Pubkey,
     series: Pubkey,
 ) -> Instruction {
-    let accounts = accounts::FinalizePythTwapOneSeries {
+    let accounts = accounts::FinalizePythTwapSeries {
         caller,
         market,
         twap_update,
-        series_one: series,
     };
+    let mut account_metas = accounts.to_account_metas(None);
+    account_metas.push(AccountMeta::new(series, false));
     Instruction {
         program_id: PROGRAM_ID,
-        accounts: accounts.to_account_metas(None),
-        data: instruction::FinalizePythTwapOneSeries {}.data(),
+        accounts: account_metas,
+        data: instruction::FinalizePythTwapSeries {}.data(),
     }
 }
 

@@ -342,9 +342,11 @@ Both methods MUST emit one `ExpiryPriceFinalized` per series with:
 - market oracle configuration, and
 - actual finalization method (`PythTwap` or `PythUnverified`).
 
-The series finalization module MUST expose fixed-arity instruction helpers for each method:
-- `finalize_pyth_twap_one_series`, `finalize_pyth_twap_two_series`, `finalize_pyth_twap_four_series`, and `finalize_pyth_twap_eight_series`, and
-- `finalize_pyth_unverified_one_series`, `finalize_pyth_unverified_two_series`, `finalize_pyth_unverified_four_series`, and `finalize_pyth_unverified_eight_series`.
+The series finalization module MUST expose one batch instruction for each method:
+- `finalize_pyth_twap_series`, and
+- `finalize_pyth_unverified_series`.
+
+Each batch instruction MUST accept from one through sixteen writable Series accounts. It MUST reject an empty batch, a batch larger than sixteen Series accounts, and duplicate Series accounts.
 
 ## Manual Physical Exercise
 
@@ -500,14 +502,8 @@ The contract MUST expose exactly API:
 - `close_series`
 - `underwrite_call`
 - `underwrite_put`
-- `finalize_pyth_twap_one_series`
-- `finalize_pyth_twap_two_series`
-- `finalize_pyth_twap_four_series`
-- `finalize_pyth_twap_eight_series`
-- `finalize_pyth_unverified_one_series`
-- `finalize_pyth_unverified_two_series`
-- `finalize_pyth_unverified_four_series`
-- `finalize_pyth_unverified_eight_series`
+- `finalize_pyth_twap_series`
+- `finalize_pyth_unverified_series`
 - `exercise`
 - `settle_sellers_batch`
 

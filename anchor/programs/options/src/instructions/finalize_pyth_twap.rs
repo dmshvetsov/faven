@@ -4,67 +4,13 @@ use pyth_solana_receiver_sdk::price_update::TwapUpdate;
 use crate::{
     errors::OptionsError,
     events::PythTwapPrice,
-    finalization::finalize_series,
+    finalization::{finalize_series, load_finalization_series, persist_finalized_series},
     options_rules::price_to_strike_scale,
-    state::{FinalizationMethod, Market, Series, PYTH_RECEIVER_PROGRAM_ID},
+    state::{FinalizationMethod, Market, PYTH_RECEIVER_PROGRAM_ID},
 };
 
-pub fn finalize_pyth_twap_one_series(ctx: Context<FinalizePythTwapOneSeries>) -> Result<()> {
-    finalize_twap_batch(
-        ctx.accounts.market.key(),
-        &ctx.accounts.market,
-        &ctx.accounts.twap_update,
-        &mut [&mut ctx.accounts.series_one],
-    )
-}
-
-pub fn finalize_pyth_twap_two_series(ctx: Context<FinalizePythTwapTwoSeries>) -> Result<()> {
-    finalize_twap_batch(
-        ctx.accounts.market.key(),
-        &ctx.accounts.market,
-        &ctx.accounts.twap_update,
-        &mut [&mut ctx.accounts.series_one, &mut ctx.accounts.series_two],
-    )
-}
-
-pub fn finalize_pyth_twap_four_series(ctx: Context<FinalizePythTwapFourSeries>) -> Result<()> {
-    finalize_twap_batch(
-        ctx.accounts.market.key(),
-        &ctx.accounts.market,
-        &ctx.accounts.twap_update,
-        &mut [
-            &mut ctx.accounts.series_one,
-            &mut ctx.accounts.series_two,
-            &mut ctx.accounts.series_three,
-            &mut ctx.accounts.series_four,
-        ],
-    )
-}
-
-pub fn finalize_pyth_twap_eight_series(ctx: Context<FinalizePythTwapEightSeries>) -> Result<()> {
-    finalize_twap_batch(
-        ctx.accounts.market.key(),
-        &ctx.accounts.market,
-        &ctx.accounts.twap_update,
-        &mut [
-            &mut ctx.accounts.series_one,
-            &mut ctx.accounts.series_two,
-            &mut ctx.accounts.series_three,
-            &mut ctx.accounts.series_four,
-            &mut ctx.accounts.series_five,
-            &mut ctx.accounts.series_six,
-            &mut ctx.accounts.series_seven,
-            &mut ctx.accounts.series_eight,
-        ],
-    )
-}
-
-fn finalize_twap_batch(
-    market_key: Pubkey,
-    market: &Account<Market>,
-    twap_update: &Account<TwapUpdate>,
-    series_accounts: &mut [&mut Account<Series>],
-) -> Result<()> {
+pub fn finalize_pyth_twap_series(ctx: Context<FinalizePythTwapSeries>) -> Result<()> {
+    let mut series_accounts = load_finalization_series(ctx.remaining_accounts)?;
     let expiry_ms = series_accounts
         .first()
         .ok_or(error!(OptionsError::SeriesExpiryMismatch))?
@@ -74,10 +20,10 @@ fn finalize_twap_batch(
     let expected_start_time = expiry_seconds
         .checked_sub(60)
         .ok_or(error!(OptionsError::PythTwapWindowMismatch))?;
-    let twap = twap_update.twap;
+    let twap = ctx.accounts.twap_update.twap;
 
     require!(
-        twap.feed_id == market.oracle_config.feed_id(),
+        twap.feed_id == ctx.accounts.market.oracle_config.feed_id(),
         OptionsError::PythTwapFeedMismatch
     );
     require!(
@@ -91,8 +37,8 @@ fn finalize_twap_batch(
 
     let normalized_price = price_to_strike_scale(twap.price, twap.exponent)?;
     emit!(PythTwapPrice {
-        market: market_key,
-        twap_update: twap_update.key(),
+        market: ctx.accounts.market.key(),
+        twap_update: ctx.accounts.twap_update.key(),
         feed_id: twap.feed_id,
         price: twap.price,
         conf: twap.conf,
@@ -103,72 +49,19 @@ fn finalize_twap_batch(
         normalized_price,
     });
     finalize_series(
-        market_key,
-        market,
-        series_accounts,
+        ctx.accounts.market.key(),
+        &ctx.accounts.market,
+        &mut series_accounts,
         normalized_price,
         FinalizationMethod::PythTwap,
-    )
+    )?;
+    persist_finalized_series(&series_accounts)
 }
 
 #[derive(Accounts)]
-pub struct FinalizePythTwapOneSeries<'info> {
+pub struct FinalizePythTwapSeries<'info> {
     pub caller: Signer<'info>,
     pub market: Account<'info, Market>,
     #[account(owner = PYTH_RECEIVER_PROGRAM_ID)]
     pub twap_update: Account<'info, TwapUpdate>,
-    #[account(mut)]
-    pub series_one: Account<'info, Series>,
-}
-
-#[derive(Accounts)]
-pub struct FinalizePythTwapTwoSeries<'info> {
-    pub caller: Signer<'info>,
-    pub market: Account<'info, Market>,
-    #[account(owner = PYTH_RECEIVER_PROGRAM_ID)]
-    pub twap_update: Account<'info, TwapUpdate>,
-    #[account(mut)]
-    pub series_one: Account<'info, Series>,
-    #[account(mut)]
-    pub series_two: Account<'info, Series>,
-}
-
-#[derive(Accounts)]
-pub struct FinalizePythTwapFourSeries<'info> {
-    pub caller: Signer<'info>,
-    pub market: Account<'info, Market>,
-    #[account(owner = PYTH_RECEIVER_PROGRAM_ID)]
-    pub twap_update: Account<'info, TwapUpdate>,
-    #[account(mut)]
-    pub series_one: Account<'info, Series>,
-    #[account(mut)]
-    pub series_two: Account<'info, Series>,
-    #[account(mut)]
-    pub series_three: Account<'info, Series>,
-    #[account(mut)]
-    pub series_four: Account<'info, Series>,
-}
-
-#[derive(Accounts)]
-pub struct FinalizePythTwapEightSeries<'info> {
-    pub caller: Signer<'info>,
-    pub market: Account<'info, Market>,
-    #[account(owner = PYTH_RECEIVER_PROGRAM_ID)]
-    pub twap_update: Account<'info, TwapUpdate>,
-    #[account(mut)]
-    pub series_one: Account<'info, Series>,
-    #[account(mut)]
-    pub series_two: Account<'info, Series>,
-    #[account(mut)]
-    pub series_three: Account<'info, Series>,
-    #[account(mut)]
-    pub series_four: Account<'info, Series>,
-    #[account(mut)]
-    pub series_five: Account<'info, Series>,
-    #[account(mut)]
-    pub series_six: Account<'info, Series>,
-    #[account(mut)]
-    pub series_seven: Account<'info, Series>,
-    #[account(mut)]
-    pub series_eight: Account<'info, Series>,
 }

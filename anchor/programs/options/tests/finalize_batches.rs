@@ -6,8 +6,13 @@ use options::{
     OptionType, OracleConfig, ID as PROGRAM_ID,
 };
 use solana_sdk::{
-    account::Account, clock::Clock, instruction::Instruction, pubkey::Pubkey, signature::Keypair,
-    signer::Signer, transaction::Transaction,
+    account::Account,
+    clock::Clock,
+    instruction::{AccountMeta, Instruction},
+    pubkey::Pubkey,
+    signature::Keypair,
+    signer::Signer,
+    transaction::Transaction,
 };
 
 const EXPIRY_MS: u64 = 2_000_000_000_000;
@@ -46,7 +51,6 @@ fn batch_fixture(series_count: usize) -> BatchFixture {
     let mut clock = svm.get_sysvar::<Clock>();
     clock.unix_timestamp = i64::try_from(EXPIRY_MS / 1_000).unwrap();
     svm.set_sysvar(&clock);
-
     let operator = Keypair::new();
     let market = Pubkey::new_unique();
     svm.airdrop(&operator.pubkey(), 1_000_000_000).unwrap();
@@ -66,7 +70,6 @@ fn batch_fixture(series_count: usize) -> BatchFixture {
             max_operational_fee_bps: 0,
         },
     );
-
     let series = (0..series_count)
         .map(|_| {
             let key = Pubkey::new_unique();
@@ -89,7 +92,6 @@ fn batch_fixture(series_count: usize) -> BatchFixture {
             key
         })
         .collect();
-
     BatchFixture {
         svm,
         operator,
@@ -98,48 +100,26 @@ fn batch_fixture(series_count: usize) -> BatchFixture {
     }
 }
 
-fn send<T: InstructionData>(
-    fixture: &mut BatchFixture,
-    account_metas: Vec<solana_sdk::instruction::AccountMeta>,
-    data: T,
-) {
+fn submit(fixture: &mut BatchFixture, series: &[Pubkey]) -> bool {
+    let accounts = accounts::FinalizePythUnverifiedSeries {
+        operator: fixture.operator.pubkey(),
+        market: fixture.market,
+    };
+    let mut account_metas = accounts.to_account_metas(None);
+    account_metas.extend(series.iter().map(|key| AccountMeta::new(*key, false)));
     let transaction = Transaction::new_signed_with_payer(
         &[Instruction {
             program_id: PROGRAM_ID,
             accounts: account_metas,
-            data: data.data(),
+            data: instruction::FinalizePythUnverifiedSeries {
+                id: [1; 32],
+                price: 12_345_678,
+                conf: 0,
+                expo: -7,
+                publish_time: 0,
+            }
+            .data(),
         }],
-        Some(&fixture.operator.pubkey()),
-        &[&fixture.operator],
-        fixture.svm.latest_blockhash(),
-    );
-    assert!(fixture.svm.send_transaction(transaction).is_ok());
-}
-
-fn finalize_two_instruction(fixture: &BatchFixture) -> Instruction {
-    let accounts = accounts::FinalizePythUnverifiedTwoSeries {
-        operator: fixture.operator.pubkey(),
-        market: fixture.market,
-        series_one: fixture.series[0],
-        series_two: fixture.series[1],
-    };
-    Instruction {
-        program_id: PROGRAM_ID,
-        accounts: accounts.to_account_metas(None),
-        data: instruction::FinalizePythUnverifiedTwoSeries {
-            id: [1; 32],
-            price: 12_345_678,
-            conf: 0,
-            expo: -7,
-            publish_time: 0,
-        }
-        .data(),
-    }
-}
-
-fn submit_two_series(fixture: &mut BatchFixture) -> bool {
-    let transaction = Transaction::new_signed_with_payer(
-        &[finalize_two_instruction(fixture)],
         Some(&fixture.operator.pubkey()),
         &[&fixture.operator],
         fixture.svm.latest_blockhash(),
@@ -181,104 +161,62 @@ fn assert_finalized(fixture: &BatchFixture) {
 }
 
 #[test]
-fn operator_can_finalize_two_series() {
-    let mut fixture = batch_fixture(2);
-    let accounts = accounts::FinalizePythUnverifiedTwoSeries {
-        operator: fixture.operator.pubkey(),
-        market: fixture.market,
-        series_one: fixture.series[0],
-        series_two: fixture.series[1],
-    };
-    send(
-        &mut fixture,
-        accounts.to_account_metas(None),
-        instruction::FinalizePythUnverifiedTwoSeries {
-            id: [1; 32],
-            price: 12_345_678,
-            conf: 0,
-            expo: -7,
-            publish_time: 0,
-        },
-    );
+fn operator_can_finalize_nine_series() {
+    let mut fixture = batch_fixture(9);
+    let series = fixture.series.clone();
+    assert!(submit(&mut fixture, &series));
     assert_finalized(&fixture);
+}
+
+#[test]
+fn operator_can_finalize_sixteen_series() {
+    let mut fixture = batch_fixture(16);
+    let series = fixture.series.clone();
+    assert!(submit(&mut fixture, &series));
+    assert_finalized(&fixture);
+}
+
+#[test]
+fn unverified_finalization_rejects_more_than_sixteen_series() {
+    let mut fixture = batch_fixture(17);
+    let series = fixture.series.clone();
+    assert!(!submit(&mut fixture, &series));
 }
 
 #[test]
 fn shared_finalization_rules_reject_invalid_batches() {
     let mut paused = batch_fixture(2);
     replace_market(&mut paused, true);
-    assert!(!submit_two_series(&mut paused));
+    let series = paused.series.clone();
+    assert!(!submit(&mut paused, &series));
 
     let mut pre_expiry = batch_fixture(2);
     let mut clock = pre_expiry.svm.get_sysvar::<Clock>();
     clock.unix_timestamp -= 1;
     pre_expiry.svm.set_sysvar(&clock);
-    assert!(!submit_two_series(&mut pre_expiry));
+    let series = pre_expiry.series.clone();
+    assert!(!submit(&mut pre_expiry, &series));
 
     let mut finalized = batch_fixture(2);
-    assert!(submit_two_series(&mut finalized));
-    assert!(!submit_two_series(&mut finalized));
+    let series = finalized.series.clone();
+    assert!(submit(&mut finalized, &series));
+    assert!(!submit(&mut finalized, &series));
 
     let mut wrong_market = batch_fixture(2);
     replace_series(&mut wrong_market, 1, Pubkey::new_unique(), EXPIRY_MS);
-    assert!(!submit_two_series(&mut wrong_market));
+    let series = wrong_market.series.clone();
+    assert!(!submit(&mut wrong_market, &series));
 
     let mut wrong_expiry = batch_fixture(2);
     let market = wrong_expiry.market;
     replace_series(&mut wrong_expiry, 1, market, EXPIRY_MS + 1_000);
-    assert!(!submit_two_series(&mut wrong_expiry));
+    let series = wrong_expiry.series.clone();
+    assert!(!submit(&mut wrong_expiry, &series));
 }
 
 #[test]
-fn operator_can_finalize_four_series() {
-    let mut fixture = batch_fixture(4);
-    let accounts = accounts::FinalizePythUnverifiedFourSeries {
-        operator: fixture.operator.pubkey(),
-        market: fixture.market,
-        series_one: fixture.series[0],
-        series_two: fixture.series[1],
-        series_three: fixture.series[2],
-        series_four: fixture.series[3],
-    };
-    send(
-        &mut fixture,
-        accounts.to_account_metas(None),
-        instruction::FinalizePythUnverifiedFourSeries {
-            id: [2; 32],
-            price: 12_345_678,
-            conf: 0,
-            expo: -7,
-            publish_time: 0,
-        },
-    );
-    assert_finalized(&fixture);
-}
-
-#[test]
-fn operator_can_finalize_eight_series() {
-    let mut fixture = batch_fixture(8);
-    let accounts = accounts::FinalizePythUnverifiedEightSeries {
-        operator: fixture.operator.pubkey(),
-        market: fixture.market,
-        series_one: fixture.series[0],
-        series_two: fixture.series[1],
-        series_three: fixture.series[2],
-        series_four: fixture.series[3],
-        series_five: fixture.series[4],
-        series_six: fixture.series[5],
-        series_seven: fixture.series[6],
-        series_eight: fixture.series[7],
-    };
-    send(
-        &mut fixture,
-        accounts.to_account_metas(None),
-        instruction::FinalizePythUnverifiedEightSeries {
-            id: [3; 32],
-            price: 12_345_678,
-            conf: 0,
-            expo: -7,
-            publish_time: 0,
-        },
-    );
-    assert_finalized(&fixture);
+fn unverified_finalization_rejects_duplicate_series() {
+    let mut fixture = batch_fixture(2);
+    let series = [fixture.series[0], fixture.series[0]];
+    assert!(!submit(&mut fixture, &series));
 }
