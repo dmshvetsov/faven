@@ -2,6 +2,10 @@
 
 Aim to build a strong projects that grounded in real user needs. Show deep product thinking, strive to smooth, continuous, and free of interruptions and flaws UX. Have a clear path for this product to being market-ready, not just technically possible.
 
+## Domain Language
+
+Read and use shared `./DOMAIN-LANGUAGE.md` in conversations and code.
+
 ## Code Style
 
 - avoid writing files larger then 500-1000 lines, if possible split the logically 
