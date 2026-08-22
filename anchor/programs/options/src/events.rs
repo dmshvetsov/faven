@@ -35,6 +35,16 @@ pub struct Underwritten {
 }
 
 #[event]
+pub struct Exercised {
+    pub series: Pubkey,
+    pub holder: Pubkey,
+    pub option_type: OptionType,
+    pub quantity: u64,
+    pub input_asset_amount: u64,
+    pub output_asset_amount: u64,
+}
+
+#[event]
 pub struct PythTwapPrice {
     pub market: Pubkey,
     pub twap_update: Pubkey,

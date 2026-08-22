@@ -10,11 +10,13 @@ pub mod state;
 
 pub(crate) use instructions::__client_accounts_create_market;
 pub(crate) use instructions::__client_accounts_create_series;
+pub(crate) use instructions::__client_accounts_exercise;
 pub(crate) use instructions::__client_accounts_finalize_pyth_twap_series;
 pub(crate) use instructions::__client_accounts_finalize_pyth_unverified_series;
 pub(crate) use instructions::__client_accounts_underwrite;
 pub use instructions::{
-    CreateMarket, CreateSeries, FinalizePythTwapSeries, FinalizePythUnverifiedSeries, Underwrite,
+    CreateMarket, CreateSeries, Exercise, FinalizePythTwapSeries, FinalizePythUnverifiedSeries,
+    Underwrite,
 };
 pub use state::{OptionType, OracleConfig};
 
@@ -65,6 +67,10 @@ pub mod options {
         operational_fee_bps: u16,
     ) -> Result<()> {
         instructions::underwrite_put(ctx, quantity, premium_per_contract, operational_fee_bps)
+    }
+
+    pub fn exercise(ctx: Context<Exercise>, quantity: u64) -> Result<()> {
+        instructions::exercise(ctx, quantity)
     }
 
     pub fn finalize_pyth_unverified_series(

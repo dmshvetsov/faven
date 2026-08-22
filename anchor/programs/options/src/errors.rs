@@ -66,4 +66,18 @@ pub enum OptionsError {
     DuplicateFinalizationSeries,
     #[msg("Finalization series accounts must be writable")]
     FinalizationSeriesNotWritable,
+    #[msg("Manual exercise is not available in the current series phase")]
+    InvalidExercisePhase,
+    #[msg("Only in-the-money options may be exercised")]
+    SeriesNotInTheMoney,
+    #[msg("Exercise quantity exceeds the holder Long token balance")]
+    ExerciseQuantityExceedsLongBalance,
+    #[msg("Exercise quantity exceeds contracts issued for this series")]
+    ExerciseQuantityExceedsIssuedContracts,
+    #[msg("Series collateral is insufficient for exercise")]
+    InsufficientSeriesCollateral,
+    #[msg("Holder payment account has insufficient funds for exercise")]
+    InsufficientHolderPayment,
+    #[msg("Exercise token account has an invalid owner or mint")]
+    InvalidExerciseTokenAccount,
 }

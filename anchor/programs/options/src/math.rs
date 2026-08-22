@@ -69,6 +69,37 @@ pub fn put_collateral(
     quote_scale: u64,
     base_scale: u64,
 ) -> Result<u64> {
+    call_payment(quantity, strike_price, quote_scale, base_scale)
+}
+
+pub fn call_payment(
+    quantity: u64,
+    strike_price: u64,
+    quote_scale: u64,
+    base_scale: u64,
+) -> Result<u64> {
+    let (numerator, denominator) =
+        strike_payment_fraction(quantity, strike_price, quote_scale, base_scale)?;
+    ceil_div(numerator, denominator)
+}
+
+pub fn put_payout(
+    quantity: u64,
+    strike_price: u64,
+    quote_scale: u64,
+    base_scale: u64,
+) -> Result<u64> {
+    let (numerator, denominator) =
+        strike_payment_fraction(quantity, strike_price, quote_scale, base_scale)?;
+    u64::try_from(numerator / denominator).map_err(|_| error!(OptionsError::ArithmeticOverflow))
+}
+
+fn strike_payment_fraction(
+    quantity: u64,
+    strike_price: u64,
+    quote_scale: u64,
+    base_scale: u64,
+) -> Result<(u128, u128)> {
     let numerator = u128::from(quantity)
         .checked_mul(u128::from(strike_price))
         .and_then(|value| value.checked_mul(u128::from(quote_scale)))
@@ -76,7 +107,8 @@ pub fn put_collateral(
     let denominator = u128::from(base_scale)
         .checked_mul(u128::from(STRIKE_SCALE))
         .ok_or(error!(OptionsError::ArithmeticOverflow))?;
-    ceil_div(numerator, denominator)
+    require!(denominator != 0, OptionsError::ZeroDivision);
+    Ok((numerator, denominator))
 }
 
 pub fn operational_fee(premium: u64, fee_bps: u16, min_fee: u64) -> Result<u64> {
@@ -105,7 +137,8 @@ fn ceil_div(numerator: u128, denominator: u128) -> Result<u64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        operational_fee, premium_total, put_collateral, rescale_fixed_point_round_half_up,
+        call_payment, operational_fee, premium_total, put_collateral, put_payout,
+        rescale_fixed_point_round_half_up,
     };
 
     #[test]
@@ -122,6 +155,20 @@ mod tests {
     }
 
     #[test]
+    fn call_payment_rounds_up_for_fractional_quote_base_units() {
+        assert_eq!(call_payment(1, 1, 1, 3).unwrap(), 1);
+    }
+
+    #[test]
+    fn put_payout_rounds_down_and_cannot_exceed_put_collateral() {
+        let collateral = put_collateral(1, 1, 1, 3).unwrap();
+        let payout = put_payout(1, 1, 1, 3).unwrap();
+
+        assert_eq!(payout, 0);
+        assert!(payout <= collateral);
+    }
+
+    #[test]
     fn fee_uses_the_greater_of_the_minimum_and_proportional_amount() {
         assert_eq!(operational_fee(100, 500, 10).unwrap(), 10);
         assert_eq!(operational_fee(10_000, 500, 10).unwrap(), 500);
@@ -131,6 +178,8 @@ mod tests {
     fn wide_arithmetic_rejects_unrepresentable_values() {
         assert!(premium_total(u64::MAX, u64::MAX, 1).is_err());
         assert!(put_collateral(u64::MAX, u64::MAX, u64::MAX, 1).is_err());
+        assert!(call_payment(u64::MAX, u64::MAX, u64::MAX, 1).is_err());
+        assert!(put_payout(u64::MAX, u64::MAX, u64::MAX, 1).is_err());
     }
 
     #[test]
