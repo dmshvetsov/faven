@@ -41,11 +41,14 @@ If existing pnpm commands cannot be run due to pnpm specific error then stop wha
 
 If you need to install tools, update version of existing tools to complete task please stop and ask human for help.
 
-## Quality Checks and Tests
+## Quality Checks, Tests, Validation
 
-If following commands exists run them periodically to test and check quality of the code:
-- `corepack pnpm test`
-- `corepack pnpm check`
+- test the whole project with `just test`, make sense when whole change is done
+- test solana program with `just anchor-test`, helpful in TDD
+
+Run code formatting `just format` (or specific per monorepo dir commands like `just anchor-format` for speed) during development to produce consistently styled code
+
+Run linter with `just lint` (or specific per monorepo dir command like `just anchor-lint`) when necessary and always and the end of the task
 
 ## API
 
