@@ -33,6 +33,10 @@ corepack pnpm --dir apps/rfq-server check
 ```
 If existing pnpm commands cannot be run due to pnpm specific error then stop whatever you are doing and report to human you can't proceed due to issues with pnpm. You must not try to fix pnpm issues yourself.
 
+## Development environment
+
+If you need to install tools, update version of existing tools to complete task please stop and ask human for help.
+
 ## Quality Checks and Tests
 
 If following commands exists run them periodically to test and check quality of the code:

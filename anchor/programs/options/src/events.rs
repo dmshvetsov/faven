@@ -1,7 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::state::OptionType;
-use crate::state::OracleKind;
+use crate::state::{FinalizationMethod, OptionType, OracleConfig, OracleKind};
 
 #[event]
 pub struct MarketCreated {
@@ -33,4 +32,38 @@ pub struct Underwritten {
     pub premium_total: u64,
     pub operational_fee: u64,
     pub fee_recipient: Pubkey,
+}
+
+#[event]
+pub struct PythTwapPrice {
+    pub market: Pubkey,
+    pub twap_update: Pubkey,
+    pub feed_id: [u8; 32],
+    pub price: i64,
+    pub conf: u64,
+    pub expo: i32,
+    pub start_time: i64,
+    pub end_time: i64,
+    pub down_slots_ratio: u32,
+    pub normalized_price: u64,
+}
+
+#[event]
+pub struct PythUnverifiedPrice {
+    pub market: Pubkey,
+    pub operator: Pubkey,
+    pub id: [u8; 32],
+    pub price: i64,
+    pub conf: u64,
+    pub expo: i32,
+    pub publish_time: i64,
+    pub normalized_price: u64,
+}
+
+#[event]
+pub struct ExpiryPriceFinalized {
+    pub series: Pubkey,
+    pub normalized_price: u64,
+    pub oracle_config: OracleConfig,
+    pub method: FinalizationMethod,
 }

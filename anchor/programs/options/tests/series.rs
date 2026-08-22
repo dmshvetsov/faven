@@ -77,7 +77,7 @@ fn market_address(operator: &Pubkey, quote_mint: &Pubkey, base_mint: &Pubkey) ->
     Pubkey::find_program_address(
         &[
             b"market",
-            b"PythUnverified",
+            b"PythTwap",
             &[1; 32],
             quote_mint.as_ref(),
             base_mint.as_ref(),
@@ -168,7 +168,7 @@ fn create_market(
         program_id: PROGRAM_ID,
         accounts: accounts.to_account_metas(None),
         data: instruction::CreateMarket {
-            oracle_config: OracleConfig::PythUnverified { feed_id: [1; 32] },
+            oracle_config: OracleConfig::PythTwap { feed_id: [1; 32] },
             min_fee: 0,
             min_operational_fee_bps: 0,
             max_operational_fee_bps: 1_000,
@@ -379,6 +379,35 @@ fn user_cannot_create_a_series_with_invalid_terms() {
         );
         assert!(svm.send_transaction(transaction).is_err());
     }
+}
+
+#[test]
+fn user_cannot_create_a_series_with_a_subsecond_expiry() {
+    let mut svm = new_svm();
+    let payer = Keypair::new();
+    let operator = Keypair::new();
+    let quote_mint = Pubkey::new_unique();
+    let base_mint = Pubkey::new_unique();
+    svm.airdrop(&payer.pubkey(), 10 * LAMPORTS_PER_SOL).unwrap();
+    add_mint(&mut svm, quote_mint, 6);
+    add_mint(&mut svm, base_mint, 9);
+    let market = create_market(&mut svm, &payer, &operator, quote_mint, base_mint);
+    let transaction = Transaction::new_signed_with_payer(
+        &[create_series_instruction(
+            payer.pubkey(),
+            market,
+            quote_mint,
+            base_mint,
+            OptionType::Call,
+            3_500_000,
+            EXPIRY_MS + 1,
+        )],
+        Some(&payer.pubkey()),
+        &[&payer],
+        svm.latest_blockhash(),
+    );
+
+    assert!(svm.send_transaction(transaction).is_err());
 }
 
 #[test]

@@ -1,6 +1,8 @@
 use anchor_lang::prelude::*;
 
-pub const PYTH_UNVERIFIED_SEED: &[u8] = b"PythUnverified";
+pub const PYTH_RECEIVER_PROGRAM_ID: Pubkey = pubkey!("rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ");
+
+pub const PYTH_TWAP_SEED: &[u8] = b"PythTwap";
 pub const SERIES_SEED: &[u8] = b"option_series";
 pub const LONG_MINT_SEED: &[u8] = b"option_series_mint";
 pub const SELLER_VAULT_SEED: &[u8] = b"option_series_seller_vault";
@@ -86,26 +88,32 @@ impl SellerVault {
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OracleConfig {
-    PythUnverified { feed_id: [u8; 32] },
+    PythTwap { feed_id: [u8; 32] },
 }
 
 impl OracleConfig {
     pub fn kind_seed(&self) -> &'static [u8] {
-        PYTH_UNVERIFIED_SEED
+        PYTH_TWAP_SEED
     }
 
     pub fn kind(&self) -> OracleKind {
-        OracleKind::PythUnverified
+        OracleKind::PythTwap
     }
 
     pub fn feed_id(&self) -> [u8; 32] {
         match self {
-            Self::PythUnverified { feed_id } => *feed_id,
+            Self::PythTwap { feed_id } => *feed_id,
         }
     }
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OracleKind {
+    PythTwap,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FinalizationMethod {
+    PythTwap,
     PythUnverified,
 }

@@ -18,7 +18,9 @@ pub enum OptionsError {
     InvalidStrikePrice,
     #[msg("Expiry must be more than eight hours away")]
     ExpiryTooSoon,
-    #[msg("Market is paused")]
+    #[msg("Expiry must be aligned to a whole second")]
+    ExpiryNotWholeSecond,
+    #[msg("Action is not allowed when market is paused")]
     MarketPaused,
     #[msg("Series is not open")]
     SeriesNotOpen,
@@ -38,6 +40,22 @@ pub enum OptionsError {
     InvalidSellerVault,
     #[msg("Negative clock timestamp")]
     ClockNegativeTimestamp,
-    #[msg("Zero division")]
+    #[msg("Division by zero")]
     ZeroDivision,
+    #[msg("Pyth price must be positive")]
+    InvalidPythPrice,
+    #[msg("Pyth price cannot be represented at the strike scale")]
+    PythPriceOutOfRange,
+    #[msg("Only the market operator may use this finalization method")]
+    UnauthorizedFinalizer,
+    #[msg("Expiry price cannot be finalized for an unexpired option series")]
+    FinalizationTooEarly,
+    #[msg("All finalized series must have the same expiry")]
+    SeriesExpiryMismatch,
+    #[msg("Pyth TWAP feed does not match the market")]
+    PythTwapFeedMismatch,
+    #[msg("Pyth TWAP window does not match the series expiry")]
+    PythTwapWindowMismatch,
+    #[msg("Pyth TWAP does not have sufficient coverage")]
+    InsufficientPythTwapCoverage,
 }

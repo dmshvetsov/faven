@@ -80,7 +80,7 @@ fn market_address(operator: Pubkey, quote_mint: Pubkey, base_mint: Pubkey) -> Pu
     Pubkey::find_program_address(
         &[
             b"market",
-            b"PythUnverified",
+            b"PythTwap",
             &[1; 32],
             quote_mint.as_ref(),
             base_mint.as_ref(),
@@ -158,7 +158,7 @@ fn create_market(
         program_id: PROGRAM_ID,
         accounts: accounts.to_account_metas(None),
         data: instruction::CreateMarket {
-            oracle_config: OracleConfig::PythUnverified { feed_id: [1; 32] },
+            oracle_config: OracleConfig::PythTwap { feed_id: [1; 32] },
             min_fee,
             min_operational_fee_bps: min_fee_bps,
             max_operational_fee_bps: max_fee_bps,

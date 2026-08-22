@@ -43,7 +43,7 @@ fn market_address(
     Pubkey::find_program_address(
         &[
             b"market",
-            b"PythUnverified",
+            b"PythTwap",
             feed_id,
             quote_mint.as_ref(),
             base_mint.as_ref(),
@@ -115,7 +115,7 @@ fn user_can_create_a_market_with_spl_mints() {
     let operator = Keypair::new();
     let quote_mint = Pubkey::new_unique();
     let base_mint = Pubkey::new_unique();
-    let oracle_config = OracleConfig::PythUnverified { feed_id: [7; 32] };
+    let oracle_config = OracleConfig::PythTwap { feed_id: [7; 32] };
     let market = market_address(&operator.pubkey(), &quote_mint, &base_mint, &[7; 32]);
     fund_and_add_mints(&mut svm, &payer, quote_mint, 6, base_mint, 9);
 
@@ -164,7 +164,7 @@ fn user_cannot_create_a_market_with_invalid_fee_configuration() {
             operator.pubkey(),
             quote_mint,
             base_mint,
-            OracleConfig::PythUnverified {
+            OracleConfig::PythTwap {
                 feed_id: [feed_id; 32],
             },
             min_bps,
@@ -203,7 +203,7 @@ fn user_cannot_create_a_market_with_invalid_mints() {
             operator.pubkey(),
             quote_mint,
             base_mint,
-            OracleConfig::PythUnverified { feed_id: [10; 32] },
+            OracleConfig::PythTwap { feed_id: [10; 32] },
             0,
             0,
         );
@@ -232,7 +232,7 @@ fn user_cannot_create_a_market_with_a_non_spl_token_mint() {
         operator.pubkey(),
         quote_mint,
         base_mint,
-        OracleConfig::PythUnverified { feed_id: [11; 32] },
+        OracleConfig::PythTwap { feed_id: [11; 32] },
         0,
         0,
     );
@@ -252,7 +252,7 @@ fn user_cannot_create_the_same_market_twice() {
     let operator = Keypair::new();
     let quote_mint = Pubkey::new_unique();
     let base_mint = Pubkey::new_unique();
-    let oracle_config = OracleConfig::PythUnverified { feed_id: [12; 32] };
+    let oracle_config = OracleConfig::PythTwap { feed_id: [12; 32] };
     fund_and_add_mints(&mut svm, &payer, quote_mint, 6, base_mint, 9);
     for expected_success in [true, false] {
         let instruction = create_market_instruction(
@@ -287,7 +287,7 @@ fn user_cannot_create_a_market_without_required_signatures() {
         operator.pubkey(),
         quote_mint,
         base_mint,
-        OracleConfig::PythUnverified { feed_id: [13; 32] },
+        OracleConfig::PythTwap { feed_id: [13; 32] },
         0,
         0,
     );
@@ -312,7 +312,7 @@ fn user_cannot_create_a_market_without_the_payer_signature() {
         operator.pubkey(),
         quote_mint,
         base_mint,
-        OracleConfig::PythUnverified { feed_id: [14; 32] },
+        OracleConfig::PythTwap { feed_id: [14; 32] },
         0,
         0,
     );
