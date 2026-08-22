@@ -37,7 +37,7 @@ pub fn create_market(
     );
 
     let market = &mut ctx.accounts.market;
-    market.oracle_config = oracle_config.clone();
+    market.oracle_config = oracle_config;
     market.base_coin_scale = token_scale(ctx.accounts.base_coin_mint.decimals)?;
     market.quote_coin_scale = token_scale(ctx.accounts.quote_coin_mint.decimals)?;
     market.operator = ctx.accounts.operator.key();
