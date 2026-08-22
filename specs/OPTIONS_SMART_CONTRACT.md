@@ -356,7 +356,7 @@ The holder MUST provide:
 - a `Long` token,
 - required payment asset that acts as payout to sellers,
 
-Exercise MUST consume the whole provided `Long` token. The exercised quantity MUST be the provided `Long` token quantity. Holders who want to exercise only part of their position MUST send partial amount of their `Long`.
+Exercise MUST accept an explicit `quantity` and burn exactly that quantity of `Long` tokens from holder. The exercised quantity MUST be greater than zero and no greater than holder's `Long` token balance.
 
 ### Covered Call Exercise
 
