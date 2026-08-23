@@ -1,8 +1,8 @@
-# Options Smart Contract Specification
+# Options Smart-Contract Specification
 
 ## Scope
 
-This document specifies MVP version of the on-chain smart contract design for European, physically settled options on Solana.
+This document specifies MVP version of the on-chain smart-contract design for European, physically settled options on Solana.
 
 This document does not specify RFQ servers, market-maker APIs, web UI, indexing, or off-chain quote routing.
 
@@ -83,7 +83,7 @@ The payer signer creates and funds the market PDA. The instruction MUST reject:
 
 On success, it MUST persist the passed oracle configuration, mints, operator, and fee configuration; derived token scales; and `paused = false`. The operator address and market identity fields are immutable because this MVP exposes no market-update instruction.
 
-The contract MUST emit `MarketCreated` with:
+The smart-contract MUST emit `MarketCreated` with:
 - market address,
 - operator address,
 - oracle kind,
@@ -107,6 +107,7 @@ A series MUST only store:
 - finalized oracle `expiry_price`,
 - `total_contracts_quantity`,
 - `total_manual_exercised_quantity`,
+- `total_seller_quote_payout_amount` to store accumulated quote coin seller payouts accumulated during exercise
 - `total_settled_quantity`
 
 Series states:
@@ -120,7 +121,7 @@ Derived phases:
 - price pending: `state == Open` and current time is greater than or equal to `expiry_ms`,
 - no-exercise expiry, options expired worthless: `state == ExpirationPriceFinalized` and the series is ATM or OTM,
 - manual exercise: `state == ExpirationPriceFinalized`, the series is ITM, and current time is < to `exercise_window_end_ms`,
-- full settlement: `state == ExpirationPriceFinalized` the series is ITM and `total_manual_exercised_quantity` == `total_contracts_quantity`.
+- fully exercised: `state == ExpirationPriceFinalized` the series is ITM and `total_manual_exercised_quantity` == `total_contracts_quantity`.
 - partial settlement: `state == ExpirationPriceFinalized`, the series is ITM and current time >= than `exercise_window_end_ms`,
 
 Manual exercise MUST be allowed only when:
@@ -145,7 +146,7 @@ QuoteCoin Series token account:
 - token authority = Series PDA
 - token program = SPL Token Program
 
-After the `Series` is `Closed`, all related PDAs that can be closed (this excludes mint account, and `Long` token holders accounts) to rebate storage MUST be destroyed to release used on-chain memory and rent cost. `Series` can be closed only when `total_settled_quantity == total_contracts_quantity`. Dust and excess collateral goes to the operator that closes the `Series`.
+After the `Series` is `Closed`, all related PDAs that can be closed (this excludes mint account, and `Long` token holders accounts) to rebate storage MUST be destroyed to release used on-chain memory and rent cost. `Series` can be closed only when `total_settled_quantity == total_contracts_quantity`. Dust and excess collateral goes settlement transaction signer that closes the `Series`.
 
 The protocol MUST NOT maintain an on-chain seller index. Off-chain indexers discover seller vaults from `Underwritten` events.
 
@@ -189,7 +190,7 @@ Each `SellerVault` MUST store:
 
 Each `Long` token MUST be SPL fungible token with deterministic PDA mint address `["option_series_mint", market_address, call_put_marker, expiry, strike_price]`. This PDA is mint authority for `Long` SPL token. `Long` freeze authority is none.
 
-`Long` quantity represents a claim amount only. Actual `BaseCoin` and `QuoteCoin` collateral MUST remain in the `Series` PDA token accounts
+`Long` quantity represents a claim amount. `Long` (option contract) quantity  Contract quantities use the same decimal precision as the underlying `BaseCoin`; therefore, one whole contract represents 1.0 `BaseCoin`. Actual `BaseCoin` and `QuoteCoin` collateral MUST remain in the `Series` PDA token accounts
 
 `Long` tokens MUST have the same decimal scale as Base Coin.
 
@@ -392,21 +393,19 @@ The contract MUST emit `Exercised` with:
 
 ## Seller Settlement
 
-Seller settlement MUST be permissionless and MUST NOT require seller action.
+Seller settlement MUST be permissionless.
+
+Because `Long` tokens are fungible by series and are not matched to seller vaults, exercises quantities MUST be allocated across seller pro-rata by each vault's short quantity during seller settlement. Seller settlement amounts MUST be rounded down, any resulting dust MUST remain in the `Series` PDA token account.
 
 Seller payout MUST be performed from `SellerVault` accounts supplied to the settlement transaction. Off-chain indexers discover those accounts from `Underwritten` events; the contract MUST validate every supplied vault and its relation to the Series on-chain. A settlement invocation MAY process one or more seller vaults.
-
-Sellers MUST NOT claim, withdraw, or settle their own vaults. Seller vault records are accounting inputs only; they are closed by protocol settlement and proceeds are transferred directly to seller addresses.
 
 Seller settlement MUST be allowed when the series is settle-ready:
 - immediately after price finalization for ATM or OTM series,
 - after `exercise_window_end_ms`
 
-Seller settlement MUST close seller vault records and transfer proceeds directly to the seller addresses stored in those records. Rent rebate for closed account goes to the fee payer of a settlement transactions. If ATA account for payout token does not exists it MUST be created, fee payer of a settlement transaction must fund ATA creation.
+Seller settlement MUST close seller vault account and transfer proceeds directly to the seller addresses stored in those records. Rent rebate for closed seelr vault account goes to transaction signer of a settlement transactions. If ATA account for non-zero payout of `BaseCoin` or/and `QuoteCoin` token does not exists it MUST be created, signer of a settlement transaction must fund ATA creation.
 
 When `total_settled_quantity == total_contracts_quantity`, the series MUST move to `Closed`. Each settled seller vault MUST increase `total_settled_quantity` by its short contracts quantity exactly once.
-
-Because `Long` tokens are fungible by series and are not matched to seller vaults, manual exercises quantities MUST be allocated across seller pro-rata by each vault's short quantity during seller settlement. Seller settlement amounts MUST be rounded down, any resulting dust MUST remain in the `Series` PDA token account.
 
 For ATM or OTM series, sellers receive original collateral back.
 
@@ -425,7 +424,7 @@ Seller settlement MUST abort if:
 - series does not exist,
 - settlement arithmetic would overdraw the internal `Series` balance of base or quote tokens.
 
-Rounding dust MUST remain in the `Series` PDA  and MUST be recoverable only through operator recovery after `series.state == Closed` and `now >= series.exercise_window_end_ms` and all seller payouts, manual exercises for given `Series` are fully accounted and settled, only the remaining unreserved balance may be recovered.
+Rounding dust MUST remain in the `Series` PDA and MUST be recoverable only through operator recovery after `series.state == Closed` and `now >= series.exercise_window_end_ms` and all seller payouts, manual exercises for given `Series` are fully accounted and settled, only the remaining unreserved balance may be recovered. Rounding dust only recovered when `Series` PDAs and other accounts are closed, dust goes to the `Series` close transaction signer; rent rebate goes to current `Series` `Market` operator.
 
 Each seller payout MUST emit `SellerPayoutSettled` with:
 - series id,
@@ -464,13 +463,9 @@ Quantity and payment calculations SHOULD use `u128` or wider intermediate arithm
 
 The operator pause MUST be applied per market.
 
-When a market is paused:
-- series creation MUST be disabled,
-- underwriting MUST be disabled,
+When a market is paused all instructions/actions with `Market`, `Series`, `Long` are paused and must be rejected, except:
 - operator recovery MAY be enabled,
-- price finalization MUST be disabled
-- exercise MUST be disabled
-- settlement MUST be disabled
+- market un-pausing MUST be enabled.
 
 Pause authority MUST be held by the configured operator address, which MUST sign the instruction.
 
