@@ -87,6 +87,7 @@ fn batch_fixture(series_count: usize) -> BatchFixture {
                     total_contracts_quantity: 0,
                     total_manual_exercised_quantity: 0,
                     total_settled_quantity: 0,
+                    total_quote_amount: 0,
                 },
             );
             key

@@ -68,10 +68,11 @@ pub struct Series {
     pub total_contracts_quantity: u64,
     pub total_manual_exercised_quantity: u64,
     pub total_settled_quantity: u64,
+    pub total_quote_amount: u64,
 }
 
 impl Series {
-    pub const SPACE: usize = 8 + 1 + 32 + 1 + 8 + 8 + 8 + 9 + (8 * 3);
+    pub const SPACE: usize = 8 + 1 + 32 + 1 + 8 + 8 + 8 + 9 + (8 * 4);
 }
 
 #[account]

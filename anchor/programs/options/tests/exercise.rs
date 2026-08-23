@@ -207,6 +207,10 @@ fn fixture(option_type: OptionType) -> ExerciseFixture {
             total_contracts_quantity: QUANTITY,
             total_manual_exercised_quantity: 0,
             total_settled_quantity: 0,
+            total_quote_amount: match option_type {
+                OptionType::Call => 0,
+                OptionType::Put => 3_500_000,
+            },
         },
     );
     add_token_account(&mut svm, long_source, long_mint, holder.pubkey(), QUANTITY);
@@ -378,6 +382,7 @@ fn itm_call_partial_exercise_burns_only_requested_long_and_delivers_base_coin() 
     let account = fixture.svm.get_account(&fixture.series).unwrap();
     let series = Series::try_deserialize(&mut account.data.as_slice()).unwrap();
     assert_eq!(series.total_manual_exercised_quantity, EXERCISE_QUANTITY);
+    assert_eq!(series.total_quote_amount, 1_400_000);
 }
 
 #[test]
@@ -415,6 +420,9 @@ fn itm_put_partial_exercise_collects_base_coin_and_delivers_floor_rounded_quote_
         EXERCISE_QUANTITY + 1
     );
     assert_eq!(token_amount(&fixture.svm, receipt), 1_400_000);
+    let account = fixture.svm.get_account(&fixture.series).unwrap();
+    let series = Series::try_deserialize(&mut account.data.as_slice()).unwrap();
+    assert_eq!(series.total_quote_amount, 2_100_000);
 }
 
 #[test]

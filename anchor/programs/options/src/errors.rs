@@ -80,4 +80,18 @@ pub enum OptionsError {
     InsufficientHolderPayment,
     #[msg("Exercise token account has an invalid owner or mint")]
     InvalidExerciseTokenAccount,
+    #[msg("Seller settlement is not available in the current series phase")]
+    InvalidSettlementPhase,
+    #[msg("Seller settlement requires at least one seller vault")]
+    EmptySettlementBatch,
+    #[msg("Seller payout token account has an invalid owner or mint")]
+    InvalidSellerPayoutAccount,
+    #[msg("Seller vault does not match the expected program-derived address")]
+    SellerVaultPdaMismatch,
+    #[msg("Seller settlement would exceed the series issued quantity")]
+    SettlementQuantityExceedsIssuedContracts,
+    #[msg("A seller vault may appear only once in a settlement batch")]
+    DuplicateSettlementSellerVault,
+    #[msg("Settlement seller accounts are malformed")]
+    MalformedSettlementAccounts,
 }

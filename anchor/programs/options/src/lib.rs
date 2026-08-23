@@ -13,10 +13,11 @@ pub(crate) use instructions::__client_accounts_create_series;
 pub(crate) use instructions::__client_accounts_exercise;
 pub(crate) use instructions::__client_accounts_finalize_pyth_twap_series;
 pub(crate) use instructions::__client_accounts_finalize_pyth_unverified_series;
+pub(crate) use instructions::__client_accounts_settle_sellers_batch;
 pub(crate) use instructions::__client_accounts_underwrite;
 pub use instructions::{
     CreateMarket, CreateSeries, Exercise, FinalizePythTwapSeries, FinalizePythUnverifiedSeries,
-    Underwrite,
+    SettleSellersBatch, Underwrite,
 };
 pub use state::{OptionType, OracleConfig};
 
@@ -71,6 +72,12 @@ pub mod options {
 
     pub fn exercise(ctx: Context<Exercise>, quantity: u64) -> Result<()> {
         instructions::exercise(ctx, quantity)
+    }
+
+    pub fn settle_sellers_batch<'info>(
+        ctx: Context<'info, SettleSellersBatch<'info>>,
+    ) -> Result<()> {
+        instructions::settle_sellers_batch(ctx)
     }
 
     pub fn finalize_pyth_unverified_series(

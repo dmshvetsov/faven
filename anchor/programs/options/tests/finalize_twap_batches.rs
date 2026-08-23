@@ -110,6 +110,7 @@ fn fixture(series_count: usize) -> Fixture {
                     total_contracts_quantity: 0,
                     total_manual_exercised_quantity: 0,
                     total_settled_quantity: 0,
+                    total_quote_amount: 0,
                 },
             );
             key

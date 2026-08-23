@@ -37,6 +37,7 @@ pub fn create_series(
     series.total_contracts_quantity = 0;
     series.total_manual_exercised_quantity = 0;
     series.total_settled_quantity = 0;
+    series.total_quote_amount = 0;
 
     emit!(SeriesCreated {
         series: series.key(),

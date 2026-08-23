@@ -188,6 +188,16 @@ pub fn exercise(ctx: Context<Exercise>, quantity: u64) -> Result<()> {
 
     let series = &mut ctx.accounts.series;
     series.total_manual_exercised_quantity = updated_exercised;
+    series.total_quote_amount = match series.option_type {
+        OptionType::Call => series
+            .total_quote_amount
+            .checked_add(input_amount)
+            .ok_or(error!(OptionsError::ArithmeticOverflow))?,
+        OptionType::Put => series
+            .total_quote_amount
+            .checked_sub(output_amount)
+            .ok_or(error!(OptionsError::ArithmeticOverflow))?,
+    };
     emit!(Exercised {
         series: series.key(),
         holder: ctx.accounts.holder.key(),

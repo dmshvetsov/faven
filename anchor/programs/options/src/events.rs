@@ -77,3 +77,17 @@ pub struct ExpiryPriceFinalized {
     pub oracle_config: OracleConfig,
     pub method: FinalizationMethod,
 }
+
+#[event]
+pub struct SellerPayoutSettled {
+    pub series: Pubkey,
+    pub seller: Pubkey,
+    pub base_coin_amount: u64,
+    pub quote_coin_amount: u64,
+}
+
+#[event]
+pub struct SeriesSettlementBatchCompleted {
+    pub series: Pubkey,
+    pub settled_seller_count: u16,
+}

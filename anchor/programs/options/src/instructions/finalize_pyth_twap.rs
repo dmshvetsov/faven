@@ -14,6 +14,7 @@ pub fn finalize_pyth_twap_series(ctx: Context<FinalizePythTwapSeries>) -> Result
     let expiry_ms = series_accounts
         .first()
         .ok_or(error!(OptionsError::SeriesExpiryMismatch))?
+        .series
         .expiry_ms;
     let expiry_seconds = i64::try_from(expiry_ms / 1_000)
         .map_err(|_| error!(OptionsError::PythTwapWindowMismatch))?;

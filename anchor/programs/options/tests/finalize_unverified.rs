@@ -82,6 +82,7 @@ fn add_series(svm: &mut LiteSVM, key: Pubkey, market: Pubkey, expiry_ms: u64) {
             total_contracts_quantity: 0,
             total_manual_exercised_quantity: 0,
             total_settled_quantity: 0,
+            total_quote_amount: 0,
         },
     );
 }
