@@ -448,6 +448,34 @@ fn itm_call_partial_exercise_burns_only_requested_long_and_delivers_base_coin() 
 }
 
 #[test]
+fn multiple_call_exercises_snapshot_each_rounded_quote_payment() {
+    let mut fixture = call_fixture();
+    add_token_account(
+        &mut fixture.svm,
+        fixture.payment_source,
+        fixture.quote_mint,
+        fixture.holder.pubkey(),
+        3_000_000,
+    );
+    for quantity in [200_000_001, 200_000_002] {
+        let transaction = Transaction::new_signed_with_payer(
+            &[exercise_instruction(&fixture, quantity)],
+            Some(&fixture.holder.pubkey()),
+            &[&fixture.holder],
+            fixture.svm.latest_blockhash(),
+        );
+        let result = fixture.svm.send_transaction(transaction);
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    let account = fixture.svm.get_account(&fixture.series).unwrap();
+    let series = Series::try_deserialize(&mut account.data.as_slice()).unwrap();
+    assert_eq!(series.total_manual_exercised_quantity, 400_000_003);
+    assert_eq!(series.total_quote_amount, 1_400_002);
+    assert_eq!(token_amount(&fixture.svm, fixture.quote_vault), 1_400_002);
+}
+
+#[test]
 fn itm_put_partial_exercise_collects_base_coin_and_delivers_floor_rounded_quote_coin() {
     let mut fixture = put_fixture();
     let receipt = get_associated_token_address(&fixture.holder.pubkey(), &fixture.quote_mint);
