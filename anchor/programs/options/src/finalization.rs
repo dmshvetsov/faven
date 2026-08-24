@@ -11,7 +11,7 @@ pub const MAX_FINALIZATION_SERIES: usize = 16;
 
 pub(crate) struct FinalizationSeries<'info> {
     pub series: Account<'info, Series>,
-    pub quote_collateral_vault: Option<Account<'info, TokenAccount>>,
+    pub quote_collateral_vault: Account<'info, TokenAccount>,
 }
 
 pub(crate) fn load_finalization_series<'info>(
@@ -21,25 +21,18 @@ pub(crate) fn load_finalization_series<'info>(
         !account_infos.is_empty(),
         OptionsError::EmptyFinalizationBatch
     );
-    let uses_vault_pairs = account_infos.len().is_multiple_of(2)
-        && account_infos
-            .chunks_exact(2)
-            .all(|pair| *pair[1].owner == anchor_spl::token::ID);
-    let series_count = if uses_vault_pairs {
-        account_infos.len() / 2
-    } else {
-        account_infos.len()
-    };
+    require!(
+        account_infos.len().is_multiple_of(2),
+        OptionsError::FinalizationSeriesVaultPairRequired
+    );
+    let series_count = account_infos.len() / 2;
     require!(
         series_count <= MAX_FINALIZATION_SERIES,
         OptionsError::FinalizationBatchTooLarge
     );
 
-    let series_infos: Vec<&AccountInfo> = if uses_vault_pairs {
-        account_infos.chunks_exact(2).map(|pair| &pair[0]).collect()
-    } else {
-        account_infos.iter().collect()
-    };
+    let series_infos: Vec<&AccountInfo> =
+        account_infos.chunks_exact(2).map(|pair| &pair[0]).collect();
     for (index, account_info) in series_infos.iter().enumerate() {
         require!(
             account_info.is_writable,
@@ -54,27 +47,15 @@ pub(crate) fn load_finalization_series<'info>(
         }
     }
 
-    if uses_vault_pairs {
-        account_infos
-            .chunks_exact(2)
-            .map(|pair| {
-                Ok(FinalizationSeries {
-                    series: Account::try_from(&pair[0])?,
-                    quote_collateral_vault: Some(Account::try_from(&pair[1])?),
-                })
+    account_infos
+        .chunks_exact(2)
+        .map(|pair| {
+            Ok(FinalizationSeries {
+                series: Account::try_from(&pair[0])?,
+                quote_collateral_vault: Account::try_from(&pair[1])?,
             })
-            .collect()
-    } else {
-        series_infos
-            .into_iter()
-            .map(|series| {
-                Ok(FinalizationSeries {
-                    series: Account::try_from(series)?,
-                    quote_collateral_vault: None,
-                })
-            })
-            .collect()
-    }
+        })
+        .collect()
 }
 
 pub(crate) fn persist_finalized_series(series_accounts: &[FinalizationSeries]) -> Result<()> {
@@ -120,21 +101,24 @@ pub(crate) fn finalize_series(
 
     for finalization in series_accounts.iter_mut() {
         let series = &mut finalization.series;
-        if let Some(quote_collateral_vault) = &finalization.quote_collateral_vault {
-            require_keys_eq!(
-                quote_collateral_vault.key(),
-                get_associated_token_address(&series.key(), &market.quote_coin_mint),
-                OptionsError::InvalidSettlementPhase
-            );
-            require!(
-                quote_collateral_vault.owner == series.key()
-                    && quote_collateral_vault.mint == market.quote_coin_mint,
-                OptionsError::InvalidSettlementPhase
-            );
-            series.total_quote_amount = quote_collateral_vault.amount;
-        }
+        let quote_collateral_vault = &finalization.quote_collateral_vault;
+        require_keys_eq!(
+            quote_collateral_vault.key(),
+            get_associated_token_address(&series.key(), &market.quote_coin_mint),
+            OptionsError::InvalidSettlementPhase
+        );
+        require!(
+            quote_collateral_vault.owner == series.key()
+                && quote_collateral_vault.mint == market.quote_coin_mint,
+            OptionsError::InvalidSettlementPhase
+        );
+        series.total_quote_amount = quote_collateral_vault.amount;
         series.expiry_price = Some(normalized_price);
-        series.state = SeriesState::ExpirationPriceFinalized;
+        series.state = if series.total_contracts_quantity == 0 {
+            SeriesState::Closed
+        } else {
+            SeriesState::ExpirationPriceFinalized
+        };
         emit!(ExpiryPriceFinalized {
             series: series.key(),
             normalized_price,

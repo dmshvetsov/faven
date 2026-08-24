@@ -1,4 +1,8 @@
 use anchor_lang::{AccountDeserialize, AccountSerialize, InstructionData, ToAccountMetas};
+use anchor_spl::{
+    associated_token::get_associated_token_address,
+    token::{spl_token, ID as TOKEN_PROGRAM_ID},
+};
 use litesvm::LiteSVM;
 use options::{
     accounts, instruction,
@@ -6,6 +10,7 @@ use options::{
     OptionType, OracleConfig, ID as PROGRAM_ID,
 };
 use pyth_solana_receiver_sdk::price_update::{TwapPrice, TwapUpdate};
+use solana_program_pack::Pack;
 use solana_sdk::{
     account::Account,
     clock::Clock,
@@ -15,6 +20,7 @@ use solana_sdk::{
     signer::Signer,
     transaction::Transaction,
 };
+use spl_token::state::{Account as SplTokenAccount, AccountState, Mint};
 
 const EXPIRY_MS: u64 = 2_000_000_000_000;
 const FEED_ID: [u8; 32] = [7; 32];
@@ -36,6 +42,57 @@ fn store_account<T: AccountSerialize>(svm: &mut LiteSVM, key: Pubkey, owner: Pub
     .unwrap();
 }
 
+fn add_mint(svm: &mut LiteSVM, key: Pubkey) {
+    let mint = Mint {
+        mint_authority: solana_sdk::program_option::COption::None,
+        supply: 0,
+        decimals: 6,
+        is_initialized: true,
+        freeze_authority: solana_sdk::program_option::COption::None,
+    };
+    let mut data = vec![0; Mint::LEN];
+    Mint::pack(mint, &mut data).unwrap();
+    svm.set_account(
+        key,
+        Account {
+            lamports: 1_000_000,
+            data,
+            owner: TOKEN_PROGRAM_ID,
+            executable: false,
+            rent_epoch: 0,
+        },
+    )
+    .unwrap();
+}
+
+fn add_finalization_vault(svm: &mut LiteSVM, series: Pubkey, quote_mint: Pubkey) -> Pubkey {
+    let key = get_associated_token_address(&series, &quote_mint);
+    let token_account = SplTokenAccount {
+        mint: quote_mint,
+        owner: series,
+        amount: 0,
+        delegate: solana_sdk::program_option::COption::None,
+        state: AccountState::Initialized,
+        is_native: solana_sdk::program_option::COption::None,
+        delegated_amount: 0,
+        close_authority: solana_sdk::program_option::COption::None,
+    };
+    let mut data = vec![0; SplTokenAccount::LEN];
+    SplTokenAccount::pack(token_account, &mut data).unwrap();
+    svm.set_account(
+        key,
+        Account {
+            lamports: 1_000_000,
+            data,
+            owner: TOKEN_PROGRAM_ID,
+            executable: false,
+            rent_epoch: 0,
+        },
+    )
+    .unwrap();
+    key
+}
+
 fn new_svm() -> LiteSVM {
     let mut svm = LiteSVM::new();
     svm.add_program(
@@ -49,7 +106,9 @@ fn new_svm() -> LiteSVM {
     svm
 }
 
-fn add_market(svm: &mut LiteSVM, key: Pubkey) {
+fn add_market(svm: &mut LiteSVM, key: Pubkey) -> Pubkey {
+    let quote_mint = Pubkey::new_unique();
+    add_mint(svm, quote_mint);
     store_account(
         svm,
         key,
@@ -60,13 +119,14 @@ fn add_market(svm: &mut LiteSVM, key: Pubkey) {
             quote_coin_scale: 1_000_000,
             operator: Pubkey::new_unique(),
             paused: false,
-            quote_coin_mint: Pubkey::new_unique(),
+            quote_coin_mint: quote_mint,
             base_coin_mint: Pubkey::new_unique(),
             min_fee: 0,
             min_operational_fee_bps: 0,
             max_operational_fee_bps: 0,
         },
     );
+    quote_mint
 }
 
 fn add_series(svm: &mut LiteSVM, key: Pubkey, market: Pubkey) {
@@ -82,7 +142,7 @@ fn add_series(svm: &mut LiteSVM, key: Pubkey, market: Pubkey) {
             expiry_ms: EXPIRY_MS,
             exercise_window_end_ms: EXPIRY_MS + 3_600_000,
             expiry_price: None,
-            total_contracts_quantity: 0,
+            total_contracts_quantity: 1,
             total_manual_exercised_quantity: 0,
             total_settled_quantity: 0,
             total_quote_amount: 0,
@@ -119,6 +179,7 @@ fn finalize_instruction(
     market: Pubkey,
     twap_update: Pubkey,
     series: Pubkey,
+    quote_collateral_vault: Pubkey,
 ) -> Instruction {
     let accounts = accounts::FinalizePythTwapSeries {
         caller,
@@ -127,6 +188,7 @@ fn finalize_instruction(
     };
     let mut account_metas = accounts.to_account_metas(None);
     account_metas.push(AccountMeta::new(series, false));
+    account_metas.push(AccountMeta::new_readonly(quote_collateral_vault, false));
     Instruction {
         program_id: PROGRAM_ID,
         accounts: account_metas,
@@ -142,8 +204,9 @@ fn any_signer_can_finalize_from_a_valid_twap() {
     let series = Pubkey::new_unique();
     let mut svm = new_svm();
     svm.airdrop(&caller.pubkey(), 1_000_000_000).unwrap();
-    add_market(&mut svm, market);
+    let quote_mint = add_market(&mut svm, market);
     add_series(&mut svm, series, market);
+    let quote_collateral_vault = add_finalization_vault(&mut svm, series, quote_mint);
     add_twap(
         &mut svm,
         twap_update,
@@ -157,6 +220,7 @@ fn any_signer_can_finalize_from_a_valid_twap() {
             market,
             twap_update,
             series,
+            quote_collateral_vault,
         )],
         Some(&caller.pubkey()),
         &[&caller],
@@ -204,8 +268,9 @@ fn twap_finalization_rejects_invalid_receiver_data() {
         let series = Pubkey::new_unique();
         let mut svm = new_svm();
         svm.airdrop(&caller.pubkey(), 1_000_000_000).unwrap();
-        add_market(&mut svm, market);
+        let quote_mint = add_market(&mut svm, market);
         add_series(&mut svm, series, market);
+        let quote_collateral_vault = add_finalization_vault(&mut svm, series, quote_mint);
         add_twap(&mut svm, twap_update, owner, twap);
 
         let transaction = Transaction::new_signed_with_payer(
@@ -214,6 +279,7 @@ fn twap_finalization_rejects_invalid_receiver_data() {
                 market,
                 twap_update,
                 series,
+                quote_collateral_vault,
             )],
             Some(&caller.pubkey()),
             &[&caller],

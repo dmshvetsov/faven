@@ -66,6 +66,8 @@ pub enum OptionsError {
     DuplicateFinalizationSeries,
     #[msg("Finalization series accounts must be writable")]
     FinalizationSeriesNotWritable,
+    #[msg("Finalization requires a QuoteCoin collateral vault for every series")]
+    FinalizationSeriesVaultPairRequired,
     #[msg("Manual exercise is not available in the current series phase")]
     InvalidExercisePhase,
     #[msg("Only in-the-money options may be exercised")]

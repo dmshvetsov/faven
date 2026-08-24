@@ -76,6 +76,7 @@ fn add_token_account(svm: &mut LiteSVM, key: Pubkey, mint: Pubkey, owner: Pubkey
 fn store_account<T: AccountSerialize>(svm: &mut LiteSVM, key: Pubkey, value: &T) {
     let mut data = Vec::new();
     value.try_serialize(&mut data).unwrap();
+    data.resize(data.len() + 16, 0);
     svm.set_account(
         key,
         Account {
@@ -139,6 +140,7 @@ fn long_mint_address(market: Pubkey, option_type: OptionType) -> Pubkey {
 
 struct ExerciseFixture {
     svm: LiteSVM,
+    operator: Keypair,
     holder: Keypair,
     market: Pubkey,
     series: Pubkey,
@@ -160,10 +162,10 @@ fn fixture(option_type: OptionType) -> ExerciseFixture {
     )
     .unwrap();
     let holder = Keypair::new();
-    let operator = Pubkey::new_unique();
+    let operator = Keypair::new();
     let quote_mint = Pubkey::new_unique();
     let base_mint = Pubkey::new_unique();
-    let market = market_address(operator, quote_mint, base_mint);
+    let market = market_address(operator.pubkey(), quote_mint, base_mint);
     let series = series_address(market, option_type);
     let long_mint = long_mint_address(market, option_type);
     let long_source = Pubkey::new_unique();
@@ -181,7 +183,7 @@ fn fixture(option_type: OptionType) -> ExerciseFixture {
             oracle_config: OracleConfig::PythTwap { feed_id: [1; 32] },
             base_coin_scale: 1_000_000_000,
             quote_coin_scale: 1_000_000,
-            operator,
+            operator: operator.pubkey(),
             paused: false,
             quote_coin_mint: quote_mint,
             base_coin_mint: base_mint,
@@ -238,6 +240,7 @@ fn fixture(option_type: OptionType) -> ExerciseFixture {
     svm.set_sysvar(&clock);
     ExerciseFixture {
         svm,
+        operator,
         holder,
         market,
         series,
@@ -262,6 +265,34 @@ fn put_fixture() -> ExerciseFixture {
 
 fn exercise_instruction(fixture: &ExerciseFixture, quantity: u64) -> Instruction {
     exercise_instruction_with_vaults(fixture, quantity, fixture.base_vault, fixture.quote_vault)
+}
+
+fn finalize_unverified_instruction(fixture: &ExerciseFixture) -> Instruction {
+    let accounts = accounts::FinalizePythUnverifiedSeries {
+        operator: fixture.operator.pubkey(),
+        market: fixture.market,
+    };
+    let mut account_metas = accounts.to_account_metas(None);
+    account_metas.push(solana_sdk::instruction::AccountMeta::new(
+        fixture.series,
+        false,
+    ));
+    account_metas.push(solana_sdk::instruction::AccountMeta::new_readonly(
+        fixture.quote_vault,
+        false,
+    ));
+    Instruction {
+        program_id: PROGRAM_ID,
+        accounts: account_metas,
+        data: instruction::FinalizePythUnverifiedSeries {
+            id: [1; 32],
+            price: 12_345_678,
+            conf: 0,
+            expo: -7,
+            publish_time: 0,
+        }
+        .data(),
+    }
 }
 
 fn exercise_instruction_with_vaults(
@@ -305,6 +336,7 @@ fn update_series(fixture: &mut ExerciseFixture, update: impl FnOnce(&mut Series)
     update(&mut series);
     let mut data = Vec::new();
     series.try_serialize(&mut data).unwrap();
+    data.resize(Series::SPACE, 0);
     account.data = data;
     fixture.svm.set_account(fixture.series, account).unwrap();
 }
@@ -348,6 +380,36 @@ fn assert_exercised_event(
     };
     let expected_log = format!("Program data: {}", STANDARD.encode(event.data()));
     assert!(logs.iter().any(|log| log == &expected_log));
+}
+
+#[test]
+fn itm_put_can_exercise_after_finalization_snapshots_the_quote_vault() {
+    let mut fixture = put_fixture();
+    update_series(&mut fixture, |series| {
+        series.state = SeriesState::Open;
+        series.expiry_price = None;
+        series.total_quote_amount = 0;
+    });
+    let finalization = Transaction::new_signed_with_payer(
+        &[finalize_unverified_instruction(&fixture)],
+        Some(&fixture.holder.pubkey()),
+        &[&fixture.holder, &fixture.operator],
+        fixture.svm.latest_blockhash(),
+    );
+    let finalization_result = fixture.svm.send_transaction(finalization);
+    assert!(finalization_result.is_ok(), "{finalization_result:?}");
+
+    let transaction = Transaction::new_signed_with_payer(
+        &[exercise_instruction(&fixture, EXERCISE_QUANTITY + 1)],
+        Some(&fixture.holder.pubkey()),
+        &[&fixture.holder],
+        fixture.svm.latest_blockhash(),
+    );
+    assert!(fixture.svm.send_transaction(transaction).is_ok());
+
+    let account = fixture.svm.get_account(&fixture.series).unwrap();
+    let series = Series::try_deserialize(&mut account.data.as_slice()).unwrap();
+    assert_eq!(series.total_quote_amount, 2_100_000);
 }
 
 #[test]

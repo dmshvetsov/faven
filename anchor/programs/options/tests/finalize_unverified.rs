@@ -1,10 +1,15 @@
 use anchor_lang::{AccountDeserialize, AccountSerialize, InstructionData, ToAccountMetas};
+use anchor_spl::{
+    associated_token::get_associated_token_address,
+    token::{spl_token, ID as TOKEN_PROGRAM_ID},
+};
 use litesvm::LiteSVM;
 use options::{
     accounts, instruction,
     state::{Market, Series, SeriesState},
     OracleConfig, ID as PROGRAM_ID,
 };
+use solana_program_pack::Pack;
 use solana_sdk::{
     account::Account,
     clock::Clock,
@@ -14,6 +19,7 @@ use solana_sdk::{
     signer::Signer,
     transaction::Transaction,
 };
+use spl_token::state::{Account as SplTokenAccount, AccountState, Mint};
 
 const EXPIRY_MS: u64 = 2_000_000_000_000;
 const FEED_ID: [u8; 32] = [7; 32];
@@ -48,7 +54,56 @@ fn new_svm(expiry_ms: u64) -> LiteSVM {
     svm
 }
 
-fn add_market(svm: &mut LiteSVM, key: Pubkey, operator: Pubkey, paused: bool) {
+fn add_mint(svm: &mut LiteSVM, key: Pubkey) {
+    let mint = Mint {
+        mint_authority: solana_sdk::program_option::COption::None,
+        supply: 0,
+        decimals: 6,
+        is_initialized: true,
+        freeze_authority: solana_sdk::program_option::COption::None,
+    };
+    let mut data = vec![0; Mint::LEN];
+    Mint::pack(mint, &mut data).unwrap();
+    svm.set_account(
+        key,
+        Account {
+            lamports: 1_000_000,
+            data,
+            owner: TOKEN_PROGRAM_ID,
+            executable: false,
+            rent_epoch: 0,
+        },
+    )
+    .unwrap();
+}
+
+fn add_token_account(svm: &mut LiteSVM, key: Pubkey, mint: Pubkey, owner: Pubkey, amount: u64) {
+    let token_account = SplTokenAccount {
+        mint,
+        owner,
+        amount,
+        delegate: solana_sdk::program_option::COption::None,
+        state: AccountState::Initialized,
+        is_native: solana_sdk::program_option::COption::None,
+        delegated_amount: 0,
+        close_authority: solana_sdk::program_option::COption::None,
+    };
+    let mut data = vec![0; SplTokenAccount::LEN];
+    SplTokenAccount::pack(token_account, &mut data).unwrap();
+    svm.set_account(
+        key,
+        Account {
+            lamports: 1_000_000,
+            data,
+            owner: TOKEN_PROGRAM_ID,
+            executable: false,
+            rent_epoch: 0,
+        },
+    )
+    .unwrap();
+}
+
+fn add_market(svm: &mut LiteSVM, key: Pubkey, operator: Pubkey, quote_mint: Pubkey) {
     store_account(
         svm,
         key,
@@ -57,8 +112,8 @@ fn add_market(svm: &mut LiteSVM, key: Pubkey, operator: Pubkey, paused: bool) {
             base_coin_scale: 1_000_000_000,
             quote_coin_scale: 1_000_000,
             operator,
-            paused,
-            quote_coin_mint: Pubkey::new_unique(),
+            paused: false,
+            quote_coin_mint: quote_mint,
             base_coin_mint: Pubkey::new_unique(),
             min_fee: 0,
             min_operational_fee_bps: 0,
@@ -91,12 +146,16 @@ fn finalize_instruction(
     operator: Pubkey,
     market: Pubkey,
     series: Pubkey,
+    quote_collateral_vault: Option<Pubkey>,
     id: [u8; 32],
     publish_time: i64,
 ) -> Instruction {
     let accounts = accounts::FinalizePythUnverifiedSeries { operator, market };
     let mut account_metas = accounts.to_account_metas(None);
     account_metas.push(AccountMeta::new(series, false));
+    if let Some(quote_collateral_vault) = quote_collateral_vault {
+        account_metas.push(AccountMeta::new_readonly(quote_collateral_vault, false));
+    }
     Instruction {
         program_id: PROGRAM_ID,
         accounts: account_metas,
@@ -112,20 +171,31 @@ fn finalize_instruction(
 }
 
 #[test]
-fn operator_can_finalize_with_unverified_pyth_metadata() {
+fn finalizing_a_zero_issued_series_makes_it_ready_for_closure() {
     let operator = Keypair::new();
     let market = Pubkey::new_unique();
     let series = Pubkey::new_unique();
+    let quote_mint = Pubkey::new_unique();
+    let quote_collateral_vault = get_associated_token_address(&series, &quote_mint);
     let mut svm = new_svm(EXPIRY_MS);
     svm.airdrop(&operator.pubkey(), 1_000_000_000).unwrap();
-    add_market(&mut svm, market, operator.pubkey(), false);
+    add_mint(&mut svm, quote_mint);
+    add_market(&mut svm, market, operator.pubkey(), quote_mint);
     add_series(&mut svm, series, market, EXPIRY_MS);
+    add_token_account(
+        &mut svm,
+        quote_collateral_vault,
+        quote_mint,
+        series,
+        2_100_000,
+    );
 
     let transaction = Transaction::new_signed_with_payer(
         &[finalize_instruction(
             operator.pubkey(),
             market,
             series,
+            Some(quote_collateral_vault),
             [99; 32],
             i64::MIN,
         )],
@@ -137,8 +207,39 @@ fn operator_can_finalize_with_unverified_pyth_metadata() {
 
     let account = svm.get_account(&series).unwrap();
     let finalized = Series::try_deserialize(&mut account.data.as_slice()).unwrap();
-    assert_eq!(finalized.state, SeriesState::ExpirationPriceFinalized);
+    assert_eq!(finalized.state, SeriesState::Closed);
     assert_eq!(finalized.expiry_price, Some(1_234_568));
+    assert_eq!(finalized.total_quote_amount, 2_100_000);
+}
+
+#[test]
+fn finalization_requires_the_series_quote_collateral_vault() {
+    let operator = Keypair::new();
+    let market = Pubkey::new_unique();
+    let series = Pubkey::new_unique();
+    let mut svm = new_svm(EXPIRY_MS);
+    svm.airdrop(&operator.pubkey(), 1_000_000_000).unwrap();
+    add_market(&mut svm, market, operator.pubkey(), Pubkey::new_unique());
+    add_series(&mut svm, series, market, EXPIRY_MS);
+
+    let transaction = Transaction::new_signed_with_payer(
+        &[finalize_instruction(
+            operator.pubkey(),
+            market,
+            series,
+            None,
+            [99; 32],
+            i64::MIN,
+        )],
+        Some(&operator.pubkey()),
+        &[&operator],
+        svm.latest_blockhash(),
+    );
+    assert!(svm.send_transaction(transaction).is_err());
+
+    let account = svm.get_account(&series).unwrap();
+    let series = Series::try_deserialize(&mut account.data.as_slice()).unwrap();
+    assert_eq!(series.state, SeriesState::Open);
 }
 
 #[test]
@@ -149,7 +250,7 @@ fn only_the_market_operator_can_use_the_unverified_fallback() {
     let series = Pubkey::new_unique();
     let mut svm = new_svm(EXPIRY_MS);
     svm.airdrop(&caller.pubkey(), 1_000_000_000).unwrap();
-    add_market(&mut svm, market, operator.pubkey(), false);
+    add_market(&mut svm, market, operator.pubkey(), Pubkey::new_unique());
     add_series(&mut svm, series, market, EXPIRY_MS);
 
     let transaction = Transaction::new_signed_with_payer(
@@ -157,6 +258,7 @@ fn only_the_market_operator_can_use_the_unverified_fallback() {
             caller.pubkey(),
             market,
             series,
+            None,
             [0; 32],
             0,
         )],
