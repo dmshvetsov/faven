@@ -2,6 +2,8 @@ Option class - is a underlying base asset and quote asset plus an asset that is 
 
 Option series - is a specific group of financial options contracts in a market that share the same type call or put, expiration date, and strike price for an option class.
 
+One contract - equal to one whole base token, e.g. 1 SOL, 1 ETH, 1 BTC.
+
 Skew -  skewness measures the asymmetry in a frequency distribution, broadly means to distort, twist, or cause something to be asymmetrical, biased, or not straight.
 
 Oracle SVI "a" parameter - The base volatility level. Higher a lifts the whole curve up. "a" moves the smile up/down.

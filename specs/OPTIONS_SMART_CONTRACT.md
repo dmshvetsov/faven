@@ -14,6 +14,8 @@ The key words `MUST`, `MUST NOT`, `REQUIRED`, `SHOULD`, `SHOULD NOT`, `RECOMMEND
 
 This document uses `./DOMAIN-LANGUAGE.md` as the language for product and implementation, the document must be read.
 
+Coin and token is used interchangeably. Always prefer token term.
+
 ## Market
 
 The market program manages markets available for option series. Each market supports exactly one `OracleBase / QuoteCoin / BaseCoin` option class, one configured operator, and oracle configuration. Different operators MAY create independent markets for the same option class. Market creation MUST reject a duplicate with the same operator, oracle configuration, `QuoteCoin` mint address, and `BaseCoin` mint address.
