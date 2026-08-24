@@ -94,4 +94,10 @@ pub enum OptionsError {
     DuplicateSettlementSellerVault,
     #[msg("Settlement seller accounts are malformed")]
     MalformedSettlementAccounts,
+    #[msg("Series closure is not available in the current series phase")]
+    InvalidClosurePhase,
+    #[msg("Series closure accounts are malformed")]
+    MalformedClosureAccounts,
+    #[msg("Series closer token account has an invalid owner or mint")]
+    InvalidSeriesCloserPayoutAccount,
 }

@@ -105,9 +105,9 @@ A series MUST only store:
 - `expiry_ms`,
 - `exercise_window_end_ms = expiry_ms + 1 hour`,
 - finalized oracle `expiry_price`,
-- `total_contracts_quantity`,
+- `total_contracts_quantity` total contracts underwritten for this series, can be used as value of sellers' `BaseCoin` collateral for call options,
 - `total_manual_exercised_quantity`,
-- `total_seller_quote_payout_amount` to store accumulated quote coin seller payouts accumulated during exercise
+- `total_quote_amount` captured at expiry and adjusted during exercise,
 - `total_settled_quantity`
 
 Series states:
@@ -424,7 +424,7 @@ Seller settlement MUST abort if:
 - series does not exist,
 - settlement arithmetic would overdraw the internal `Series` balance of base or quote tokens.
 
-Rounding dust MUST remain in the `Series` PDA and MUST be recoverable only through operator recovery after `series.state == Closed` and `now >= series.exercise_window_end_ms` and all seller payouts, manual exercises for given `Series` are fully accounted and settled, only the remaining unreserved balance may be recovered. Rounding dust only recovered when `Series` PDAs and other accounts are closed, dust goes to the `Series` close transaction signer; rent rebate goes to current `Series` `Market` operator.
+Rounding dust MUST remain in the `Series` PDA and MUST be recoverable only through after `series.state == Closed` and `now >= series.exercise_window_end_ms` and all seller payouts, manual exercises for given `Series` are fully accounted and settled. Only the remaining unreserved balance may be recovered. Rounding dust only recovered when `Series` PDAs and other accounts are closed. Dust goes to the `Series` close transaction signer, rent rebate goes to current `Series` `Market` operator.
 
 Each seller payout MUST emit `SellerPayoutSettled` with:
 - series id,

@@ -1,3 +1,4 @@
+mod close_series;
 mod create_market;
 mod create_series;
 mod exercise;
@@ -6,6 +7,7 @@ mod finalize_pyth_unverified;
 mod settle_sellers_batch;
 mod underwrite;
 
+pub use close_series::*;
 pub use create_market::*;
 pub use create_series::*;
 pub use exercise::*;

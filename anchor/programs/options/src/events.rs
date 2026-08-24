@@ -91,3 +91,12 @@ pub struct SeriesSettlementBatchCompleted {
     pub series: Pubkey,
     pub settled_seller_count: u16,
 }
+
+#[event]
+pub struct SeriesClosed {
+    pub series: Pubkey,
+    pub series_closer: Pubkey,
+    pub rent_recipient: Pubkey,
+    pub base_coin_dust_amount: u64,
+    pub quote_coin_dust_amount: u64,
+}
