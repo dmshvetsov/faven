@@ -197,6 +197,17 @@ type QuoteOfferMessage = {
 }
 ```
 
+RFQ web-sockets API must follow JSON-RPC 2.0 standard:
+
+```
+type JsonRpcRequest = {
+  jsonrpc: "2.0"
+  id: string // rfqId
+  method: string
+  params?: unknown
+}
+```
+
 #### Seller Settlement Cron Job
 
 Cron settlement must settle series with `option_series.expiry_price_decimals` is set.

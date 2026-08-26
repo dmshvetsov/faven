@@ -27,8 +27,9 @@ Do **not** implement these items in this task:
 - Buyers are unauthenticated. Their transaction signature identifies them.
 - Sellers create RFQs and receive offers over the same unauthenticated
   WebSocket connection. Offers are routed only to that connection.
-- One RFQ contains one `underwriteTerms` value and must produce exactly one
-  `underwrite_call` or `underwrite_put` instruction matching it.
+- One RFQ contains one premium-free `underwriteTerms` value and must produce
+  exactly one `underwrite_call` or `underwrite_put` instruction matching it.
+  The selected buyer offer supplies the premium.
 - A transaction may also contain matching `create_series` instructions. The
   validator does not impose a count limit on `create_series` instructions.
 - RFQs and offers are in-memory only. Do not write them to D1 or Durable
@@ -69,7 +70,12 @@ Use these Wrangler targets:
 
 ## Wire protocol
 
-Use JSON WebSocket messages. Serialized Solana transactions are base58.
+Use JSON-RPC 2.0 over WebSockets. Client commands are JSON-RPC requests and
+server-pushed RFQs, offers, and lifecycle changes are JSON-RPC notifications.
+For `rfq.create`, the seller supplies a UUID v4 string as the JSON-RPC `id`.
+The server uses that value as `rfqId` for the active RFQ. Notifications cannot
+have a JSON-RPC `id`, so they carry that same value in `params.rfqId`.
+Serialized Solana transactions are base58.
 
 `/rfqs/<asset>` uses the configured `BaseCoin` mint as `<asset>`. The
 `assetName` in a request is the configured `OracleBase` symbol. The full
@@ -78,17 +84,21 @@ valid.
 
 ### Seller side: `/rfqs/<asset>`
 
-Seller sends `rfq.create` with one `underwriteTerms`. The server generates an
-unpredictable `rfqId`, stores the terms in the Durable Object's in-memory map,
-and replies with `rfq.created`.
+Seller calls `rfq.create` with one `underwriteTerms` and a UUID v4 JSON-RPC
+`id`. The server validates that the ID is not already active for the broker,
+uses it as `rfqId`, and stores the terms in the Durable Object's in-memory map.
+The JSON-RPC result acknowledges creation; do not also send a duplicate
+`rfq.created` notification.
 
 `underwriteTerms` follows the RFQ specification, except it replaces the
 premature `underwriteTx` field. Use the following external fixed-point values:
 
 - `quantity`: string at `1e18`;
-- `premium` per whole contract: string at `1e18`;
 - `strike`: string at `1e8`;
 - `chainId`: `solana:<cluster>`.
+
+`underwriteTerms` intentionally excludes premium. The buyer chooses a premium
+in its offer; the seller chooses whether to sign that offered transaction.
 
 The server must use fixed-point conversion, never JavaScript floating point,
 when checking the transaction against the Solana program's required values.
@@ -98,19 +108,19 @@ fee values. The buyer signs it first. The seller receives the partial
 transaction, reviews it in their wallet, signs the exact bytes as fee payer,
 and sends `underwrite.submit` over the same WebSocket.
 
-The server emits these seller messages:
+The server sends these seller notifications:
 
-- `rfq.created` with `rfqId`;
 - private `offer.created` messages;
 - `underwrite.status` with `queued`, `submitted`, `confirmed`, or `failed`;
 - structured error messages.
 
 ### Buyer side
 
-Buyers connect to `/rfqs/<asset>` and use `maker.subscribe` to receive
-`rfq.request` messages for that BaseCoin. They also connect to `/maker`.
+Buyers connect to `/rfqs/<asset>` and call `maker.subscribe` to receive
+`rfq.request` notifications for that BaseCoin. Each request includes `rfqId`.
+They also connect to `/maker`.
 
-On `/maker`, a buyer sends `offer.create` containing:
+On `/maker`, a buyer calls `offer.create` with:
 
 - `rfqId`;
 - `maker` address;
@@ -118,9 +128,9 @@ On `/maker`, a buyer sends `offer.create` containing:
 - `validUntil`;
 - buyer-partially-signed complete transaction in base58.
 
-`/maker` also supports a read-only maker-state query for underwrites and fills
-known to this RFQ server for a supplied maker address. It must not scan Solana
-accounts; indexing is out of scope.
+`/maker` also supports a read-only `maker.state` JSON-RPC request for
+underwrites and fills known to this RFQ server for a supplied maker address.
+It must not scan Solana accounts; indexing is out of scope.
 
 ## Durable Object broker
 
@@ -146,8 +156,9 @@ enqueueing the seller-signed transaction.
 3. Require that every instruction is a configured options-program
    `create_series`, `underwrite_call`, or `underwrite_put` instruction, except
    for optional standard compute-budget instructions.
-4. Require exactly one underwrite instruction and require it to match the
-   stored single `underwriteTerms` exactly.
+4. Require exactly one underwrite instruction. Its immutable fields must
+   match the stored single `underwriteTerms` exactly and its premium must
+   match the selected stored offer.
 5. Require every `create_series` instruction to match those same terms.
 6. Validate the configured market, base and quote mints, fee recipient,
    operational fee BPS, quantity minimum/step/maximum, and all immutable RFQ
@@ -242,4 +253,3 @@ strike without redundant trailing decimal zeroes.
   reads;
 - queue simulation failure, transient retry, confirmed receipt persistence, and
   deterministic/expired transaction failure using mocked Solana RPC responses.
-
