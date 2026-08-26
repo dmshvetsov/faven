@@ -166,7 +166,7 @@ RFQ server MUST send seller quotes to specific asset WebSocket `/rfqs/<asset>`, 
 
 ```
 type QuoteRequestMessage = {
-	assetName:       string
+	assetName:       string // oracle asset name
   asset:           string // token mint address on solana
 	chainId:         string // solana:mainnet, solana:devent, solana:testnet
 	expiry:          number // unix ts
@@ -176,7 +176,7 @@ type QuoteRequestMessage = {
 	taker:           string // option seller address
 	usd:             string // mint address of the stablecoin to be paid premium in
 	collateralAsset: string // mint address of seller collateral
-  underwriteTx:    string // transaction serialize into a binary format and encoded base58
+  underwriteTersm: string // transaction serialize into a binary format and encoded base58
 }
 ```
 
@@ -191,8 +191,8 @@ type QuoteOfferMessage = {
 	maker:           string // maker address that produced signature of this quote
 	usd:             string // must match the request usd param
 	collateralAsset: string // must match the request collateralAsset param
-	premium:         string // e18 (for one unit basis, we will do the maths * quantity)
-	validUntil:      number // unix ts
+	premium:         string // 1e18 (for one unit basis, we will do the maths * quantity)
+	validUntil:      number // unix ts, max value 40 seconds due to solana blockhash validity limits
 	signature:       string // signed underwriteTx by the QuoteOfferMessage.maker address
 }
 ```
@@ -246,7 +246,7 @@ List of supported `QuoteCoin`:
 
 List of supported BaseCoin and their corresponding oracles:
 - wBTC
-  - mainnet mint
+  - mainnet mint `3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh`
   - devenet mint TBD (must deploy custom tesnet coin that mimics wBTC)
   - Pyth oracle: `Crypto.BTC/USD` symbol and price feed id `0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43`
   - 1 option contract = 1 BTC
