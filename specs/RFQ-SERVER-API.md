@@ -130,12 +130,12 @@ type RfqResult = {
   chainId: string
   bestQuote: string                // best quote tat was sent to seller
   providedQuote: string            // quote provided connected maker (you)
-  providedStatus: string           // best | notbest
+  providedStatus: string           // best | not_best
 }
 ```
 
 - `best` — your quote is currently best.
-- `notbest` — another quote is currently better.
+- `not_best` — another quote is currently better.
 - `best_received_later` — same as the best quote but received later then another quote with the same best terms
 - `deadline` - your quote submitted after the RFQ deadline
 

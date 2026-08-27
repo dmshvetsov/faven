@@ -31,7 +31,7 @@ interface ActiveRfq {
 }
 
 export type QuoteStatus =
-  "best" | "notbest" | "best_received_later" | "deadline";
+  "best" | "not_best" | "best_received_later" | "deadline";
 
 export interface QuoteResult {
   readonly isBest: boolean;
@@ -80,7 +80,7 @@ export class RfqBook {
         ? "best"
         : BigInt(offer.premium) === BigInt(existingBest.premium)
           ? "best_received_later"
-          : "notbest",
+          : "not_best",
       bestOffer: rfq.bestOffer,
     };
   }

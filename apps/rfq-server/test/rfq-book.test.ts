@@ -41,7 +41,7 @@ describe("RFQ book", () => {
         { premium: "11", validUntil: 1_735_600_030, underwriteTxHash: "two" },
         1_735_600_000_000
       )
-    ).toMatchObject({ isBest: false, providedStatus: "notbest" });
+    ).toMatchObject({ isBest: false, providedStatus: "not_best" });
 
     book.closeAggregation("rfq-1", 1_735_600_002_500);
 

@@ -298,7 +298,7 @@ function quoteStatusResponse(
     readonly premium: string;
   },
   bestOffer: { readonly premium: string } | undefined,
-  providedStatus: "best" | "notbest" | "best_received_later" | "deadline"
+  providedStatus: "best" | "not_best" | "best_received_later" | "deadline"
 ): string {
   return jsonRpcResult(rfqId, {
     assetAddress: quote.assetAddress,
