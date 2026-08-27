@@ -162,51 +162,30 @@ Buyers connects to public WebSocket API. No authentication is needed.
 
 #### RFQ and buyer quotes
 
-RFQ server MUST send seller quotes to specific asset WebSocket `/rfqs/<asset>`, `<asset>` must be token mint address.
+See `./RFQ-SERVER-API.md`.
 
-```
-type QuoteRequestMessage = {
-	assetName:       string // oracle asset name
-  asset:           string // token mint address on solana
-	chainId:         string // solana:mainnet, solana:devent, solana:testnet
-	expiry:          number // unix ts
-	isPut:           boolean // true = put contract, false = call contract
-	quantity:        string // usss 1e18
-	strike:          string // uses 1e8
-	taker:           string // option seller address
-	usd:             string // mint address of the stablecoin to be paid premium in
-	collateralAsset: string // mint address of seller collateral
-  underwriteTersm: string // transaction serialize into a binary format and encoded base58
-}
-```
+#### Collecting Signatures from Buyer and Seller
 
-```
-type QuoteOfferMessage = {
-  assetAddress:    string // must match the request asset param
-	chainId:         number // must match the request chainId param
-	expiry:          number // must match the request expiry param
-	isPut:           boolean // must match the request isPut param
-	quantity:        string // must match the request quantity param
-	strike:          string // must match the request strike param
-	maker:           string // maker address that produced signature of this quote
-	usd:             string // must match the request usd param
-	collateralAsset: string // must match the request collateralAsset param
-	premium:         string // 1e18 (for one unit basis, we will do the maths * quantity)
-	validUntil:      number // unix ts, max value 40 seconds due to solana blockhash validity limits
-	signature:       string // signed underwriteTx by the QuoteOfferMessage.maker address
-}
-```
+Buyer receives underwrite transaction instruction terms with RFQ request, `Quote.underwriteTx` must be prepared by the rfq-server with terms requested by the seller, except `premium` that must set to 0 and `recentBlockhash` set to "all zero" hash to indicate that they must be replaced.
 
-RFQ web-sockets API must follow JSON-RPC 2.0 standard:
+Buyer must send the complete, buyer-partially-signed transaction in hist Quote request `Quote.underwriteTx`.
 
-```
-type JsonRpcRequest = {
-  jsonrpc: "2.0"
-  id: string // rfqId
-  method: string
-  params?: unknown
-}
-```
+Buyer signed quote `Quote.underwriteTx` MUST include:
+
+- offered `premium`
+- a fresh `recentBlockhash`
+- unchanged instruction terms except underwrite `premium` and transactions `recentBlockhash`
+- both buyer and seller public keys as required transaction signers (initialized by rfq-server and received by buyer as `Rfq.underwriteTx` request)
+- seller as fee payer
+- buyer’s signature in the transaction’s signature array
+
+`Quote.maker` identifies the buyer.
+
+The rqf-server forwards this exact base64 transaction to the RFQ’s seller. The seller adds their signature without changing anything, then submits the fully signed base64 transaction back to the server to broadcast it to the blockchain.
+
+The server verifies both signatures, simulate transaction and broadcasts those exact bytes.
+
+Neither seller nor server may alter the premium, blockhash, instructions, accounts, or fee payer after the buyer signs—any change invalidates the buyer signature.
 
 #### Seller Settlement Cron Job
 

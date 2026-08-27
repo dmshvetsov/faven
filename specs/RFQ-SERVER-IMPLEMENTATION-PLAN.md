@@ -25,9 +25,10 @@ Do **not** implement these items in this task:
 - The seller is the transaction fee payer. The buyer signs first in time;
   the seller signs the unchanged transaction afterwards.
 - Buyers are unauthenticated. Their transaction signature identifies them.
-- Sellers create RFQs and receive offers over the same unauthenticated
-  WebSocket connection. Offers are routed only to that connection.
-- One RFQ contains one premium-free `underwriteTerms` value and must produce
+- Sellers create underwrite terms and submits them to the rfq-server, 
+  the server sends RFQs to buyers and receive offers over the same unauthenticated
+  WebSocket connection. Offers are routed by the rfq-server only to that seller.
+- One RFQ contains one premium-free `underwriteTx` value and must produce
   exactly one `underwrite_call` or `underwrite_put` instruction matching it.
   The selected buyer offer supplies the premium.
 - A transaction may also contain matching `create_series` instructions. The
@@ -70,94 +71,66 @@ Use these Wrangler targets:
 
 ## Wire protocol
 
-Use JSON-RPC 2.0 over WebSockets. Client commands are JSON-RPC requests and
-server-pushed RFQs, offers, and lifecycle changes are JSON-RPC notifications.
-For `rfq.create`, the seller supplies a UUID v4 string as the JSON-RPC `id`.
-The server uses that value as `rfqId` for the active RFQ. Notifications cannot
-have a JSON-RPC `id`, so they carry that same value in `params.rfqId`.
-Serialized Solana transactions are base58.
+Implement wire protocol and WebSocket API according `./RFQ-SERVER-API.md` and `./SELLER-API.md` specification,
+the rest in this section is additional implementation details to this specification.
 
 `/rfqs/<asset>` uses the configured `BaseCoin` mint as `<asset>`. The
 `assetName` in a request is the configured `OracleBase` symbol. The full
 market configuration, not the route alone, decides whether a request is
 valid.
 
-### Seller side: `/rfqs/<asset>`
+### RFQ incoming requests: `/rfqs/<asset>` implementation comments to RFQ-SERVER-API spec
 
-Seller calls `rfq.create` with one `underwriteTerms` and a UUID v4 JSON-RPC
-`id`. The server validates that the ID is not already active for the broker,
+JSON-RPC ID acts as `rfqId`.
+
+The server validates that the JSON-RPC ID is not already active for the broker,
 uses it as `rfqId`, and stores the terms in the Durable Object's in-memory map.
-The JSON-RPC result acknowledges creation; do not also send a duplicate
-`rfq.created` notification.
+Do not send a duplicate `/rfqs/<asset>` requests.
 
-`underwriteTerms` follows the RFQ specification, except it replaces the
-premature `underwriteTx` field. Use the following external fixed-point values:
-
-- `quantity`: string at `1e18`;
-- `strike`: string at `1e8`;
-- `chainId`: `solana:<cluster>`.
-
-`underwriteTerms` intentionally excludes premium. The buyer chooses a premium
-in its offer; the seller chooses whether to sign that offered transaction.
+`underwriteTx` from the rfq-server intentionally excludes premium.
+The buyer chooses a premium in its offer; the seller chooses whether to sign that offered transaction.
 
 The server must use fixed-point conversion, never JavaScript floating point,
 when checking the transaction against the Solana program's required values.
 
-The buyer builds the complete transaction from these terms and the configured
-fee values. The buyer signs it first. The seller receives the partial
-transaction, reviews it in their wallet, signs the exact bytes as fee payer,
-and sends `underwrite.submit` over the same WebSocket.
+The buyer decodes base64 provided by the rfq-server the complete transaction.
+It must replace 0 premium and zeroed recentBlockhash of the transactions.
+The buyer signs it first. The seller receives the partial transaction
+via rfq-server routing, reviews it in their wallet, signs the exact bytes as fee payer,
+and sends `underwrite.submit` over the same seller WebSocket connection.
 
-The server sends these seller notifications:
+### Quote submission
 
-- private `offer.created` messages;
-- `underwrite.status` with `queued`, `submitted`, `confirmed`, or `failed`;
-- structured error messages.
-
-### Buyer side
-
-Buyers connect to `/rfqs/<asset>` and call `maker.subscribe` to receive
-`rfq.request` notifications for that BaseCoin. Each request includes `rfqId`.
-They also connect to `/maker`.
-
-On `/maker`, a buyer calls `offer.create` with:
-
-- `rfqId`;
-- `maker` address;
-- `premium` at `1e18` per whole contract;
-- `validUntil`;
-- buyer-partially-signed complete transaction in base58.
-
-`/maker` also supports a read-only `maker.state` JSON-RPC request for
-underwrites and fills known to this RFQ server for a supplied maker address.
-It must not scan Solana accounts; indexing is out of scope.
+Made by buyers using `/maker` WebSocket JSON-RPC API.
 
 ## Durable Object broker
 
 Create one Durable Object broker per BaseCoin mint. It keeps only an in-memory
-map keyed by `rfqId`, containing the terms, initiating seller socket, and
-offers. Do not call Durable Object storage for RFQs or offers.
+map keyed by `rfqId` to the best in terms of offered premium (highest wins),
+containing the terms, initiating seller socket, and 
+offers. Do not call Durable Object storage for RFQs or offers. 
+If more than one offer has the best premium then the first (existing in DO) received buyers offer wins.
 
 An offer is accepted only when the seller submits the exact fully signed
 transaction matching one unexpired stored offer. The first accepted submission
 consumes that RFQ; later submissions for it are rejected.
 
 Offer routing is private: only the seller socket that created the RFQ receives
-offers. The request itself remains available to subscribed buyers.
+the best quote offers. The request itself remains available to subscribed buyers.
 
 ## Transaction validation
 
 Validate before routing a buyer offer and repeat the relevant checks before
 enqueueing the seller-signed transaction.
 
-1. Decode base58 and require the configured Solana cluster.
+1. Decode base64 and require the configured Solana cluster.
 2. Require the buyer signature on the partial transaction. Require both buyer
    and seller signatures before queueing, with the seller as fee payer.
 3. Require that every instruction is a configured options-program
    `create_series`, `underwrite_call`, or `underwrite_put` instruction, except
    for optional standard compute-budget instructions.
 4. Require exactly one underwrite instruction. Its immutable fields must
-   match the stored single `underwriteTerms` exactly and its premium must
+   match the stored single `underwriteTx` exactly and its premium must
    match the selected stored offer.
 5. Require every `create_series` instruction to match those same terms.
 6. Validate the configured market, base and quote mints, fee recipient,
@@ -220,6 +193,10 @@ for seller dashboard reads by seller, status, and expiry, plus transaction hash
 lookup for idempotency.
 
 Do not create settlement, payout, finalization, allocation, or batch tables.
+
+## Maker/Buyer dashboard API
+
+Buyer must use positions WebSocket request described in `./RFQ-SERVER-API.md`.
 
 ## Seller dashboard HTTP API
 
