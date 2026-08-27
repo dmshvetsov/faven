@@ -1,8 +1,8 @@
 test: anchor-test
 
-lint: anchor-lint
+lint: anchor-lint apps-lint
 
-format: anchor-format
+format: anchor-format apps-format
 
 anchor-test:
     cd anchor && cargo test
@@ -13,3 +13,8 @@ anchor-lint:
 anchor-format:
     cd anchor && cargo fmt
 
+apps-format:
+    pnpm -F rfq run format
+
+apps-lint:
+    pnpm -F rfq run lint

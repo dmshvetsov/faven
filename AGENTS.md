@@ -28,6 +28,8 @@ Always prefer to use Shadcn components if they exists in Shadcn library of compo
 
 ## Package Manager
 
+Never install/update/remove NPM dependencies (with pnpm or without) ask human to install/update/delete.
+
 Always prefix `pnpm` commands with `corepack` to use project specific pnpm defined in root package.json packageManager:
 
 ```bash
@@ -35,6 +37,7 @@ corepack pnpm --version
 corepack pnpm --dir apps/rfq-server test
 corepack pnpm --dir apps/rfq-server check
 ```
+
 If existing pnpm commands cannot be run due to pnpm specific error then stop whatever you are doing and report to human you can't proceed due to issues with pnpm. You must not try to fix pnpm issues yourself.
 
 ## Development environment
@@ -46,9 +49,9 @@ If you need to install tools, update version of existing tools to complete task 
 - test the whole project with `just test`, make sense when whole change is done
 - test solana program with `just anchor-test`, helpful in TDD
 
-Run code formatting `just format` (or specific per monorepo dir commands like `just anchor-format` for speed) during development to produce consistently styled code
+Run code formatting `just format` (or specific per monorepo dir commands like `just anchor-format`, `just apps-format` for speed) during development to produce consistently styled code
 
-Run linter with `just lint` (or specific per monorepo dir command like `just anchor-lint`) when necessary and always and the end of the task
+Run linter with `just lint` (or specific per monorepo dir command like `just anchor-lint`, `just apps-lint`) when necessary and always and the end of the task
 
 ## API
 

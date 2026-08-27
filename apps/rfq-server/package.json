@@ -1,5 +1,5 @@
 {
-  "name": "@faven/rfq-server",
+  "name": "rfq",
   "version": "0.0.0",
   "private": true,
   "type": "module",
