@@ -165,12 +165,15 @@ queue must persist the receipt and D1 state before it acknowledges a message.
 
 Implement only these tables in this task.
 
+Use Drizzle ORM for all application reads and writes to D1. Keep D1 migrations
+under Drizzle migration control; do not use hand-written repository SQL.
+
 ### `underwrites`
 
-Use `(signed_transaction_hash, instruction_index)` as the primary key so the
-schema supports multi-underwrite transactions even though RFQ validation only
-accepts one. Store the Solana transaction signature separately; it is shared
-by all rows from the same transaction and therefore is not unique here.
+Use `(tx_signature, ix_index)` as the primary key so the schema supports
+multi-underwrite transactions even though RFQ validation only accepts one.
+`tx_signature` is the seller fee-payer signature and Solana transaction
+identifier. Do not store `signed_transaction_hash` in this table.
 
 Store the RFQ ID, lifecycle status, seller and buyer addresses, configured
 market ID, series address, ticker, call/put marker, expiry, strike, quantity,
@@ -189,7 +192,7 @@ canonical ticker, and immutable series definition required for dashboard reads.
 Create or update this row only after a confirmed underwrite.
 
 Use UTC Unix-millisecond integer columns for server-created times. Add indexes
-for seller dashboard reads by seller, status, and expiry, plus transaction hash
+for seller dashboard reads by seller, status, and expiry, plus `tx_signature`
 lookup for idempotency.
 
 Do not create settlement, payout, finalization, allocation, or batch tables.
@@ -214,7 +217,7 @@ strike without redundant trailing decimal zeroes.
 
 1. Scaffold the Worker package, Wrangler bindings, Hono app, typed config, and
    environment configuration.
-2. Add D1 migrations, typed repositories, and ticker/fixed-point helpers.
+2. Add Drizzle D1 schema and migrations, typed repositories, and ticker/fixed-point helpers.
 3. Implement the BaseCoin Durable Object broker and WebSocket message schemas.
 4. Implement strict Solana transaction decoding and validation.
 5. Add the single-concurrency broadcast queue consumer and lifecycle updates.

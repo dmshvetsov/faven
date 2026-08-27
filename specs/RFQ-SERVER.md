@@ -33,6 +33,7 @@ RFQ-server MUST be implemented with:
 - Cloudflare (workers, durable object, cache API, cron, queues) written in TypeScript
 - Hono JavaScript/TypeScript Web application framework
 - Cloudflare D1 database
+- Drizzle ORM for all application reads and writes to D1
 
 ## On-chain settlement, expiration, asset management, and Long option token
 
@@ -59,7 +60,10 @@ Ticker schema examples:
 
 Stores every underwrite transaction records submitted by sellers.
 
-Table schema TODO
+The primary key MUST be `(tx_signature, ix_index)`:
+
+- `tx_signature` is the seller fee-payer signature and Solana transaction identifier.
+- `ix_index` is the zero-based index of the underwrite instruction in that transaction.
 
 Must be use together with `underwrite_audit`
 
@@ -69,7 +73,7 @@ Stores every underwrite status changes
 
 - `id`: auto-increment row id for ordered history entries
 - `created_at`: when this history event was written by the server
-- `underwrite_id`: links the history event to one underwrite table row
+- `tx_signature` and `ix_index`: link the history event to one underwrite table row
 - `status`: lifecycle state written at that step like `pending`, `queued`, `submitted`, `confirmed`, or `failed`
 
 #### option_series table
