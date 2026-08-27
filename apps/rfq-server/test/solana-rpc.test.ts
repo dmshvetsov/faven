@@ -1,0 +1,98 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { BroadcastProcessor, type BroadcastTask } from "../src/broadcast";
+import { JsonSolanaRpc } from "../src/solana-rpc";
+
+const task: BroadcastTask = {
+  txSignature: "seller-transaction-signature",
+  ixIndex: 0,
+  signedTransaction: "signed-transaction",
+};
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe("Solana JSON-RPC broadcast adapter", () => {
+  it("persists a confirmed underwrite after successful mocked RPC responses", async () => {
+    const requests: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: unknown, init: RequestInit) => {
+        requests.push(JSON.parse(String(init.body)));
+        const request = requests.at(-1) as { method: string };
+        return Response.json(rpcSuccessFor(request.method));
+      })
+    );
+    const repository = new LifecycleRepository();
+
+    await new BroadcastProcessor(
+      repository,
+      new JsonSolanaRpc("https://solana.example")
+    ).process(task, 1_735_600_000_000);
+
+    expect(requests).toMatchObject([
+      { method: "simulateTransaction" },
+      { method: "sendTransaction" },
+      { method: "getSignatureStatuses" },
+    ]);
+    expect(repository.statuses).toEqual(["submitted", "confirmed"]);
+  });
+
+  it("persists a deterministic RPC rejection as failed", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          jsonrpc: "2.0",
+          id: 1,
+          error: { message: "blockhash not found" },
+        })
+      )
+    );
+    const repository = new LifecycleRepository();
+
+    await new BroadcastProcessor(
+      repository,
+      new JsonSolanaRpc("https://solana.example")
+    ).process(task, 1_735_600_000_000);
+
+    expect(repository.failure).toBe("blockhash not found");
+  });
+});
+
+function rpcSuccessFor(method: string): unknown {
+  if (method === "simulateTransaction") {
+    return { jsonrpc: "2.0", id: method, result: { value: { err: null } } };
+  }
+  if (method === "sendTransaction") {
+    return { jsonrpc: "2.0", id: method, result: task.txSignature };
+  }
+  return {
+    jsonrpc: "2.0",
+    id: method,
+    result: {
+      value: [{ err: null, confirmationStatus: "confirmed" }],
+    },
+  };
+}
+
+class LifecycleRepository {
+  readonly statuses: string[] = [];
+  failure: string | undefined;
+
+  async markSubmitted(): Promise<void> {
+    this.statuses.push("submitted");
+  }
+
+  async markConfirmed(): Promise<void> {
+    this.statuses.push("confirmed");
+  }
+
+  async markFailed(
+    _txSignature: string,
+    _ixIndex: number,
+    _atMs: number,
+    error: string
+  ): Promise<void> {
+    this.failure = error;
+  }
+}

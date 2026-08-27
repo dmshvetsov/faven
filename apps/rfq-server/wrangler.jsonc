@@ -36,8 +36,8 @@
   },
 
   "env": {
-    "development:staging": {
-      "name": "faven-rfq-server-development-staging",
+    "development": {
+      "name": "faven-rfq-server-development",
       "d1_databases": [
         {
           "binding": "DB",

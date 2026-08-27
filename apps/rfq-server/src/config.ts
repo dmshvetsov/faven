@@ -23,7 +23,7 @@ export interface MarketConfig {
   };
 }
 
-interface EnvironmentConfig {
+export interface EnvironmentConfig {
   readonly cluster: SolanaCluster;
   readonly allowedOrigins: readonly string[];
   readonly markets: readonly MarketConfig[];
@@ -59,5 +59,16 @@ export function isAllowedOrigin(
   return (
     origin !== null &&
     getEnvironmentConfig(environment).allowedOrigins.includes(origin)
+  );
+}
+
+export function configuredMarket(
+  environment: ProductEnvironment,
+  baseCoinMint: string
+): MarketConfig | null {
+  return (
+    getEnvironmentConfig(environment).markets.find(
+      (market) => market.baseCoinMint === baseCoinMint
+    ) ?? null
   );
 }

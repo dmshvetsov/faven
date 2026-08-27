@@ -18,3 +18,6 @@ apps-format:
 
 apps-lint:
     pnpm -F rfq run lint
+
+rfq-test:
+    pnpm -F rfq run test

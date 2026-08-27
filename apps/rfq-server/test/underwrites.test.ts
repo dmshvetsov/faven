@@ -95,6 +95,70 @@ describe("underwrite repository", () => {
       confirmedAtMs: 1_735_600_002_000,
     });
   });
+
+  it("records a deterministic post-submission failure in the lifecycle history", async () => {
+    const repository = new UnderwriteRepository(env.DB);
+    await repository.createQueued(underwrite);
+    await repository.markSubmitted(
+      underwrite.txSignature,
+      underwrite.ixIndex,
+      1_735_600_001_000
+    );
+
+    await repository.markFailed(
+      underwrite.txSignature,
+      underwrite.ixIndex,
+      1_735_600_002_000,
+      "blockhash not found"
+    );
+
+    await expect(
+      repository.get(underwrite.txSignature, underwrite.ixIndex)
+    ).resolves.toMatchObject({
+      status: "failed",
+      lastError: "blockhash not found",
+    });
+    await expect(
+      repository.auditFor(underwrite.txSignature, underwrite.ixIndex)
+    ).resolves.toEqual([
+      { createdAtMs: 1_735_600_000_000, status: "queued" },
+      { createdAtMs: 1_735_600_001_000, status: "submitted" },
+      { createdAtMs: 1_735_600_002_000, status: "failed" },
+    ]);
+  });
+
+  it("lists a seller's confirmed underwrites by nearest expiry", async () => {
+    const repository = new UnderwriteRepository(env.DB);
+    const later = {
+      ...underwrite,
+      txSignature: "later",
+      expiryMs: 1_735_700_000_000,
+    };
+    const earlier = {
+      ...underwrite,
+      txSignature: "earlier",
+      expiryMs: 1_735_650_000_000,
+    };
+    const queued = { ...underwrite, txSignature: "queued" };
+
+    for (const item of [later, earlier, queued]) {
+      await repository.createQueued(item);
+    }
+    await repository.markSubmitted(later.txSignature, 0, 1_735_600_001_000);
+    await repository.markConfirmed(later.txSignature, 0, 1_735_600_002_000);
+    await repository.markSubmitted(earlier.txSignature, 0, 1_735_600_001_000);
+    await repository.markConfirmed(earlier.txSignature, 0, 1_735_600_002_000);
+
+    await expect(
+      repository.listForSeller("seller-address")
+    ).resolves.toMatchObject([
+      { txSignature: "earlier", status: "confirmed" },
+      { txSignature: "later", status: "confirmed" },
+    ]);
+    await expect(
+      repository.listForSeller("seller-address", "queued")
+    ).resolves.toMatchObject([{ txSignature: "queued", status: "queued" }]);
+  });
 });
 
 async function resetDatabase(): Promise<void> {

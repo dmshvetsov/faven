@@ -17,8 +17,10 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@solana/kit": "^5.1.0",
     "drizzle-orm": "^0.45.2",
-    "hono": "latest"
+    "hono": "latest",
+    "uuid": "^14.0.2"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.1.0",

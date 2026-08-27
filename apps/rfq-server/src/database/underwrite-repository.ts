@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 
 import {
@@ -123,14 +123,12 @@ export class UnderwriteRepository {
     if (underwrite === undefined) return;
 
     await this.database.batch([
-      this.database
-        .insert(underwriteAudit)
-        .values({
-          txSignature,
-          ixIndex,
-          createdAtMs: confirmedAtMs,
-          status: "confirmed",
-        }),
+      this.database.insert(underwriteAudit).values({
+        txSignature,
+        ixIndex,
+        createdAtMs: confirmedAtMs,
+        status: "confirmed",
+      }),
       this.database
         .insert(optionSeries)
         .values({
@@ -154,14 +152,23 @@ export class UnderwriteRepository {
     failedAtMs: number,
     error: string
   ): Promise<void> {
-    await this.transition(
+    const updated = await this.database
+      .update(underwrites)
+      .set({ status: "failed", lastError: error })
+      .where(
+        and(
+          keyWhere(txSignature, ixIndex),
+          inArray(underwrites.status, ["queued", "submitted"])
+        )
+      )
+      .returning({ txSignature: underwrites.txSignature });
+    if (updated.length === 0) return;
+    await this.database.insert(underwriteAudit).values({
       txSignature,
       ixIndex,
-      "queued",
-      "failed",
-      failedAtMs,
-      { lastError: error }
-    );
+      createdAtMs: failedAtMs,
+      status: "failed",
+    });
   }
 
   async getSeries(seriesAddress: string) {
@@ -171,6 +178,22 @@ export class UnderwriteRepository {
       .where(eq(optionSeries.seriesAddress, seriesAddress))
       .limit(1);
     return result[0] ?? null;
+  }
+
+  async listForSeller(
+    sellerAddress: string,
+    status: UnderwriteStatus = "confirmed"
+  ): Promise<StoredUnderwrite[]> {
+    return this.database
+      .select()
+      .from(underwrites)
+      .where(
+        and(
+          eq(underwrites.sellerAddress, sellerAddress),
+          eq(underwrites.status, status)
+        )
+      )
+      .orderBy(asc(underwrites.expiryMs));
   }
 
   private async transition(
