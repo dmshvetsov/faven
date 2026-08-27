@@ -1,6 +1,6 @@
 CREATE TABLE underwrites (
-  signed_transaction_hash TEXT NOT NULL,
-  instruction_index INTEGER NOT NULL,
+  tx_signature TEXT NOT NULL,
+  ix_index INTEGER NOT NULL,
   rfq_id TEXT NOT NULL,
   status TEXT NOT NULL CHECK (status IN ('queued', 'submitted', 'confirmed', 'failed')),
   seller_address TEXT NOT NULL,
@@ -17,25 +17,26 @@ CREATE TABLE underwrites (
   quote_coin_mint TEXT NOT NULL,
   fee_recipient TEXT NOT NULL,
   operational_fee_bps INTEGER NOT NULL,
-  transaction_signature TEXT NOT NULL,
   created_at_ms INTEGER NOT NULL,
   submitted_at_ms INTEGER,
   confirmed_at_ms INTEGER,
   last_error TEXT,
-  PRIMARY KEY (signed_transaction_hash, instruction_index)
+  PRIMARY KEY (tx_signature, ix_index)
 );
 
 CREATE INDEX underwrites_seller_status_expiry_idx
   ON underwrites (seller_address, status, expiry_ms);
-CREATE INDEX underwrites_transaction_hash_idx ON underwrites (signed_transaction_hash);
+CREATE INDEX underwrites_tx_signature_idx ON underwrites (tx_signature);
 
 CREATE TABLE underwrite_audit (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  signed_transaction_hash TEXT NOT NULL,
-  instruction_index INTEGER NOT NULL,
+  tx_signature TEXT NOT NULL,
+  ix_index INTEGER NOT NULL,
   created_at_ms INTEGER NOT NULL,
   status TEXT NOT NULL CHECK (status IN ('queued', 'submitted', 'confirmed', 'failed'))
 );
+
+CREATE INDEX underwrite_audit_underwrite_idx ON underwrite_audit (tx_signature, ix_index);
 
 CREATE TABLE option_series (
   series_address TEXT PRIMARY KEY,

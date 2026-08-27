@@ -1,58 +1,75 @@
-const underwriteSchemaStatements = [
-  `CREATE TABLE IF NOT EXISTS underwrites (
-    signed_transaction_hash TEXT NOT NULL,
-    instruction_index INTEGER NOT NULL,
-    rfq_id TEXT NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('queued', 'submitted', 'confirmed', 'failed')),
-    seller_address TEXT NOT NULL,
-    buyer_address TEXT NOT NULL,
-    market_address TEXT NOT NULL,
-    series_address TEXT NOT NULL,
-    ticker TEXT NOT NULL,
-    is_put INTEGER NOT NULL CHECK (is_put IN (0, 1)),
-    expiry_ms INTEGER NOT NULL,
-    strike TEXT NOT NULL,
-    quantity TEXT NOT NULL,
-    premium TEXT NOT NULL,
-    base_coin_mint TEXT NOT NULL,
-    quote_coin_mint TEXT NOT NULL,
-    fee_recipient TEXT NOT NULL,
-    operational_fee_bps INTEGER NOT NULL,
-    transaction_signature TEXT NOT NULL,
-    created_at_ms INTEGER NOT NULL,
-    submitted_at_ms INTEGER,
-    confirmed_at_ms INTEGER,
-    last_error TEXT,
-    PRIMARY KEY (signed_transaction_hash, instruction_index)
-  )`,
+import {
+  index,
+  integer,
+  primaryKey,
+  sqliteTable,
+  text,
+} from "drizzle-orm/sqlite-core";
 
-  `CREATE INDEX IF NOT EXISTS underwrites_seller_status_expiry_idx
-    ON underwrites (seller_address, status, expiry_ms)`,
-  'CREATE INDEX IF NOT EXISTS underwrites_transaction_hash_idx ON underwrites (signed_transaction_hash)',
+export type UnderwriteStatus = "queued" | "submitted" | "confirmed" | "failed";
 
-  `CREATE TABLE IF NOT EXISTS underwrite_audit (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    signed_transaction_hash TEXT NOT NULL,
-    instruction_index INTEGER NOT NULL,
-    created_at_ms INTEGER NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('queued', 'submitted', 'confirmed', 'failed'))
-  )`,
+export const underwrites = sqliteTable(
+  "underwrites",
+  {
+    txSignature: text("tx_signature").notNull(),
+    ixIndex: integer("ix_index").notNull(),
+    rfqId: text("rfq_id").notNull(),
+    status: text("status").$type<UnderwriteStatus>().notNull(),
+    sellerAddress: text("seller_address").notNull(),
+    buyerAddress: text("buyer_address").notNull(),
+    marketAddress: text("market_address").notNull(),
+    seriesAddress: text("series_address").notNull(),
+    ticker: text("ticker").notNull(),
+    isPut: integer("is_put", { mode: "boolean" }).notNull(),
+    expiryMs: integer("expiry_ms").notNull(),
+    strike: text("strike").notNull(),
+    quantity: text("quantity").notNull(),
+    premium: text("premium").notNull(),
+    baseCoinMint: text("base_coin_mint").notNull(),
+    quoteCoinMint: text("quote_coin_mint").notNull(),
+    feeRecipient: text("fee_recipient").notNull(),
+    operationalFeeBps: integer("operational_fee_bps").notNull(),
+    createdAtMs: integer("created_at_ms").notNull(),
+    submittedAtMs: integer("submitted_at_ms"),
+    confirmedAtMs: integer("confirmed_at_ms"),
+    lastError: text("last_error"),
+  },
+  (table) => [
+    primaryKey({ columns: [table.txSignature, table.ixIndex] }),
+    index("underwrites_seller_status_expiry_idx").on(
+      table.sellerAddress,
+      table.status,
+      table.expiryMs
+    ),
+    index("underwrites_tx_signature_idx").on(table.txSignature),
+  ]
+);
 
-  `CREATE TABLE IF NOT EXISTS option_series (
-    series_address TEXT PRIMARY KEY,
-    market_address TEXT NOT NULL,
-    ticker TEXT NOT NULL,
-    is_put INTEGER NOT NULL CHECK (is_put IN (0, 1)),
-    expiry_ms INTEGER NOT NULL,
-    strike TEXT NOT NULL,
-    base_coin_mint TEXT NOT NULL,
-    quote_coin_mint TEXT NOT NULL,
-    confirmed_at_ms INTEGER NOT NULL
-  )`,
-] as const;
+export const underwriteAudit = sqliteTable(
+  "underwrite_audit",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    txSignature: text("tx_signature").notNull(),
+    ixIndex: integer("ix_index").notNull(),
+    createdAtMs: integer("created_at_ms").notNull(),
+    status: text("status").$type<UnderwriteStatus>().notNull(),
+  },
+  (table) => [
+    index("underwrite_audit_underwrite_idx").on(
+      table.txSignature,
+      table.ixIndex
+    ),
+  ]
+);
 
-export function createUnderwriteTables(database: D1Database): Promise<void> {
-  return database
-    .batch(underwriteSchemaStatements.map((statement) => database.prepare(statement)))
-    .then(() => undefined);
-}
+export const optionSeries = sqliteTable("option_series", {
+  seriesAddress: text("series_address").primaryKey(),
+  marketAddress: text("market_address").notNull(),
+  ticker: text("ticker").notNull(),
+  isPut: integer("is_put", { mode: "boolean" }).notNull(),
+  expiryMs: integer("expiry_ms").notNull(),
+  strike: text("strike").notNull(),
+  baseCoinMint: text("base_coin_mint").notNull(),
+  quoteCoinMint: text("quote_coin_mint").notNull(),
+  confirmedAtMs: integer("confirmed_at_ms").notNull(),
+});

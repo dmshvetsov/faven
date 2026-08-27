@@ -1,6 +1,11 @@
-import { Hono } from 'hono';
+import { Hono } from "hono";
 
-import { getEnvironmentConfig, isAllowedOrigin, type ProductEnvironment, type SolanaCluster } from './config';
+import {
+  getEnvironmentConfig,
+  isAllowedOrigin,
+  type ProductEnvironment,
+  type SolanaCluster,
+} from "./config";
 
 export interface Env {
   readonly DB: D1Database;
@@ -14,37 +19,42 @@ export interface Env {
 
 const app = new Hono<{ Bindings: Env }>();
 
-app.use('*', async (context, next) => {
+app.use("*", async (context, next) => {
   const config = getEnvironmentConfig(context.env.PRODUCT_ENVIRONMENT);
   if (config.cluster !== context.env.SOLANA_CLUSTER) {
-    return context.json({ error: 'Invalid deployment environment.' }, 500);
+    return context.json({ error: "Invalid deployment environment." }, 500);
   }
 
-  const origin = context.req.header('Origin');
-  if (origin !== undefined && !isAllowedOrigin(context.env.PRODUCT_ENVIRONMENT, origin)) {
-    return context.json({ error: 'Origin is not allowed.' }, 403);
+  const origin = context.req.header("Origin");
+  if (
+    origin !== undefined &&
+    !isAllowedOrigin(context.env.PRODUCT_ENVIRONMENT, origin)
+  ) {
+    return context.json({ error: "Origin is not allowed." }, 403);
   }
 
   await next();
 });
 
-app.get('/health', (context) =>
-  context.json({ environment: context.env.PRODUCT_ENVIRONMENT, status: 'ok' }),
+app.get("/health", (context) =>
+  context.json({ environment: context.env.PRODUCT_ENVIRONMENT, status: "ok" })
 );
 
-app.notFound((context) => context.json({ error: 'Not found.' }, 404));
+app.notFound((context) => context.json({ error: "Not found." }, 404));
 
 export class RfqBroker implements DurableObject {
   constructor(readonly state: DurableObjectState) {}
 
   fetch(): Response {
-    return new Response('RFQ broker bootstrap is not implemented.', { status: 501 });
+    return new Response("RFQ broker bootstrap is not implemented.", {
+      status: 501,
+    });
   }
 }
 
 export default {
   fetch: app.fetch,
   async queue(): Promise<void> {
-    throw new Error('Broadcast queue consumer is not implemented.');
+    throw new Error("Broadcast queue consumer is not implemented.");
   },
 } satisfies ExportedHandler<Env>;
