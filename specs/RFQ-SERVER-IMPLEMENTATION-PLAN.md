@@ -1,5 +1,13 @@
 # RFQ Server Implementation Handoff
 
+## Normative Language
+
+The key words `MUST`, `MUST NOT`, `REQUIRED`, `SHOULD`, `SHOULD NOT`, `RECOMMENDED`, `MAY`, and `OPTIONAL` in this document are to be interpreted as described in RFC 2119.
+
+## Product Language
+
+This document uses `./DOMAIN-LANGUAGE.md` as way to describe option trading specific parts of the product used by business and technical members.
+
 ## Goal and scope
 
 Implement `apps/rfq-server` as a TypeScript Cloudflare Worker using Hono,
@@ -27,7 +35,9 @@ Do **not** implement these items in this task:
 - Buyers are unauthenticated. Their transaction signature identifies them.
 - Sellers create underwrite terms and submits them to the rfq-server, 
   the server sends RFQs to buyers and receive offers over the same unauthenticated
-  WebSocket connection. Offers are routed by the rfq-server only to that seller.
+  WebSocket connection. RFQ has agregation period 2.5 seconds indicated by RFQ deadling.
+  After the deadline of the agragation period Quotes must be rejected.
+  The best Offer is routed by the rfq-server only to that seller.
 - One RFQ contains one premium-free `underwriteTx` value and must produce
   exactly one `underwrite_call` or `underwrite_put` instruction matching it.
   The selected buyer offer supplies the premium.
@@ -41,6 +51,14 @@ Do **not** implement these items in this task:
   partition by market or cluster.
 - An underwrite is `confirmed` after Solana returns `confirmed` commitment;
   do not wait for `finalized` and do not require event indexing.
+
+## RFQ high-level flow
+
+how RFQ process (high-level) and broker must work:
+1. seller ask for quote with specific terms
+2. rfq-server sends RFQs to connected over websockets `/rfqs/<asset>` buyers with given terms, where `asset` mint address must match BaseCoin mint of the seller terms
+3. rfq-server works as aggregator with RFQ broker stores only the best quote in terms highest premium, if two quotes has highest premium then existing in the broker quote wins as the quote received faster
+4. when aggregation period ends (2.5 seconds) no more quotes are allowed and the best quote is passed to seller
 
 ## Configuration
 
@@ -79,6 +97,10 @@ the rest in this section is additional implementation details to this specificat
 market configuration, not the route alone, decides whether a request is
 valid.
 
+`/maker?asset=<BaseCoin-mint>` and `/taker?asset=<BaseCoin-mint>` select the
+same market-specific broker before the WebSocket is upgraded. A seller may
+create RFQs only for that BaseCoin on the selected socket.
+
 ### RFQ incoming requests: `/rfqs/<asset>` implementation comments to RFQ-SERVER-API spec
 
 JSON-RPC ID acts as `rfqId`.
@@ -107,8 +129,8 @@ Made by buyers using `/maker` WebSocket JSON-RPC API.
 
 Create one Durable Object broker per BaseCoin mint. It keeps only an in-memory
 map keyed by `rfqId` to the best in terms of offered premium (highest wins),
-containing the terms, initiating seller socket, and 
-offers. Do not call Durable Object storage for RFQs or offers. 
+that DO containing the terms, initiating seller socket, and the best received so far
+offer. Do not call Durable Object storage for RFQs or offers.
 If more than one offer has the best premium then the first (existing in DO) received buyers offer wins.
 
 An offer is accepted only when the seller submits the exact fully signed
@@ -116,7 +138,7 @@ transaction matching one unexpired stored offer. The first accepted submission
 consumes that RFQ; later submissions for it are rejected.
 
 Offer routing is private: only the seller socket that created the RFQ receives
-the best quote offers. The request itself remains available to subscribed buyers.
+the best quote offer. The request itself remains available to subscribed buyers.
 
 ## Transaction validation
 

@@ -6,6 +6,7 @@ import {
   type BroadcastTask,
 } from "./broadcast";
 import {
+  configuredMarket,
   getEnvironmentConfig,
   isAllowedOrigin,
   type ProductEnvironment,
@@ -93,9 +94,41 @@ function brokerFetch(context: {
   readonly env: Env;
   readonly req: { readonly raw: Request };
 }): Promise<Response> {
+  const asset = brokerAssetFromRequest(context.req.raw.url);
+  if (asset === null) {
+    return Promise.resolve(
+      new Response("BaseCoin asset is required.", { status: 400 })
+    );
+  }
+  if (configuredMarket(context.env.PRODUCT_ENVIRONMENT, asset) === null) {
+    return Promise.resolve(
+      new Response("RFQ market not found.", { status: 404 })
+    );
+  }
   return context.env.RFQ_BROKER.get(
-    context.env.RFQ_BROKER.idFromName("rfq-broker")
+    context.env.RFQ_BROKER.idFromName(rfqBrokerName(asset))
   ).fetch(context.req.raw);
+}
+
+export function rfqBrokerName(asset: string): string {
+  return `rfq-broker:${asset}`;
+}
+
+function brokerAssetFromRequest(value: string): string | null {
+  const url = new URL(value);
+  const { pathname } = url;
+  const prefix = "/rfqs/";
+  if (pathname.startsWith(prefix)) {
+    try {
+      return decodeURIComponent(pathname.slice(prefix.length));
+    } catch {
+      return "";
+    }
+  }
+  if (pathname === "/maker" || pathname === "/taker") {
+    return url.searchParams.get("asset");
+  }
+  return null;
 }
 
 function isBroadcastTask(value: unknown): value is BroadcastTask {

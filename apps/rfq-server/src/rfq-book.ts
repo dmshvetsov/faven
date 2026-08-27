@@ -27,6 +27,16 @@ interface ActiveRfq {
   readonly terms: RfqTerms;
   readonly seller: RfqSocket;
   bestOffer: RfqOffer | undefined;
+  quoteDelivered: boolean;
+}
+
+export type QuoteStatus =
+  "best" | "notbest" | "best_received_later" | "deadline";
+
+export interface QuoteResult {
+  readonly isBest: boolean;
+  readonly providedStatus: QuoteStatus;
+  readonly bestOffer: RfqOffer | undefined;
 }
 
 export class RfqBook {
@@ -34,35 +44,45 @@ export class RfqBook {
 
   create(rfqId: string, terms: RfqTerms, seller: RfqSocket): void {
     if (this.rfqs.has(rfqId)) throw new Error("duplicate-rfq-id");
-    this.rfqs.set(rfqId, { terms, seller, bestOffer: undefined });
+    this.rfqs.set(rfqId, {
+      terms,
+      seller,
+      bestOffer: undefined,
+      quoteDelivered: false,
+    });
   }
 
-  addOffer(
-    rfqId: string,
-    offer: RfqOffer,
-    nowMs: number
-  ): { readonly isBest: boolean } {
+  addOffer(rfqId: string, offer: RfqOffer, nowMs: number): QuoteResult {
     const rfq = this.getActive(rfqId);
+    if (nowMs >= rfq.terms.requestDeadline) {
+      return {
+        isBest: false,
+        providedStatus: "deadline",
+        bestOffer: rfq.bestOffer,
+      };
+    }
     if (
       offer.validUntil * 1_000 <= nowMs ||
       offer.validUntil * 1_000 > nowMs + 40_000
     ) {
       throw new Error("expired-or-overlong-offer");
     }
+    const existingBest = rfq.bestOffer;
     const isBest =
-      rfq.bestOffer === undefined ||
-      BigInt(offer.premium) > BigInt(rfq.bestOffer.premium);
+      existingBest === undefined ||
+      BigInt(offer.premium) > BigInt(existingBest.premium);
     if (isBest) {
       rfq.bestOffer = offer;
-      rfq.seller.send(
-        JSON.stringify({
-          jsonrpc: "2.0",
-          method: "quote.best",
-          params: { rfqId, quote: offer.quote ?? offer },
-        })
-      );
     }
-    return { isBest };
+    return {
+      isBest,
+      providedStatus: isBest
+        ? "best"
+        : BigInt(offer.premium) === BigInt(existingBest.premium)
+          ? "best_received_later"
+          : "notbest",
+      bestOffer: rfq.bestOffer,
+    };
   }
 
   consume(
@@ -73,6 +93,9 @@ export class RfqBook {
   ): RfqTerms {
     const rfq = this.getActive(rfqId);
     if (rfq.seller !== seller) throw new Error("unknown-or-consumed-rfq");
+    if (nowMs < rfq.terms.requestDeadline) {
+      throw new Error("rfq-aggregation-open");
+    }
     if (
       rfq.bestOffer === undefined ||
       rfq.bestOffer.underwriteTxHash !== transactionHash
@@ -84,6 +107,31 @@ export class RfqBook {
     }
     this.rfqs.delete(rfqId);
     return rfq.terms;
+  }
+
+  closeAggregation(rfqId: string, nowMs: number): void {
+    const rfq = this.rfqs.get(rfqId);
+    if (
+      rfq === undefined ||
+      rfq.quoteDelivered ||
+      nowMs < rfq.terms.requestDeadline
+    ) {
+      return;
+    }
+    if (
+      rfq.bestOffer === undefined ||
+      rfq.bestOffer.validUntil * 1_000 <= nowMs
+    ) {
+      return;
+    }
+    rfq.seller.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        method: "quote.best",
+        params: { rfqId, quote: rfq.bestOffer.quote ?? rfq.bestOffer },
+      })
+    );
+    rfq.quoteDelivered = true;
   }
 
   removeForSeller(seller: RfqSocket): void {

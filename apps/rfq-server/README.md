@@ -15,6 +15,6 @@ corepack pnpm --dir apps/rfq-server exec wrangler secret put SOLANA_RPC_URL --en
 corepack pnpm --dir apps/rfq-server exec wrangler secret put SOLANA_WEBSOCKET_URL --env development
 ```
 
-Repeat for staging and production. Market configuration deliberately starts
-empty and browser origins are closed outside local development, so unsupported
-markets and origins fail closed until explicitly configured.
+Repeat for staging and production. Local development includes a testnet SOL
+test market for WebSocket integration checks. Browser origins are closed
+outside local development, and unsupported markets fail closed.

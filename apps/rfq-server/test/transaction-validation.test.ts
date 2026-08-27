@@ -37,6 +37,100 @@ describe("signed underwrite validation", () => {
       validateSignedUnderwrite(alteredQuote, rfq.terms, "25", rfq.market, false)
     ).rejects.toThrow("premium-free RFQ transaction");
   });
+
+  it("rejects a buyer signature that does not match the quote maker", async () => {
+    const rfq = await createRfqFixture();
+    const buyerSignedQuote = await encodeUnderwrite(rfq.accounts, 25, [
+      rfq.accounts.buyer,
+    ]);
+
+    await expect(
+      validateSignedUnderwrite(
+        buyerSignedQuote,
+        rfq.terms,
+        "25",
+        rfq.market,
+        false,
+        rfq.accounts.seller.address
+      )
+    ).rejects.toThrow("Buyer signature does not match the quote maker.");
+  });
+
+  it("rejects an underwrite transaction that does not require the buyer signature", async () => {
+    const rfq = await createRfqFixture(AccountRole.READONLY);
+    const unsignedBuyerQuote = await encodeUnderwrite(
+      rfq.accounts,
+      25,
+      [],
+      AccountRole.READONLY
+    );
+
+    await expect(
+      validateSignedUnderwrite(
+        unsignedBuyerQuote,
+        rfq.terms,
+        "25",
+        rfq.market,
+        false,
+        rfq.accounts.buyer.address
+      )
+    ).rejects.toThrow("Buyer signature is missing.");
+  });
+
+  it("rejects a transaction that changes the buyer account privileges", async () => {
+    const rfq = await createRfqFixture();
+    const alteredQuote = await encodeUnderwrite(
+      rfq.accounts,
+      25,
+      [rfq.accounts.buyer],
+      AccountRole.WRITABLE_SIGNER
+    );
+
+    await expect(
+      validateSignedUnderwrite(alteredQuote, rfq.terms, "25", rfq.market, false)
+    ).rejects.toThrow("premium-free RFQ transaction");
+  });
+
+  it("rechecks the RFQ quantity against the configured market", async () => {
+    const rfq = await createRfqFixture();
+    const buyerSignedQuote = await encodeUnderwrite(rfq.accounts, 25, [
+      rfq.accounts.buyer,
+    ]);
+    const market = {
+      ...rfq.market,
+      quantity: { minimum: 20n, step: 1n, maximum: 1_000n },
+    };
+
+    await expect(
+      validateSignedUnderwrite(
+        buyerSignedQuote,
+        rfq.terms,
+        "25",
+        market,
+        false,
+        undefined,
+        "testnet"
+      )
+    ).rejects.toThrow("quantity is outside the configured range");
+  });
+
+  it("rejects an unsigned buyer when the buyer is also the fee payer", async () => {
+    const rfq = await createRfqFixture();
+    const accounts = { ...rfq.accounts, buyer: rfq.accounts.seller };
+    const premiumFreeTransaction = await encodeUnderwrite(accounts, 0, []);
+    const unsignedBuyerQuote = await encodeUnderwrite(accounts, 25, []);
+
+    await expect(
+      validateSignedUnderwrite(
+        unsignedBuyerQuote,
+        { ...rfq.terms, underwriteTx: premiumFreeTransaction },
+        "25",
+        rfq.market,
+        false,
+        accounts.buyer.address
+      )
+    ).rejects.toThrow("Buyer signature is missing.");
+  });
 });
 
 interface RfqFixture {
@@ -68,9 +162,16 @@ interface TransactionAccounts {
   readonly systemProgram: Address;
 }
 
-async function createRfqFixture(): Promise<RfqFixture> {
+async function createRfqFixture(
+  buyerAccountRole: AccountRole = AccountRole.READONLY_SIGNER
+): Promise<RfqFixture> {
   const accounts = await createTransactionAccounts();
-  const premiumFreeTransaction = await encodeUnderwrite(accounts, 0, []);
+  const premiumFreeTransaction = await encodeUnderwrite(
+    accounts,
+    0,
+    [],
+    buyerAccountRole
+  );
   return {
     accounts,
     market: {
@@ -133,7 +234,8 @@ async function createTransactionAccounts(): Promise<TransactionAccounts> {
 async function encodeUnderwrite(
   accounts: TransactionAccounts,
   premium: number,
-  signers: readonly KeyPairSigner[]
+  signers: readonly KeyPairSigner[],
+  buyerAccountRole: AccountRole = AccountRole.READONLY_SIGNER
 ): Promise<string> {
   const data = new Uint8Array(26);
   data.set(UNDERWRITE_CALL);
@@ -148,7 +250,7 @@ async function encodeUnderwrite(
         accounts: [
           {
             address: accounts.buyer.address,
-            role: AccountRole.READONLY_SIGNER,
+            role: buyerAccountRole,
           },
           {
             address: accounts.seller.address,

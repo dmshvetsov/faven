@@ -31,11 +31,24 @@ export interface EnvironmentConfig {
 
 const LOCAL_ORIGIN = "http://localhost:5173";
 
+const TESTNET_SOL_MARKET: MarketConfig = {
+  optionsProgramId: "11111111111111111111111111111111",
+  marketAddress: "11111111111111111111111111111111",
+  oracleBase: "SOL",
+  baseCoinMint: "So11111111111111111111111111111111111111112",
+  quoteCoinMint: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+  baseCoinSymbol: "SOL",
+  quoteCoinSymbol: "USDC",
+  feeRecipient: "11111111111111111111111111111111",
+  operationalFeeBps: 50,
+  quantity: { minimum: 1n, step: 1n, maximum: 1_000n },
+};
+
 const environmentConfig: Record<ProductEnvironment, EnvironmentConfig> = {
   "development:testnet": {
     cluster: "testnet",
     allowedOrigins: [LOCAL_ORIGIN],
-    markets: [],
+    markets: [TESTNET_SOL_MARKET],
   },
   "development:devnet": { cluster: "devnet", allowedOrigins: [], markets: [] },
   "staging:devnet": { cluster: "devnet", allowedOrigins: [], markets: [] },

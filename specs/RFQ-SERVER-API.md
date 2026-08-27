@@ -5,7 +5,7 @@
 | Endpoint | Purpose |
 |---|---|
 | `wss://v12.rysk.finance/rfqs/<asset>` | Receive RFQs for `<asset>` - underlying-token address |
-| `wss://v12.rysk.finance/maker` | Submit quotes, balance requests, and position requests |
+| `wss://v12.rysk.finance/maker?asset=<BaseCoin-mint>` | Submit quotes, balance requests, and position requests for one BaseCoin market |
 
 ## Common JSON-RPC envelopes
 
@@ -80,7 +80,10 @@ To sign `underwriteTx` base64 encoded string:
 4. encode updated `underwriteTx` to base64 (with `premium` and `recentBlockhash` set)
 5. include updated `underwriteTx` and the signature in `QuoteResponse`
 
-## 2. Submit a quote for RFQ — `/maker`
+## 2. Submit a quote for RFQ — `/maker?asset=<BaseCoin-mint>`
+
+`asset` MUST be the BaseCoin mint in the RFQ. It selects the same market
+broker used by the RFQ feed.
 
 Use incoming RFQ JSON-RPC request id that is `rfqId` as quote JSON-RPC request id.
 
@@ -133,6 +136,8 @@ type RfqResult = {
 
 - `best` — your quote is currently best.
 - `notbest` — another quote is currently better.
+- `best_received_later` — same as the best quote but received later then another quote with the same best terms
+- `deadline` - your quote submitted after the RFQ deadline
 
 ## 3. Get positions — `/maker`
 

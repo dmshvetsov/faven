@@ -22,10 +22,13 @@ import {
 } from "./wire";
 import type { Env } from "./worker";
 
+const RFQ_AGGREGATION_MS = 2_500;
+
 export class RfqBroker implements DurableObject {
   private readonly rfqs = new RfqBook();
   private readonly buyers = new Map<WebSocket, string>();
   private readonly sellers = new Set<WebSocket>();
+  private asset: string | undefined;
 
   constructor(
     readonly state: DurableObjectState,
@@ -34,21 +37,29 @@ export class RfqBroker implements DurableObject {
 
   fetch(request: Request): Response {
     const url = new URL(request.url);
-    const asset = assetFromBuyerPath(url.pathname);
+    const asset = assetFromRequest(url);
     const role =
-      asset !== null || url.pathname === "/maker"
+      url.pathname.startsWith("/rfqs/") || url.pathname === "/maker"
         ? "buyer"
         : url.pathname === "/taker"
           ? "seller"
           : null;
-    if (role === null || request.headers.get("Upgrade") !== "websocket") {
+    if (
+      role === null ||
+      asset === null ||
+      request.headers.get("Upgrade") !== "websocket"
+    ) {
       return new Response("WebSocket endpoint not found.", { status: 404 });
+    }
+    if (this.asset === undefined) this.asset = asset;
+    if (this.asset !== asset) {
+      return new Response("RFQ broker asset mismatch.", { status: 409 });
     }
     const pair = new WebSocketPair();
     const client = pair[0];
     const server = pair[1];
     server.accept();
-    if (role === "buyer") this.buyers.set(server, asset ?? "");
+    if (role === "buyer") this.buyers.set(server, asset);
     else this.sellers.add(server);
     server.addEventListener("message", (event) => {
       void this.handleMessage(server, role, event.data);
@@ -105,7 +116,12 @@ export class RfqBroker implements DurableObject {
       original.asset
     );
     if (market === null) throw new Error("unknown-market");
-    const terms = { ...original, requestDeadline: Date.now() + 40_000 };
+    if (original.asset !== this.asset)
+      throw new Error("rfq-broker-asset-mismatch");
+    const terms = {
+      ...original,
+      requestDeadline: Date.now() + RFQ_AGGREGATION_MS,
+    };
     const { validateRfqTerms } = await import("./rfq-validation");
     validateRfqTerms(terms, market, this.env.SOLANA_CLUSTER);
     this.rfqs.create(rfqId, terms, socket);
@@ -120,6 +136,9 @@ export class RfqBroker implements DurableObject {
     socket.send(
       jsonRpcResult(rfqId, { requestDeadline: terms.requestDeadline })
     );
+    this.state.waitUntil(
+      this.closeAggregationWhenReady(rfqId, terms.requestDeadline)
+    );
   }
 
   private async submitQuote(
@@ -129,11 +148,17 @@ export class RfqBroker implements DurableObject {
   ): Promise<void> {
     const buyerAsset = this.buyers.get(socket);
     const details = this.rfqs.details(rfqId);
-    if (buyerAsset !== "" && buyerAsset !== details.terms.asset) {
+    if (buyerAsset !== details.terms.asset) {
       throw new Error("buyer-not-subscribed-to-rfq-asset");
     }
     const quote = parseBuyerQuote(params);
     validateQuoteMatchesRfq(quote, details.terms);
+    if (Date.now() >= details.terms.requestDeadline) {
+      socket.send(
+        quoteStatusResponse(rfqId, quote, details.bestOffer, "deadline")
+      );
+      return;
+    }
     const market = configuredMarket(
       this.env.PRODUCT_ENVIRONMENT,
       details.terms.asset
@@ -144,13 +169,18 @@ export class RfqBroker implements DurableObject {
       details.terms,
       quote.premium,
       market,
-      false
+      false,
+      quote.maker,
+      this.env.SOLANA_CLUSTER
     );
     const underwriteTxHash = await offerTransactionHash(quote.underwriteTx);
-    this.rfqs.addOffer(
+    const result = this.rfqs.addOffer(
       rfqId,
       { ...quote, underwriteTxHash, quote },
       Date.now()
+    );
+    socket.send(
+      quoteStatusResponse(rfqId, quote, result.bestOffer, result.providedStatus)
     );
   }
 
@@ -174,7 +204,9 @@ export class RfqBroker implements DurableObject {
       details.terms,
       offer.premium,
       market,
-      true
+      true,
+      undefined,
+      this.env.SOLANA_CLUSTER
     );
     const transactionHash = await signedTransactionHash(
       submission.underwriteTx
@@ -234,13 +266,47 @@ export class RfqBroker implements DurableObject {
     this.sellers.delete(socket);
     this.rfqs.removeForSeller(socket);
   }
+
+  private async closeAggregationWhenReady(
+    rfqId: string,
+    deadlineMs: number
+  ): Promise<void> {
+    const delayMs = deadlineMs - Date.now();
+    if (delayMs > 0) {
+      await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+    }
+    this.rfqs.closeAggregation(rfqId, Date.now());
+  }
 }
 
-function assetFromBuyerPath(pathname: string): string | null {
+function assetFromRequest(url: URL): string | null {
+  if (url.pathname === "/maker" || url.pathname === "/taker") {
+    return url.searchParams.get("asset");
+  }
+  const { pathname } = url;
   const prefix = "/rfqs/";
   if (!pathname.startsWith(prefix) || pathname.length === prefix.length)
     return null;
   return decodeURIComponent(pathname.slice(prefix.length));
+}
+
+function quoteStatusResponse(
+  rfqId: string,
+  quote: {
+    readonly assetAddress: string;
+    readonly chainId: string;
+    readonly premium: string;
+  },
+  bestOffer: { readonly premium: string } | undefined,
+  providedStatus: "best" | "notbest" | "best_received_later" | "deadline"
+): string {
+  return jsonRpcResult(rfqId, {
+    assetAddress: quote.assetAddress,
+    chainId: quote.chainId,
+    bestQuote: bestOffer?.premium ?? quote.premium,
+    providedQuote: quote.premium,
+    providedStatus,
+  });
 }
 
 async function messageText(data: unknown): Promise<string> {

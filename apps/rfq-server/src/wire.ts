@@ -1,6 +1,8 @@
 import { isRecord } from "./rfq-rpc";
 import type { RfqTerms } from "./rfq-book";
 
+export type SellerRfqTerms = Omit<RfqTerms, "requestDeadline">;
+
 export interface BuyerQuote {
   readonly assetAddress: string;
   readonly chainId: string;
@@ -20,7 +22,7 @@ export interface UnderwriteSubmission {
   readonly underwriteTx: string;
 }
 
-export function parseRfqTerms(value: unknown): RfqTerms {
+export function parseRfqTerms(value: unknown): SellerRfqTerms {
   const record = recordValue(value, "RFQ");
   return {
     asset: stringValue(record, "asset", "RFQ"),
@@ -32,7 +34,6 @@ export function parseRfqTerms(value: unknown): RfqTerms {
     strike: stringValue(record, "strike", "RFQ"),
     collateralAsset: stringValue(record, "collateralAsset", "RFQ"),
     premiumAsset: stringValue(record, "premiumAsset", "RFQ"),
-    requestDeadline: numberValue(record, "requestDeadline", "RFQ"),
     underwriteTx: stringValue(record, "underwriteTx", "RFQ"),
   };
 }

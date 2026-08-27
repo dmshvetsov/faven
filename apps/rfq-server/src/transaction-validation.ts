@@ -5,8 +5,9 @@ import {
   getTransactionDecoder,
 } from "@solana/kit";
 
-import type { MarketConfig } from "./config";
+import type { MarketConfig, SolanaCluster } from "./config";
 import type { RfqTerms } from "./rfq-book";
+import { validateRfqTerms } from "./rfq-validation";
 
 const COMPUTE_BUDGET_PROGRAM = "ComputeBudget111111111111111111111111111111";
 const CREATE_SERIES = "b5093478c5dd2a8e";
@@ -53,8 +54,11 @@ export async function validateSignedUnderwrite(
   terms: RfqTerms,
   premium: string,
   market: MarketConfig,
-  requireSellerSignature: boolean
+  requireSellerSignature: boolean,
+  expectedBuyerAddress?: string,
+  cluster?: SolanaCluster
 ): Promise<ValidatedUnderwrite> {
+  if (cluster !== undefined) validateRfqTerms(terms, market, cluster);
   const bytes = decodeBase64(encodedTransaction);
   const transaction = getTransactionDecoder().decode(bytes);
   const message = getCompiledTransactionMessageDecoder().decode(
@@ -63,7 +67,12 @@ export async function validateSignedUnderwrite(
   if (message.version !== "legacy") {
     throw new Error("Versioned transactions are not supported for RFQs.");
   }
-  validateMatchesPremiumFreeRfq(message, terms.underwriteTx, premium);
+  validateMatchesPremiumFreeRfq(
+    message,
+    transaction.messageBytes,
+    terms.underwriteTx,
+    premium
+  );
   await validateSignatures(
     transaction.signatures,
     transaction.messageBytes,
@@ -126,11 +135,24 @@ export async function validateSignedUnderwrite(
   if (accounts[0] !== underwrites[0].sellerAddress) {
     throw new Error("Seller must be the transaction fee payer.");
   }
+  if (
+    transaction.signatures[address(underwrites[0].buyerAddress)] === null ||
+    transaction.signatures[address(underwrites[0].buyerAddress)] === undefined
+  ) {
+    throw new Error("Buyer signature is missing.");
+  }
+  if (
+    expectedBuyerAddress !== undefined &&
+    underwrites[0].buyerAddress !== expectedBuyerAddress
+  ) {
+    throw new Error("Buyer signature does not match the quote maker.");
+  }
   return underwrites[0];
 }
 
 function validateMatchesPremiumFreeRfq(
   quoteMessage: CompiledMessage,
+  quoteMessageBytes: ReadonlyBytes,
   premiumFreeTransaction: string,
   premium: string
 ): void {
@@ -144,6 +166,10 @@ function validateMatchesPremiumFreeRfq(
     throw new Error("Premium-free RFQ transaction must be legacy.");
   }
   if (
+    !sameBytes(
+      quoteMessageBytes.slice(0, 3),
+      templateTransaction.messageBytes.slice(0, 3)
+    ) ||
     !sameStringArray(
       quoteMessage.staticAccounts,
       templateMessage.staticAccounts

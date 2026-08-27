@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { parseJsonRpcRequest } from "../src/rfq-rpc";
+import { parseRfqTerms } from "../src/wire";
 
 describe("JSON-RPC requests", () => {
   it("accepts a UUIDv7 request envelope", () => {
@@ -23,5 +24,24 @@ describe("JSON-RPC requests", () => {
         JSON.stringify({ jsonrpc: "2.0", id: "not-a-uuid", method: "quote" })
       )
     ).toThrow("Invalid JSON-RPC request");
+  });
+});
+
+describe("seller RFQ wire format", () => {
+  it("lets the server generate the request deadline", () => {
+    expect(
+      parseRfqTerms({
+        asset: "base-mint",
+        assetName: "BTC",
+        chainId: "solana:testnet",
+        expiry: 1_735_689_600,
+        isPut: false,
+        quantity: "10",
+        strike: "6000000000000",
+        collateralAsset: "base-mint",
+        premiumAsset: "quote-mint",
+        underwriteTx: "transaction",
+      })
+    ).not.toHaveProperty("requestDeadline");
   });
 });

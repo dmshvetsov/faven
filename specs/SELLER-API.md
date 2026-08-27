@@ -1,6 +1,6 @@
 # RFQ Server Seller WebSocket API
 
-## Endpoint `/taker`
+## Endpoint `/taker?asset=<BaseCoin-mint>`
 
 This WebSocket is for a seller to create an RFQ, privately receive buyer
 offers, and submit the selected fully signed transaction. It uses JSON-RPC 2.0.
@@ -8,6 +8,9 @@ All client-generated request IDs MUST be UUIDv7 strings.
 
 The server is non-custodial. It does not hold wallet keys and must not modify a
 transaction after the buyer or seller has signed it.
+
+`asset` MUST be the BaseCoin mint for every RFQ on this socket. It selects the
+market-specific broker before the WebSocket is upgraded.
 
 ## 1. Create an RFQ
 
@@ -29,7 +32,7 @@ type RfqCreateRequest = {
 - `asset` is the configured BaseCoin mint and selects the buyer feed;
 - `assetName`, `chainId`, collateral and premium assets, quantity, strike, and
   expiry must match a configured market;
-- `underwriteTx` must be omitted, the rfq-server sets it
+- `underwriteTx` is the seller's prepared premium-free transaction
 - `requestDeadline` must be omitted, the rfq-server sets it
 
 On success, the server broadcasts the RFQ to buyers subscribed to
