@@ -2,6 +2,7 @@ import {
   address,
   getAddressEncoder,
   getCompiledTransactionMessageDecoder,
+  getProgramDerivedAddress,
   getTransactionDecoder,
 } from "@solana/kit";
 
@@ -122,7 +123,7 @@ export async function validateSignedUnderwrite(
       throw new Error("Transaction uses an unsupported options instruction.");
     }
     underwrites.push(
-      validateUnderwrite(
+      await validateUnderwrite(
         data,
         instructionAccounts,
         discriminator === UNDERWRITE_PUT,
@@ -274,7 +275,7 @@ function validateCreateSeries(
   return accounts[4];
 }
 
-function validateUnderwrite(
+async function validateUnderwrite(
   data: ReadonlyBytes,
   accounts: readonly string[],
   isPut: boolean,
@@ -282,7 +283,7 @@ function validateUnderwrite(
   premium: string,
   market: MarketConfig,
   ixIndex: number
-): ValidatedUnderwrite {
+): Promise<ValidatedUnderwrite> {
   if (data.length !== 26 || accounts.length < 12) {
     throw new Error("Invalid underwrite instruction.");
   }
@@ -298,6 +299,16 @@ function validateUnderwrite(
   ) {
     throw new Error("Underwrite instruction does not match RFQ terms.");
   }
+  const [expectedSeriesAddress, expectedLongMintAddress] = await Promise.all([
+    getSeriesPda("option_series", terms, market),
+    getSeriesPda("option_series_mint", terms, market),
+  ]);
+  if (
+    accounts[5] !== expectedSeriesAddress ||
+    accounts[6] !== expectedLongMintAddress
+  ) {
+    throw new Error("Underwrite series does not match RFQ terms.");
+  }
   return {
     buyerAddress: accounts[0],
     sellerAddress: accounts[1],
@@ -305,6 +316,30 @@ function validateUnderwrite(
     ixIndex,
     premium,
   };
+}
+
+async function getSeriesPda(
+  seed: string,
+  terms: RfqTerms,
+  market: MarketConfig
+): Promise<string> {
+  const [pda] = await getProgramDerivedAddress({
+    programAddress: address(market.optionsProgramId),
+    seeds: [
+      new TextEncoder().encode(seed),
+      getAddressEncoder().encode(address(market.marketAddress)),
+      new Uint8Array([terms.isPut ? 2 : 1]),
+      littleEndianU64(BigInt(terms.expiry) * 1_000n),
+      littleEndianU64(BigInt(terms.strike)),
+    ],
+  });
+  return pda;
+}
+
+function littleEndianU64(value: bigint): Uint8Array {
+  const bytes = new Uint8Array(8);
+  new DataView(bytes.buffer).setBigUint64(0, value, true);
+  return bytes;
 }
 
 async function validateSignatures(

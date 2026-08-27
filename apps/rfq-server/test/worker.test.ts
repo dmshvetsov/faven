@@ -7,7 +7,9 @@ import {
   compileTransaction,
   createTransactionMessage,
   generateKeyPairSigner,
+  getAddressEncoder,
   getBase64EncodedWireTransaction,
+  getProgramDerivedAddress,
   partiallySignTransaction,
   setTransactionMessageFeePayer,
   setTransactionMessageLifetimeUsingBlockhash,
@@ -495,8 +497,6 @@ async function createQuoteFixture(): Promise<QuoteFixture> {
   const [
     buyer,
     seller,
-    series,
-    longMint,
     buyerLongAta,
     buyerQuoteSource,
     sellerCollateralSource,
@@ -509,15 +509,25 @@ async function createQuoteFixture(): Promise<QuoteFixture> {
     associatedTokenProgram,
     systemProgram,
   ] = signers;
+  const optionsProgram = address("11111111111111111111111111111111");
+  const market = address("11111111111111111111111111111111");
+  const [series] = await getProgramDerivedAddress({
+    programAddress: optionsProgram,
+    seeds: seriesSeeds("option_series", market),
+  });
+  const [longMint] = await getProgramDerivedAddress({
+    programAddress: optionsProgram,
+    seeds: seriesSeeds("option_series_mint", market),
+  });
   const accounts = {
     buyer,
     seller,
-    optionsProgram: address("11111111111111111111111111111111"),
-    market: address("11111111111111111111111111111111"),
+    optionsProgram,
+    market,
     baseCoinMint: address("So11111111111111111111111111111111111111112"),
     quoteCoinMint: address("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"),
-    series: series.address,
-    longMint: longMint.address,
+    series,
+    longMint,
     buyerLongAta: buyerLongAta.address,
     buyerQuoteSource: buyerQuoteSource.address,
     sellerCollateralSource: sellerCollateralSource.address,
@@ -538,6 +548,22 @@ async function createQuoteFixture(): Promise<QuoteFixture> {
     buyerSigned: await encodeUnderwrite(accounts, 25, [buyer]),
     fullySigned: await encodeUnderwrite(accounts, 25, [buyer, seller]),
   };
+}
+
+function seriesSeeds(seed: string, market: Address) {
+  return [
+    new TextEncoder().encode(seed),
+    getAddressEncoder().encode(market),
+    new Uint8Array([1]),
+    littleEndianU64(1_735_689_600_000n),
+    littleEndianU64(6_000_000_000_000n),
+  ];
+}
+
+function littleEndianU64(value: bigint): Uint8Array {
+  const bytes = new Uint8Array(8);
+  new DataView(bytes.buffer).setBigUint64(0, value, true);
+  return bytes;
 }
 
 type UnderwriteAccounts = {

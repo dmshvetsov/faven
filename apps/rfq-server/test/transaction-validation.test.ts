@@ -6,6 +6,8 @@ import {
   createTransactionMessage,
   generateKeyPairSigner,
   getBase64EncodedWireTransaction,
+  getAddressEncoder,
+  getProgramDerivedAddress,
   partiallySignTransaction,
   setTransactionMessageFeePayer,
   setTransactionMessageLifetimeUsingBlockhash,
@@ -20,6 +22,8 @@ import { validateSignedUnderwrite } from "../src/transaction-validation";
 
 const UNDERWRITE_CALL = [0xe3, 0x33, 0x07, 0x44, 0xf3, 0xe8, 0x20, 0xf6];
 const BLOCKHASH = blockhash("11111111111111111111111111111111");
+const EXPIRY_SECONDS = 1_735_689_600;
+const STRIKE = 6_000_000_000_000n;
 
 Object.defineProperty(globalThis, "isSecureContext", { value: true });
 
@@ -131,6 +135,57 @@ describe("signed underwrite validation", () => {
       )
     ).rejects.toThrow("Buyer signature is missing.");
   });
+
+  it("rejects an existing series with an expiry that differs from the RFQ", async () => {
+    const rfq = await createRfqFixture();
+    const buyerSignedQuote = await encodeUnderwrite(rfq.accounts, 25, [
+      rfq.accounts.buyer,
+    ]);
+
+    await expect(
+      validateSignedUnderwrite(
+        buyerSignedQuote,
+        { ...rfq.terms, expiry: EXPIRY_SECONDS + 1 },
+        "25",
+        rfq.market,
+        false
+      )
+    ).rejects.toThrow("Underwrite series does not match RFQ terms.");
+  });
+
+  it("rejects an existing series with a strike that differs from the RFQ", async () => {
+    const rfq = await createRfqFixture();
+    const buyerSignedQuote = await encodeUnderwrite(rfq.accounts, 25, [
+      rfq.accounts.buyer,
+    ]);
+
+    await expect(
+      validateSignedUnderwrite(
+        buyerSignedQuote,
+        { ...rfq.terms, strike: (STRIKE + 1n).toString() },
+        "25",
+        rfq.market,
+        false
+      )
+    ).rejects.toThrow("Underwrite series does not match RFQ terms.");
+  });
+
+  it("accepts an existing series that matches the RFQ", async () => {
+    const rfq = await createRfqFixture();
+    const buyerSignedQuote = await encodeUnderwrite(rfq.accounts, 25, [
+      rfq.accounts.buyer,
+    ]);
+
+    await expect(
+      validateSignedUnderwrite(
+        buyerSignedQuote,
+        rfq.terms,
+        "25",
+        rfq.market,
+        false
+      )
+    ).resolves.toMatchObject({ seriesAddress: rfq.accounts.series });
+  });
 });
 
 interface RfqFixture {
@@ -207,15 +262,25 @@ async function createTransactionAccounts(): Promise<TransactionAccounts> {
     Array.from({ length: 20 }, () => generateKeyPairSigner())
   );
   const [buyer, seller, ...addresses] = signers;
+  const optionsProgram = addresses[0].address;
+  const market = addresses[1].address;
+  const [series] = await getProgramDerivedAddress({
+    programAddress: optionsProgram,
+    seeds: seriesSeeds("option_series", market, EXPIRY_SECONDS, STRIKE),
+  });
+  const [longMint] = await getProgramDerivedAddress({
+    programAddress: optionsProgram,
+    seeds: seriesSeeds("option_series_mint", market, EXPIRY_SECONDS, STRIKE),
+  });
   return {
     buyer,
     seller,
-    optionsProgram: addresses[0].address,
-    market: addresses[1].address,
+    optionsProgram,
+    market,
     baseCoinMint: addresses[2].address,
     quoteCoinMint: addresses[3].address,
-    series: addresses[4].address,
-    longMint: addresses[5].address,
+    series,
+    longMint,
     buyerLongAta: addresses[6].address,
     buyerQuoteSource: addresses[7].address,
     sellerCollateralSource: addresses[8].address,
@@ -229,6 +294,27 @@ async function createTransactionAccounts(): Promise<TransactionAccounts> {
     associatedTokenProgram: addresses[16].address,
     systemProgram: addresses[17].address,
   };
+}
+
+function seriesSeeds(
+  prefix: string,
+  market: Address,
+  expirySeconds: number,
+  strike: bigint
+) {
+  return [
+    new TextEncoder().encode(prefix),
+    getAddressEncoder().encode(market),
+    new Uint8Array([1]),
+    littleEndianU64(BigInt(expirySeconds) * 1_000n),
+    littleEndianU64(strike),
+  ];
+}
+
+function littleEndianU64(value: bigint): Uint8Array {
+  const bytes = new Uint8Array(8);
+  new DataView(bytes.buffer).setBigUint64(0, value, true);
+  return bytes;
 }
 
 async function encodeUnderwrite(
