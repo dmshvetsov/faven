@@ -20,7 +20,7 @@
     "hono": "latest"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "latest",
+    "@cloudflare/vitest-plugin": "^1.1.0",
     "@cloudflare/workers-types": "latest",
     "eslint": "^9.35.0",
     "globals": "^16.4.0",

@@ -69,7 +69,7 @@ Use these Wrangler targets:
 | `staging` | `staging:devnet` | devnet | remote staging D1 |
 | `production` | `production:mainnet` | mainnet-beta | remote production D1 |
 
-## Wire protocol
+## Wire protocol and API
 
 Implement wire protocol and WebSocket API according `./RFQ-SERVER-API.md` and `./SELLER-API.md` specification,
 the rest in this section is additional implementation details to this specification.
