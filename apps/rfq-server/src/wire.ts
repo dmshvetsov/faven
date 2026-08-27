@@ -22,8 +22,15 @@ export interface UnderwriteSubmission {
   readonly underwriteTx: string;
 }
 
+export interface PositionRequest {
+  readonly account: string;
+}
+
 export function parseRfqTerms(value: unknown): SellerRfqTerms {
   const record = recordValue(value, "RFQ");
+  if ("requestDeadline" in record) {
+    throw new Error("server-assigned-request-deadline");
+  }
   return {
     asset: stringValue(record, "asset", "RFQ"),
     assetName: stringValue(record, "assetName", "RFQ"),
@@ -63,6 +70,11 @@ export function parseUnderwriteSubmission(
     rfqId: stringValue(record, "rfqId", "underwrite submission"),
     underwriteTx: stringValue(record, "underwriteTx", "underwrite submission"),
   };
+}
+
+export function parsePositionRequest(value: unknown): PositionRequest {
+  const record = recordValue(value, "positions request");
+  return { account: stringValue(record, "account", "positions request") };
 }
 
 export function validateQuoteMatchesRfq(

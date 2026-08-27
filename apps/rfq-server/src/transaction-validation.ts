@@ -35,6 +35,21 @@ export async function signedTransactionHash(
   return hashBytes(decodeBase64(encodedTransaction));
 }
 
+export function recentBlockhashForSignedTransaction(
+  encodedTransaction: string
+): string {
+  const transaction = getTransactionDecoder().decode(
+    decodeBase64(encodedTransaction)
+  );
+  const message = getCompiledTransactionMessageDecoder().decode(
+    new Uint8Array(transaction.messageBytes)
+  );
+  if (message.version !== "legacy") {
+    throw new Error("Versioned transactions are not supported for RFQs.");
+  }
+  return message.lifetimeToken;
+}
+
 export async function offerTransactionHash(
   encodedTransaction: string
 ): Promise<string> {

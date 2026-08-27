@@ -21,3 +21,6 @@ apps-lint:
 
 rfq-test:
     pnpm -F rfq run test
+
+db-migrate-local:
+    pnpm -F rfq run db:migrate:local

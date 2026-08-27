@@ -8,14 +8,21 @@ import { configuredMarket } from "./config";
 import { UnderwriteRepository } from "./database/underwrite-repository";
 import { tickerForSeries } from "./format";
 import { RfqBook } from "./rfq-book";
-import { jsonRpcError, jsonRpcResult, parseJsonRpcRequest } from "./rfq-rpc";
+import {
+  isRecord,
+  jsonRpcError,
+  jsonRpcResult,
+  parseJsonRpcRequest,
+} from "./rfq-rpc";
 import {
   offerTransactionHash,
+  recentBlockhashForSignedTransaction,
   signedTransactionHash,
   validateSignedUnderwrite,
 } from "./transaction-validation";
 import {
   parseBuyerQuote,
+  parsePositionRequest,
   parseRfqTerms,
   parseUnderwriteSubmission,
   validateQuoteMatchesRfq,
@@ -75,34 +82,53 @@ export class RfqBroker implements DurableObject {
     data: unknown
   ): Promise<void> {
     let id: string | null = null;
+    let rfqId: string | undefined;
     try {
       const request = parseJsonRpcRequest(await messageText(data));
       id = request.id;
       if (role === "seller" && request.method === "rfq.create") {
+        rfqId = request.id;
         await this.createRfq(socket, request.id, request.params);
         return;
       }
       if (role === "seller" && request.method === "underwrite.submit") {
+        rfqId = rfqIdFromSubmission(request.params);
         await this.submitUnderwrite(socket, request.id, request.params);
         return;
       }
       if (role === "buyer" && request.method === "quote") {
+        rfqId = request.id;
         await this.submitQuote(socket, request.id, request.params);
+        return;
+      }
+      if (role === "buyer" && request.method === "positions") {
+        await this.positions(socket, request.id, request.params);
         return;
       }
       socket.send(
         jsonRpcError(id, -32601, "Unknown method.", "unknown-method")
       );
     } catch (error) {
+      const details = requestErrorDetails(error);
       socket.send(
-        jsonRpcError(
-          id,
-          -32002,
-          "RFQ request was rejected.",
-          errorMessage(error)
-        )
+        jsonRpcError(id, details.code, details.message, details.reason, rfqId)
       );
     }
+  }
+
+  private async positions(
+    socket: WebSocket,
+    requestId: string,
+    params: unknown
+  ): Promise<void> {
+    const asset = this.buyers.get(socket);
+    if (asset === undefined)
+      throw new Error("buyer-not-subscribed-to-rfq-asset");
+    const { account } = parsePositionRequest(params);
+    const positions = await new UnderwriteRepository(
+      this.env.DB
+    ).listConfirmedPositions(account, asset);
+    socket.send(jsonRpcResult(requestId, { positions }));
   }
 
   private async createRfq(
@@ -212,7 +238,6 @@ export class RfqBroker implements DurableObject {
       submission.underwriteTx
     );
     const offerHash = await offerTransactionHash(submission.underwriteTx);
-    this.rfqs.consume(submission.rfqId, socket, offerHash, Date.now());
     const txSignature = sellerTransactionSignature(submission.underwriteTx);
     const createdAtMs = Date.now();
     const repository = new UnderwriteRepository(this.env.DB);
@@ -244,13 +269,27 @@ export class RfqBroker implements DurableObject {
       operationalFeeBps: market.operationalFeeBps,
       createdAtMs,
     });
+    this.rfqs.consume(submission.rfqId, socket, offerHash, Date.now());
     if (created.created) {
       const task: BroadcastTask = {
         txSignature,
         ixIndex: validated.ixIndex,
         signedTransaction: submission.underwriteTx,
+        recentBlockhash: recentBlockhashForSignedTransaction(
+          submission.underwriteTx
+        ),
       };
-      await this.env.BROADCAST_QUEUE.send(task);
+      try {
+        await this.env.BROADCAST_QUEUE.send(task);
+      } catch (error) {
+        await repository.markFailed(
+          txSignature,
+          validated.ixIndex,
+          Date.now(),
+          errorMessage(error)
+        );
+        throw error;
+      }
     }
     socket.send(
       jsonRpcResult(requestId, {
@@ -325,4 +364,55 @@ function sellerTransactionSignature(encodedTransaction: string): string {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "invalid-request";
+}
+
+function rfqIdFromSubmission(params: unknown): string | undefined {
+  if (!isRecord(params) || typeof params.rfqId !== "string") {
+    return undefined;
+  }
+  return params.rfqId;
+}
+
+function requestErrorDetails(error: unknown): {
+  readonly code: number;
+  readonly message: string;
+  readonly reason: string;
+} {
+  const reason = errorMessage(error);
+  if (
+    reason === "server-assigned-request-deadline" ||
+    reason.startsWith("Invalid JSON-RPC request.") ||
+    reason.startsWith("Invalid RFQ ") ||
+    reason.startsWith("Invalid quote ") ||
+    reason.startsWith("Invalid underwrite submission") ||
+    reason.startsWith("Invalid positions request")
+  ) {
+    return { code: -32600, message: "Invalid request.", reason };
+  }
+  if (
+    reason === "unknown-or-consumed-rfq" ||
+    reason === "expired-or-overlong-offer" ||
+    reason === "rfq-aggregation-open"
+  ) {
+    return { code: -32001, message: "RFQ is unavailable.", reason };
+  }
+  if (
+    reason.includes("signature") ||
+    reason.includes("base64") ||
+    reason.includes("transaction has no required signatures")
+  ) {
+    return {
+      code: -32003,
+      message: "Transaction signature is invalid.",
+      reason,
+    };
+  }
+  if (reason === "transaction-does-not-match-offer") {
+    return {
+      code: -32004,
+      message: "Transaction does not match the selected offer.",
+      reason,
+    };
+  }
+  return { code: -32002, message: "RFQ request was rejected.", reason };
 }

@@ -54,6 +54,34 @@ describe("underwrite repository", () => {
     ).resolves.toEqual([{ createdAtMs: 1_735_600_000_000, status: "queued" }]);
   });
 
+  it("uses the fee-payer transaction signature as the idempotency key", async () => {
+    const repository = new UnderwriteRepository(env.DB);
+    const replayWithAnotherInstruction = {
+      ...underwrite,
+      ixIndex: 1,
+    };
+
+    await expect(repository.createQueued(underwrite)).resolves.toEqual({
+      created: true,
+    });
+    await expect(
+      repository.createQueued(replayWithAnotherInstruction)
+    ).resolves.toEqual({
+      created: false,
+    });
+    await expect(
+      repository.get(
+        underwrite.txSignature,
+        replayWithAnotherInstruction.ixIndex
+      )
+    ).resolves.toBeNull();
+    await expect(
+      repository.auditFor(underwrite.txSignature, underwrite.ixIndex)
+    ).resolves.toEqual([
+      { createdAtMs: underwrite.createdAtMs, status: "queued" },
+    ]);
+  });
+
   it("persists lifecycle receipts and creates the immutable series after confirmation", async () => {
     const repository = new UnderwriteRepository(env.DB);
     await repository.createQueued(underwrite);
@@ -66,7 +94,8 @@ describe("underwrite repository", () => {
     await repository.markConfirmed(
       underwrite.txSignature,
       0,
-      1_735_600_002_000
+      1_735_600_002_000,
+      '{"confirmationStatus":"confirmed","slot":123}'
     );
 
     await expect(
@@ -75,6 +104,7 @@ describe("underwrite repository", () => {
       status: "confirmed",
       submittedAtMs: 1_735_600_001_000,
       confirmedAtMs: 1_735_600_002_000,
+      confirmedReceipt: '{"confirmationStatus":"confirmed","slot":123}',
     });
     await expect(
       repository.auditFor(underwrite.txSignature, 0)
@@ -127,6 +157,32 @@ describe("underwrite repository", () => {
     ]);
   });
 
+  it("updates an existing confirmed series when another underwrite confirms", async () => {
+    const repository = new UnderwriteRepository(env.DB);
+    const first = {
+      ...underwrite,
+      txSignature: "first-series-confirmation",
+    };
+    const second = {
+      ...underwrite,
+      txSignature: "second-series-confirmation",
+      createdAtMs: 1_735_600_001_000,
+    };
+    for (const item of [first, second]) {
+      await repository.createQueued(item);
+      await repository.markSubmitted(item.txSignature, item.ixIndex, 1);
+    }
+    await repository.markConfirmed(first.txSignature, first.ixIndex, 2);
+    await repository.markConfirmed(second.txSignature, second.ixIndex, 3);
+
+    await expect(
+      repository.getSeries(underwrite.seriesAddress)
+    ).resolves.toMatchObject({
+      seriesAddress: underwrite.seriesAddress,
+      confirmedAtMs: 3,
+    });
+  });
+
   it("lists a seller's confirmed underwrites by nearest expiry", async () => {
     const repository = new UnderwriteRepository(env.DB);
     const later = {
@@ -139,7 +195,10 @@ describe("underwrite repository", () => {
       txSignature: "earlier",
       expiryMs: 1_735_650_000_000,
     };
-    const queued = { ...underwrite, txSignature: "queued" };
+    const queued = {
+      ...underwrite,
+      txSignature: "queued",
+    };
 
     for (const item of [later, earlier, queued]) {
       await repository.createQueued(item);
@@ -188,6 +247,7 @@ async function resetDatabase(): Promise<void> {
       created_at_ms INTEGER NOT NULL,
       submitted_at_ms INTEGER,
       confirmed_at_ms INTEGER,
+      confirmed_receipt TEXT,
       last_error TEXT,
       PRIMARY KEY (tx_signature, ix_index)
     )`,
@@ -196,7 +256,8 @@ async function resetDatabase(): Promise<void> {
       tx_signature TEXT NOT NULL,
       ix_index INTEGER NOT NULL,
       created_at_ms INTEGER NOT NULL,
-      status TEXT NOT NULL
+      status TEXT NOT NULL,
+      UNIQUE (tx_signature, ix_index, status)
     )`,
     `CREATE TABLE option_series (
       series_address TEXT PRIMARY KEY,

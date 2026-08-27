@@ -4,6 +4,7 @@ import {
   primaryKey,
   sqliteTable,
   text,
+  uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
 export type UnderwriteStatus = "queued" | "submitted" | "confirmed" | "failed";
@@ -32,6 +33,7 @@ export const underwrites = sqliteTable(
     createdAtMs: integer("created_at_ms").notNull(),
     submittedAtMs: integer("submitted_at_ms"),
     confirmedAtMs: integer("confirmed_at_ms"),
+    confirmedReceipt: text("confirmed_receipt"),
     lastError: text("last_error"),
   },
   (table) => [
@@ -41,7 +43,7 @@ export const underwrites = sqliteTable(
       table.status,
       table.expiryMs
     ),
-    index("underwrites_tx_signature_idx").on(table.txSignature),
+    uniqueIndex("underwrites_tx_signature_idx").on(table.txSignature),
   ]
 );
 
@@ -58,6 +60,11 @@ export const underwriteAudit = sqliteTable(
     index("underwrite_audit_underwrite_idx").on(
       table.txSignature,
       table.ixIndex
+    ),
+    uniqueIndex("underwrite_audit_transition_idx").on(
+      table.txSignature,
+      table.ixIndex,
+      table.status
     ),
   ]
 );

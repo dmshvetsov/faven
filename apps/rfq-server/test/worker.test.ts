@@ -187,7 +187,10 @@ describe("RFQ server", () => {
       })
     );
     await expect(replay).resolves.toMatchObject({
-      error: { data: { reason: "unknown-or-consumed-rfq" } },
+      error: {
+        code: -32001,
+        data: { reason: "unknown-or-consumed-rfq", rfqId },
+      },
     });
     seller.close();
     feed.close();
@@ -224,12 +227,13 @@ describe("RFQ server", () => {
       quantity TEXT NOT NULL, premium TEXT NOT NULL, base_coin_mint TEXT NOT NULL,
       quote_coin_mint TEXT NOT NULL, fee_recipient TEXT NOT NULL,
       operational_fee_bps INTEGER NOT NULL, created_at_ms INTEGER NOT NULL,
-      submitted_at_ms INTEGER, confirmed_at_ms INTEGER, last_error TEXT,
+      submitted_at_ms INTEGER, confirmed_at_ms INTEGER, confirmed_receipt TEXT, last_error TEXT,
       PRIMARY KEY (tx_signature, ix_index)
     )`,
       `CREATE TABLE IF NOT EXISTS underwrite_audit (
       id INTEGER PRIMARY KEY AUTOINCREMENT, tx_signature TEXT NOT NULL,
-      ix_index INTEGER NOT NULL, created_at_ms INTEGER NOT NULL, status TEXT NOT NULL
+      ix_index INTEGER NOT NULL, created_at_ms INTEGER NOT NULL, status TEXT NOT NULL,
+      UNIQUE (tx_signature, ix_index, status)
     )`,
       `CREATE TABLE IF NOT EXISTS option_series (
       series_address TEXT PRIMARY KEY, market_address TEXT NOT NULL, ticker TEXT NOT NULL,
@@ -314,7 +318,6 @@ describe("RFQ server", () => {
           strike: "6000000000000",
           collateralAsset: "unknown-base-mint",
           premiumAsset: "unknown-quote-mint",
-          requestDeadline: 0,
           underwriteTx: "",
         },
       })
@@ -322,9 +325,106 @@ describe("RFQ server", () => {
 
     await expect(message).resolves.toMatchObject({
       id: "0193c3c5-1967-7000-8000-000000000000",
-      error: { code: -32002, data: { reason: "unknown-market" } },
+      error: {
+        code: -32002,
+        data: {
+          reason: "unknown-market",
+          rfqId: "0193c3c5-1967-7000-8000-000000000000",
+        },
+      },
     });
     socket?.close();
+  });
+
+  it("rejects a seller supplied RFQ aggregation deadline", async () => {
+    const baseCoinMint = "So11111111111111111111111111111111111111112";
+    const seller = acceptSocket(
+      await SELF.fetch(
+        `https://example.com/taker?asset=${baseCoinMint}`,
+        webSocketHeaders()
+      )
+    );
+    const response = nextSocketMessage(seller);
+    const rfqId = "0193c3c5-1967-7000-8000-000000000030";
+
+    seller.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: rfqId,
+        method: "rfq.create",
+        params: { ...configuredRfq(baseCoinMint), requestDeadline: 0 },
+      })
+    );
+
+    await expect(response).resolves.toMatchObject({
+      id: rfqId,
+      error: {
+        code: -32600,
+        data: {
+          reason: "server-assigned-request-deadline",
+          rfqId,
+        },
+      },
+    });
+    seller.close();
+  });
+
+  it("returns confirmed positions for the requested buyer and market", async () => {
+    await createUnderwriteTables();
+    const repository = new UnderwriteRepository(env.DB);
+    const position = {
+      txSignature: "buyer-position-transaction",
+      ixIndex: 0,
+      rfqId: "0193c3c5-1967-7000-8000-000000000031",
+      sellerAddress: "seller-address",
+      buyerAddress: "buyer-position-address",
+      marketAddress: "market-address",
+      seriesAddress: "buyer-position-series",
+      ticker: "SOL-USDC-SOL-01JAN25-60000-C",
+      isPut: false,
+      expiryMs: 1_735_689_600_000,
+      strike: "6000000000000",
+      quantity: "10",
+      premium: "25",
+      baseCoinMint: "So11111111111111111111111111111111111111112",
+      quoteCoinMint: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      feeRecipient: "fee-recipient",
+      operationalFeeBps: 50,
+      createdAtMs: 1_735_600_000_000,
+    };
+    await repository.createQueued(position);
+    await repository.markSubmitted(position.txSignature, position.ixIndex, 1);
+    await repository.markConfirmed(position.txSignature, position.ixIndex, 2);
+    const maker = acceptSocket(
+      await SELF.fetch(
+        `https://example.com/maker?asset=${position.baseCoinMint}`,
+        webSocketHeaders()
+      )
+    );
+    const response = nextSocketMessage(maker);
+
+    maker.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: "0193c3c5-1967-7000-8000-000000000032",
+        method: "positions",
+        params: { account: position.buyerAddress },
+      })
+    );
+
+    await expect(response).resolves.toMatchObject({
+      id: "0193c3c5-1967-7000-8000-000000000032",
+      result: {
+        positions: [
+          {
+            txSignature: position.txSignature,
+            buyerAddress: position.buyerAddress,
+            status: "confirmed",
+          },
+        ],
+      },
+    });
+    maker.close();
   });
 
   it("rejects a buyer RFQ feed for an unconfigured BaseCoin", async () => {
@@ -547,12 +647,13 @@ async function createUnderwriteTables(): Promise<void> {
       quantity TEXT NOT NULL, premium TEXT NOT NULL, base_coin_mint TEXT NOT NULL,
       quote_coin_mint TEXT NOT NULL, fee_recipient TEXT NOT NULL,
       operational_fee_bps INTEGER NOT NULL, created_at_ms INTEGER NOT NULL,
-      submitted_at_ms INTEGER, confirmed_at_ms INTEGER, last_error TEXT,
+      submitted_at_ms INTEGER, confirmed_at_ms INTEGER, confirmed_receipt TEXT, last_error TEXT,
       PRIMARY KEY (tx_signature, ix_index)
     )`,
     `CREATE TABLE IF NOT EXISTS underwrite_audit (
       id INTEGER PRIMARY KEY AUTOINCREMENT, tx_signature TEXT NOT NULL,
-      ix_index INTEGER NOT NULL, created_at_ms INTEGER NOT NULL, status TEXT NOT NULL
+      ix_index INTEGER NOT NULL, created_at_ms INTEGER NOT NULL, status TEXT NOT NULL,
+      UNIQUE (tx_signature, ix_index, status)
     )`,
     `CREATE TABLE IF NOT EXISTS option_series (
       series_address TEXT PRIMARY KEY, market_address TEXT NOT NULL, ticker TEXT NOT NULL,

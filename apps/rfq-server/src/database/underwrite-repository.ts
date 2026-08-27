@@ -48,19 +48,25 @@ export class UnderwriteRepository {
   async createQueued(
     underwrite: QueuedUnderwrite
   ): Promise<{ created: boolean }> {
-    const created = await this.database
+    if (await this.getByTransactionSignature(underwrite.txSignature))
+      return { created: false };
+    const inserted = await this.database
       .insert(underwrites)
       .values({ ...underwrite, status: "queued" })
       .onConflictDoNothing()
       .returning({ txSignature: underwrites.txSignature });
-    if (created.length === 0) return { created: false };
-
-    await this.database.insert(underwriteAudit).values({
-      txSignature: underwrite.txSignature,
-      ixIndex: underwrite.ixIndex,
-      createdAtMs: underwrite.createdAtMs,
-      status: "queued",
-    });
+    if (inserted.length === 0) {
+      return { created: false };
+    }
+    await this.database
+      .insert(underwriteAudit)
+      .values({
+        txSignature: underwrite.txSignature,
+        ixIndex: underwrite.ixIndex,
+        createdAtMs: underwrite.createdAtMs,
+        status: "queued",
+      })
+      .onConflictDoNothing();
     return { created: true };
   }
 
@@ -72,6 +78,25 @@ export class UnderwriteRepository {
       .select()
       .from(underwrites)
       .where(keyWhere(txSignature, ixIndex))
+      .limit(1);
+    return result[0] ?? null;
+  }
+
+  async getStatus(
+    txSignature: string,
+    ixIndex: number
+  ): Promise<UnderwriteStatus | null> {
+    const underwrite = await this.get(txSignature, ixIndex);
+    return underwrite?.status ?? null;
+  }
+
+  async getByTransactionSignature(
+    txSignature: string
+  ): Promise<StoredUnderwrite | null> {
+    const result = await this.database
+      .select()
+      .from(underwrites)
+      .where(eq(underwrites.txSignature, txSignature))
       .limit(1);
     return result[0] ?? null;
   }
@@ -110,25 +135,34 @@ export class UnderwriteRepository {
   async markConfirmed(
     txSignature: string,
     ixIndex: number,
-    confirmedAtMs: number
+    confirmedAtMs: number,
+    confirmedReceipt?: string
   ): Promise<void> {
-    const updated = await this.database
-      .update(underwrites)
-      .set({ status: "confirmed", confirmedAtMs })
-      .where(
-        and(keyWhere(txSignature, ixIndex), eq(underwrites.status, "submitted"))
-      )
-      .returning();
-    const underwrite = updated[0];
-    if (underwrite === undefined) return;
-
+    const underwrite = await this.get(txSignature, ixIndex);
+    if (underwrite === null || underwrite.status !== "submitted") return;
     await this.database.batch([
-      this.database.insert(underwriteAudit).values({
-        txSignature,
-        ixIndex,
-        createdAtMs: confirmedAtMs,
-        status: "confirmed",
-      }),
+      this.database
+        .update(underwrites)
+        .set({
+          status: "confirmed",
+          confirmedAtMs,
+          confirmedReceipt: confirmedReceipt ?? null,
+        })
+        .where(
+          and(
+            keyWhere(txSignature, ixIndex),
+            eq(underwrites.status, "submitted")
+          )
+        ),
+      this.database
+        .insert(underwriteAudit)
+        .values({
+          txSignature,
+          ixIndex,
+          createdAtMs: confirmedAtMs,
+          status: "confirmed",
+        })
+        .onConflictDoNothing(),
       this.database
         .insert(optionSeries)
         .values({
@@ -142,7 +176,10 @@ export class UnderwriteRepository {
           quoteCoinMint: underwrite.quoteCoinMint,
           confirmedAtMs,
         })
-        .onConflictDoNothing(),
+        .onConflictDoUpdate({
+          target: optionSeries.seriesAddress,
+          set: { confirmedAtMs },
+        }),
     ]);
   }
 
@@ -152,23 +189,33 @@ export class UnderwriteRepository {
     failedAtMs: number,
     error: string
   ): Promise<void> {
-    const updated = await this.database
-      .update(underwrites)
-      .set({ status: "failed", lastError: error })
-      .where(
-        and(
-          keyWhere(txSignature, ixIndex),
-          inArray(underwrites.status, ["queued", "submitted"])
-        )
-      )
-      .returning({ txSignature: underwrites.txSignature });
-    if (updated.length === 0) return;
-    await this.database.insert(underwriteAudit).values({
-      txSignature,
-      ixIndex,
-      createdAtMs: failedAtMs,
-      status: "failed",
-    });
+    const underwrite = await this.get(txSignature, ixIndex);
+    if (
+      underwrite === null ||
+      (underwrite.status !== "queued" && underwrite.status !== "submitted")
+    ) {
+      return;
+    }
+    await this.database.batch([
+      this.database
+        .update(underwrites)
+        .set({ status: "failed", lastError: error })
+        .where(
+          and(
+            keyWhere(txSignature, ixIndex),
+            inArray(underwrites.status, ["queued", "submitted"])
+          )
+        ),
+      this.database
+        .insert(underwriteAudit)
+        .values({
+          txSignature,
+          ixIndex,
+          createdAtMs: failedAtMs,
+          status: "failed",
+        })
+        .onConflictDoNothing(),
+    ]);
   }
 
   async getSeries(seriesAddress: string) {
@@ -196,6 +243,23 @@ export class UnderwriteRepository {
       .orderBy(asc(underwrites.expiryMs));
   }
 
+  async listConfirmedPositions(
+    buyerAddress: string,
+    baseCoinMint: string
+  ): Promise<StoredUnderwrite[]> {
+    return this.database
+      .select()
+      .from(underwrites)
+      .where(
+        and(
+          eq(underwrites.buyerAddress, buyerAddress),
+          eq(underwrites.baseCoinMint, baseCoinMint),
+          eq(underwrites.status, "confirmed")
+        )
+      )
+      .orderBy(asc(underwrites.expiryMs));
+  }
+
   private async transition(
     txSignature: string,
     ixIndex: number,
@@ -204,15 +268,20 @@ export class UnderwriteRepository {
     atMs: number,
     update: { readonly submittedAtMs?: number; readonly lastError?: string }
   ): Promise<void> {
-    const updated = await this.database
-      .update(underwrites)
-      .set({ status: to, ...update })
-      .where(and(keyWhere(txSignature, ixIndex), eq(underwrites.status, from)))
-      .returning({ txSignature: underwrites.txSignature });
-    if (updated.length === 0) return;
-    await this.database
-      .insert(underwriteAudit)
-      .values({ txSignature, ixIndex, createdAtMs: atMs, status: to });
+    const underwrite = await this.get(txSignature, ixIndex);
+    if (underwrite === null || underwrite.status !== from) return;
+    await this.database.batch([
+      this.database
+        .update(underwrites)
+        .set({ status: to, ...update })
+        .where(
+          and(keyWhere(txSignature, ixIndex), eq(underwrites.status, from))
+        ),
+      this.database
+        .insert(underwriteAudit)
+        .values({ txSignature, ixIndex, createdAtMs: atMs, status: to })
+        .onConflictDoNothing(),
+    ]);
   }
 }
 

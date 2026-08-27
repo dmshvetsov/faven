@@ -139,7 +139,8 @@ function isBroadcastTask(value: unknown): value is BroadcastTask {
     typeof value.txSignature === "string" &&
     typeof value.ixIndex === "number" &&
     Number.isSafeInteger(value.ixIndex) &&
-    typeof value.signedTransaction === "string"
+    typeof value.signedTransaction === "string" &&
+    typeof value.recentBlockhash === "string"
   );
 }
 

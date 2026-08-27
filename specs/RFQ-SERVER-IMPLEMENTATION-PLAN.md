@@ -170,7 +170,7 @@ When the seller submits a valid fully signed transaction:
 1. Calculate its SHA-256 signed-byte hash.
 2. Insert one `underwrites` row for the one underwrite instruction and append
    a `queued` audit entry.
-3. Enqueue the raw transaction. An identical byte hash is idempotent.
+3. Enqueue the raw transaction. Use tx signature (first signature of fee payer) as idempotency key. Do not enqueue the same transaction more than once.
 4. The single-concurrency consumer simulates the transaction. A simulation
    error is terminal and becomes `failed`.
 5. Broadcast it, then change the row to `submitted` when the RPC accepts it.

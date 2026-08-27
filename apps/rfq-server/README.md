@@ -1,7 +1,5 @@
 # RFQ server
 
-Cloudflare Worker bootstrap for the non-custodial Solana RFQ server.
-
 The configured Wrangler targets are `localdevelopment`, `development`,
 `staging`, and `production`. They map respectively to `development:testnet`,
 `development:devnet`, `staging:devnet`, and `production:mainnet`.

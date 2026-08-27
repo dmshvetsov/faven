@@ -7,6 +7,7 @@ const task: BroadcastTask = {
   txSignature: "seller-transaction-signature",
   ixIndex: 0,
   signedTransaction: "signed-transaction",
+  recentBlockhash: "11111111111111111111111111111111",
 };
 
 afterEach(() => vi.unstubAllGlobals());
@@ -35,6 +36,9 @@ describe("Solana JSON-RPC broadcast adapter", () => {
       { method: "getSignatureStatuses" },
     ]);
     expect(repository.statuses).toEqual(["submitted", "confirmed"]);
+    expect(repository.confirmedReceipt).toBe(
+      '{"err":null,"confirmationStatus":"confirmed"}'
+    );
   });
 
   it("persists a deterministic RPC rejection as failed", async () => {
@@ -78,13 +82,24 @@ function rpcSuccessFor(method: string): unknown {
 class LifecycleRepository {
   readonly statuses: string[] = [];
   failure: string | undefined;
+  confirmedReceipt: string | undefined;
+
+  async getStatus(): Promise<"queued"> {
+    return "queued";
+  }
 
   async markSubmitted(): Promise<void> {
     this.statuses.push("submitted");
   }
 
-  async markConfirmed(): Promise<void> {
+  async markConfirmed(
+    _txSignature: string,
+    _ixIndex: number,
+    _atMs: number,
+    receipt: string
+  ): Promise<void> {
     this.statuses.push("confirmed");
+    this.confirmedReceipt = receipt;
   }
 
   async markFailed(

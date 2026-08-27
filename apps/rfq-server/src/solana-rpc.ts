@@ -25,7 +25,10 @@ export class JsonSolanaRpc implements SolanaBroadcastRpc {
     ]);
   }
 
-  async confirm(signature: string): Promise<{ readonly error: string | null }> {
+  async confirm(signature: string): Promise<{
+    readonly error: string | null;
+    readonly receipt: string;
+  }> {
     const result = await this.call("getSignatureStatuses", [
       [signature],
       { searchTransactionHistory: true },
@@ -36,14 +39,27 @@ export class JsonSolanaRpc implements SolanaBroadcastRpc {
     if (status === null) throw new Error("network confirmation pending");
     if (!isRecord(status))
       throw new Error("Solana RPC returned an invalid status.");
-    if (status.err !== null) return { error: JSON.stringify(status.err) };
+    const receipt = JSON.stringify(status);
+    if (status.err !== null)
+      return { error: JSON.stringify(status.err), receipt };
     if (
       status.confirmationStatus !== "confirmed" &&
       status.confirmationStatus !== "finalized"
     ) {
       throw new Error("network confirmation pending");
     }
-    return { error: null };
+    return { error: null, receipt };
+  }
+
+  async isBlockhashValid(blockhash: string): Promise<boolean> {
+    const result = await this.call("isBlockhashValid", [
+      blockhash,
+      { commitment: "confirmed" },
+    ]);
+    if (!isRecord(result) || typeof result.value !== "boolean") {
+      throw new Error("Solana RPC returned an invalid blockhash validity.");
+    }
+    return result.value;
   }
 
   private async call(method: string, params: unknown): Promise<unknown> {
