@@ -1,0 +1,102 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "faven-rfq-server-development-local",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-08-27",
+  "preview_urls": false,
+  "workers_dev": false,
+
+  "durable_objects": {
+    "bindings": [
+      { "name": "RFQ_BROKER", "class_name": "RfqBroker" }
+    ]
+  },
+
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["RfqBroker"] }
+  ],
+
+  "d1_databases": [
+    {
+      "remote": false,
+      "binding": "DB",
+      "database_name": "faven-db-local",
+      "database_id": "00000000-0000-0000-0000-000000000000"
+    }
+  ],
+
+  "queues": {
+    "producers": [{ "binding": "BROADCAST_QUEUE", "queue": "faven-solana-broadcast-local" }],
+    "consumers": [{ "queue": "faven-solana-broadcast-local", "max_concurrency": 1 }]
+  },
+
+  "vars": {
+    "PRODUCT_ENVIRONMENT": "development:testnet",
+    "SOLANA_CLUSTER": "testnet"
+  },
+
+  "env": {
+    "development:staging": {
+      "name": "faven-rfq-server-development-staging",
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "faven-db-staging",
+          "database_id": "00000000-0000-0000-0000-000000000002"
+        }
+      ],
+      "queues": {
+        "producers": [{ "binding": "BROADCAST_QUEUE", "queue": "faven-solana-broadcast-staging" }],
+        "consumers": [{ "queue": "faven-solana-broadcast-staging", "max_concurrency": 1 }]
+      },
+      "vars": {
+        "PRODUCT_ENVIRONMENT": "development:devnet",
+        "SOLANA_CLUSTER": "devnet"
+      }
+    },
+    "staging": {
+      "name": "faven-rfq-server-staging",
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1,
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "faven-db-staging",
+          "database_id": "00000000-0000-0000-0000-000000000002"
+        }
+      ],
+      "queues": {
+        "producers": [{ "binding": "BROADCAST_QUEUE", "queue": "faven-solana-broadcast-staging" }],
+        "consumers": [{ "queue": "faven-solana-broadcast-staging", "max_concurrency": 1 }]
+      },
+      "vars": {
+        "PRODUCT_ENVIRONMENT": "staging:devnet",
+        "SOLANA_CLUSTER": "devnet"
+      }
+    },
+    "production": {
+      "name": "faven-rfq-server-production",
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1,
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "faven-db-production",
+          "database_id": "00000000-0000-0000-0000-000000000001"
+        }
+      ],
+      "queues": {
+        "producers": [{ "binding": "BROADCAST_QUEUE", "queue": "faven-solana-broadcast-production" }],
+        "consumers": [{ "queue": "faven-solana-broadcast-production", "max_concurrency": 1 }]
+      },
+      "vars": {
+        "PRODUCT_ENVIRONMENT": "production:mainnet",
+        "SOLANA_CLUSTER": "mainnet-beta"
+      }
+    }
+  }
+}

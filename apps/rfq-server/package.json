@@ -1,0 +1,33 @@
+{
+  "name": "@faven/rfq-server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --env localdevelopment",
+    "deploy": "wrangler deploy",
+    "deploy:localdevelopment": "wrangler deploy --env localdevelopment",
+    "deploy:development": "wrangler deploy --env development",
+    "deploy:staging": "wrangler deploy --env staging",
+    "deploy:production": "wrangler deploy --env production",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "hono": "latest"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "latest",
+    "@cloudflare/workers-types": "latest",
+    "eslint": "^9.35.0",
+    "globals": "^16.4.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.44.0",
+    "vitest": "latest",
+    "wrangler": "latest"
+  }
+}
