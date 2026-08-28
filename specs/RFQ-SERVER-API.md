@@ -11,6 +11,8 @@
 
 This API MUST follow [JSON-RPC 2.0 standard](https://www.jsonrpc.org/specification).
 
+Always encode raw bytes with base64 before sending them in request payload.
+
 ### Outgoing request
 
 Use UUIDv7 for JSON-RPC requests ids.

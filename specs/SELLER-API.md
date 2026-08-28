@@ -1,5 +1,11 @@
 # RFQ Server Seller WebSocket API
 
+## Common JSON-RPC envelopes
+
+This API MUST follow [JSON-RPC 2.0 standard](https://www.jsonrpc.org/specification).
+
+Always encode raw bytes with base64 before sending them in request payload.
+
 ## Endpoint `/taker?asset=<BaseCoin-mint>`
 
 This WebSocket is for a seller to create an RFQ, privately receive buyer
