@@ -52,13 +52,30 @@ Do **not** implement these items in this task:
 - An underwrite is `confirmed` after Solana returns `confirmed` commitment;
   do not wait for `finalized` and do not require event indexing.
 
-## RFQ high-level flow
+## RFQ flow
 
-how RFQ process (high-level) and broker must work:
-1. seller ask for quote with specific terms
-2. rfq-server sends RFQs to connected over websockets `/rfqs/<asset>` buyers with given terms, where `asset` mint address must match BaseCoin mint of the seller terms
-3. rfq-server works as aggregator with RFQ broker stores only the best quote in terms highest premium, if two quotes has highest premium then existing in the broker quote wins as the quote received faster
-4. when aggregation period ends (2.5 seconds) no more quotes are allowed and the best quote is passed to seller
+1. Seller sends → server underwriteTerms
+2. Server builds an underwrite solana transaction with:
+   - series / strike / expiry / quantity and seller account from underwriteTerms
+   - no premium, `= 0`
+   - no buyer yet, `= Pubkey::default()`
+   - no buyer_quote_source, `= Pubkey::default()`
+   - no recentBlockhash yet, `= Hash::default()`
+   - if options series does not exists, server include create_series instruction
+3. Server creates RFQ request with the prepared solana transaction and sends this RFQ to → all market makers in specific WS asset connection
+4. Each market maker:
+   - sets premium
+   - sets its account as buyer
+   - sets its buyer_quote_source to pay premium
+   - sets new recentBlockhash
+   - signs it as buyer
+   - returns quote with partially signed underwriteTx with all instructions params finalized 
+5. Server selects best quote with highest premium
+6. Server respond to → seller with selected partially signed transaction of the best quote
+7. Seller verifies the transaction matches his underwriteTerms, adds seller signature, sends it to the server broadcast queue
+8. Server broadcasts the transaction to the blockchain
+
+FIXME: this design require maker/buyer to either modify compiled solana transaction message in place (decode base64 and then deserialize message) or build transaction himself from given underwriteTerms. Neither of it is optimal, requires either SDK for buyers or extensive docs and may result in rejected buers' built transaction by rfq-server.
 
 ## Configuration
 

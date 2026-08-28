@@ -39,6 +39,8 @@ RFQ-server MUST be implemented with:
 
 The smart contract design, underwriting, long token design, options price finalization, exercise, settlement, and event requirements are specified in `spec/OPTIONS_SMART_CONTRACT.md`.
 
+Solana v0 transactions MUST be used for all transactions.
+
 ## Ticker schema
 
 `<oracle base coin symbol 3-5 chars>-<oracle quote coin symbol also used as "cash" token 3-5 chars>-<base coin symbol 3-5 chars>-<DDMMMYY format expiration date>-<strike price either flaoting point number 0. or whole 150 but not both>-<call/put marker C or P char>`
