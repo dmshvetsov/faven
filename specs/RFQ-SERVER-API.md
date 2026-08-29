@@ -81,7 +81,7 @@ Use incoming RFQ JSON-RPC request id that is `rfqId` as the transaction-generati
 ```ts
 type UnderwriteTxGenerateRequest = {
   jsonrpc: "2.0"
-  id: "<generated UUIDv7>",
+  id: string, // generated UUIDv7
   method: "underwriteTx.generate"
   params: {
     maker: string             // buyer EOA / signing address
@@ -169,13 +169,13 @@ type RfqResult = {
 
 ## 4. Get positions — `/maker`
 
-```json
+```ts
 {
-  "jsonrpc": "2.0",
-  "id": "<generated UUIDv7>",
-  "method": "positions",
-  "params": {
-    "account": "<public key (address) used to sign underwrite transactions (buy options)>"
+  jsonrpc: "2.0",
+  id: string, // generated UUIDv7
+  method: "positions",
+  params: {
+    account: string // public key (address) used to sign underwrite transactions (buy options)
   }
 }
 ```

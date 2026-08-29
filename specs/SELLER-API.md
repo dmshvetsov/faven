@@ -8,9 +8,9 @@ Always encode raw bytes with base64 before sending them in request payload.
 
 ## Endpoint `/taker?asset=<BaseCoin-mint>`
 
-This WebSocket is for a seller to create an RFQ, privately receive buyer
-offers, and submit the selected fully signed transaction. It uses JSON-RPC 2.0.
-All client-generated request IDs MUST be UUIDv7 strings.
+This WebSocket is for a seller to submit underwrite terms, privately receive
+buyer quotes, and submit the selected fully signed transaction. It uses JSON-RPC
+2.0. All client-generated request IDs MUST be UUIDv7 strings.
 
 The server is non-custodial. It does not hold wallet keys and must not modify a
 transaction after the buyer or seller has signed it.
@@ -18,32 +18,30 @@ transaction after the buyer or seller has signed it.
 `asset` MUST be the BaseCoin mint for every RFQ on this socket. It selects the
 market-specific broker before the WebSocket is upgraded.
 
-## 1. Create an RFQ
-
-The seller prepares the premium-free transaction and sends its terms. The
-request ID is the `rfqId` and MUST be unique among active RFQs for the relevant
-BaseCoin broker.
+## 1. Request quotes with underwrite terms
 
 ```ts
 type RfqCreateRequest = {
   jsonrpc: "2.0"
-  id: string // UUIDv7; becomes rfqId
+  id: string // generated UUIDv7; becomes rfqId
   method: "rfq.create"
-  params: Rfq
+  params: UnderwriteTerms 
+}
+
+type UnderwriteTerms {
+    market: string                   // configured options market address
+    expiry: number                   // Unix seconds
+    isPut: boolean
+    quantity: string                 // option contracts to underwrite
+    strike: string                   // e8 USD strike
+    seller: string                   // seller EOA / signing address
+    sellerCollateralSource: string   // collateral token account owned by seller
+  }
 }
 ```
-
-`Rfq` is exactly the type in `../specs/RFQ-SERVER-API.md`. In particular:
-
-- `asset` is the configured BaseCoin mint and selects the buyer feed;
-- `assetName`, `chainId`, collateral and premium assets, quantity, strike, and
-  expiry must match a configured market;
-- `underwriteTx` is the seller's prepared premium-free transaction
-- `requestDeadline` must be omitted, the rfq-server sets it
-
-On success, the server broadcasts the RFQ to buyers subscribed to
-`/rfqs/<asset>` using the `RfqRequest` format defined in
-`../specs/RFQ-SERVER-API.md`, then returns:
+The server rejects an already-active rfqId, an unknown market, or invalid
+underwrite terms. A disconnected seller must create a new RFQ after
+reconnecting.
 
 ```ts
 type RfqCreateResponse = {
@@ -55,12 +53,10 @@ type RfqCreateResponse = {
 }
 ```
 
-The server rejects an already-active ID, an unknown market, or invalid transaction terms.
-A disconnected seller must create a new RFQ after reconnecting.
-
 ## 2. Receive a private offer
 
-The server receives all buyers `quotes` and choose the best (with highest premium) valid buyer `quote`, the server sends this JSON-RPC Quote request only to the seller socket that created the RFQ. The server does not send them to other sellers.
+The server sends JSON-RPC notification with valid quote with the highest premium
+only to the seller socket that created the RFQ. Other sellers do not receive the quote.
 
 ```ts
 type QuoteNotification = {
@@ -73,16 +69,17 @@ type QuoteNotification = {
 }
 ```
 
-The `quote.underwriteTx` contains the buyer-selected premium, a current recent
-blockhash, and the buyer signature. A quote can be selected only before its
-`validUntil` time.
+`quote.underwriteTx` was generated from the underwrite terms and buyer quote
+parameters. It contains the buyer signature and can be used only before
+`quote.validUntil`.
 
 ## 3. Underwrite with selected quote
 
-The seller reviews the exact transaction from an `quote.best` notification,
-signs those unchanged bytes as the fee payer, then submits it. The seller MUST
-not alter the premium, recent blockhash, instructions, accounts, or buyer
-signature.
+The seller reviews the exact transaction from a `quote.best` notification,
+signs those unchanged bytes as the fee payer, then submits it to
+`underwrite.submit`.
+The seller MUST not alter the underwriteTx and its instructions, including
+the premium, recent blockhash, accounts, or buyer signature.
 
 ```ts
 type UnderwriteSubmitRequest = {
@@ -98,19 +95,25 @@ type UnderwriteSubmitRequest = {
 type UnderwriteSubmitResponse = {
   jsonrpc: "2.0"
   id: string // UnderwriteSubmitRequest.id
-  result: {
+  result?: {
     rfqId: string
     txHash: string // SHA-256 of signed transaction bytes
-    status: "queued"
+    status: "queued" 
+  }
+  error?: {
+    code: number
+    message?: string
+    data?: {
+      rfqId: string
+    }
   }
 }
 ```
 
-The server accepts a submission only if it exactly matches one unexpired offer
-stored for that RFQ (in Durable object with given rfqId),
-has valid buyer and seller signatures, and passes the
-transaction validation rules. The first accepted submission consumes the RFQ.
-Later submissions for that RFQ are rejected.
+The server accepts a submission only if it exactly matches the selected,
+unexpired quote for that RFQ, has valid buyer and seller signatures, and passes
+the transaction validation rules. The first accepted submission consumes the
+RFQ. Later submissions for that RFQ are rejected.
 
 `queued` means the server has durably recorded and queued the transaction. It
 does not mean that Solana has accepted or confirmed it.
@@ -119,14 +122,14 @@ does not mean that Solana has accepted or confirmed it.
 
 Errors use the JSON-RPC error envelope. The server SHOULD use these codes:
 
+### RFQ errors `1xxx` codes
+
 | Code | Meaning |
 |---|---|
-| `-32600` | Invalid JSON-RPC envelope or request fields. |
-| `-32601` | Unknown method. |
-| `-32001` | Unknown, expired, disconnected, or already-consumed RFQ. |
-| `-32002` | RFQ or transaction terms do not match configured market rules. |
-| `-32003` | Invalid, missing, altered, or expired transaction signatures. |
-| `-32004` | Submitted transaction does not exactly match a stored buyer offer. |
+| `1001` | Unknown, expired, disconnected, or already-consumed RFQ. |
+| `1002` | RFQ or transaction terms do not match configured market rules. |
+| `1003` | Invalid, missing, altered, or expired transaction signatures. |
+| `1004` | Submitted transaction does not exactly match a stored buyer offer. |
 
 The error `data` SHOULD include `rfqId` when available and a stable,
 machine-readable reason string.
