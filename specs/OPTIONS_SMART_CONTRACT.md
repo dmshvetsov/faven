@@ -16,7 +16,7 @@ This document uses `./DOMAIN-LANGUAGE.md` as the language for product and implem
 
 Coin and token is used interchangeably. Always prefer token term.
 
-## Market
+## 1. Market
 
 The market program manages markets available for option series. Each market supports exactly one `OracleBase / QuoteCoin / BaseCoin` option class, one configured operator, and oracle configuration. Different operators MAY create independent markets for the same option class. Market creation MUST reject a duplicate with the same operator, oracle configuration, `QuoteCoin` mint address, and `BaseCoin` mint address.
 
@@ -64,7 +64,7 @@ Market creation is permissionless. The transaction payer and supplied operator M
 
 `min_fee` is a `QuoteCoin` amount in base units and MAY be zero, `min_fee` is required. `min_operational_fee_bps` and `max_operational_fee_bps` are required values in `0..=10_000`; the program MUST enforce `min_operational_fee_bps <= max_operational_fee_bps`. Zero values support a zero-fee market.
 
-### Market Creation
+### 1.1 Market Creation
 
 `create_market` MUST accept:
 - the operator signer,
@@ -93,7 +93,7 @@ The smart-contract MUST emit `MarketCreated` with:
 - quote coin mint address,
 - base coin mint address.
 
-## Option Series
+## 2. Option Series
 
 PDA mint address `["option_series", market_address, call_put_marker, expiry, strike_price]`.
 
@@ -152,7 +152,7 @@ After the `Series` is `Closed`, all related PDAs that can be closed (this exclud
 
 The protocol MUST NOT maintain an on-chain seller index. Off-chain indexers discover seller vaults from `Underwritten` events.
 
-### Option Series Creation
+### 2.1 Option Series Creation
 
 Series creation MUST be permissionless.
 
@@ -172,7 +172,7 @@ The contract MUST emit `SeriesCreated` with:
 - strike,
 - expiry.
 
-### Option Series Seller Vault
+### 2.2 Option Series Seller Vault
 
 PDA `["option_series_seller_vault", market_address, call_put_marker, expiry, strike_price, seller_pubkey]`
 

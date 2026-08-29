@@ -5,7 +5,7 @@
 | Endpoint | Purpose |
 |---|---|
 | `wss://v12.rysk.finance/rfqs/<asset>` | Receive RFQs for `<asset>` - underlying-token address |
-| `wss://v12.rysk.finance/maker?asset=<BaseCoin-mint>` | Submit quotes, balance requests, and position requests for one BaseCoin market |
+| `wss://v12.rysk.finance/maker?asset=<BaseCoin-mint>` | Generate underwrite transactions, submit quotes, and request positions for one BaseCoin market |
 
 ## Common JSON-RPC envelopes
 
@@ -59,7 +59,7 @@ type RfqRequest = {
 }
 
 type Rfq = {
-  asset: string             // underlying token address
+  assetAddress: string      // underlying token address
   assetName: string         // oracle price "wBTC", "wETH", "wSOL", "JUP" etc
   chainId: string           // solana:mainnet, solana:devnet, solana:testnet
   expiry: number            // Unix seconds
@@ -69,23 +69,49 @@ type Rfq = {
   collateralAsset: string   // asset used as collateral by option seller
   premiumAsset: string      // premium-payment token mint address
   requestDeadline: number   // Unix milliseconds
-  underwriteTx: string      // base64 encoded, prepared and unsigned transaction that must be updated, signed and send with Quote response
 }
 ```
 
 `RfqRequest.id` (rfqId in UUID format) represents a distinct RFQ request, even if the option terms repeat.
 
-To sign `underwriteTx` base64 encoded string:
-1. decoded `underwriteTx` to solana transaction
-2. set transaction `premium` and `recentBlockhash` (from current Solana blockchain `blockhash` state), transaction premium must equal to `Quote.premium`
-3. sign the transaction
-4. encode updated `underwriteTx` to base64 (with `premium` and `recentBlockhash` set)
-5. include updated `underwriteTx` and the signature in `QuoteResponse`
+## 2. Generate an underwrite transaction — `/maker?asset=<BaseCoin-mint>`
 
-## 2. Submit a quote for RFQ — `/maker?asset=<BaseCoin-mint>`
+Use incoming RFQ JSON-RPC request id that is `rfqId` as the transaction-generation request id.
 
-`asset` MUST be the BaseCoin mint in the RFQ. It selects the same market
-broker used by the RFQ feed.
+```ts
+type UnderwriteTxGenerateRequest = {
+  jsonrpc: "2.0"
+  id: "<generated UUIDv7>",
+  method: "underwriteTx.generate"
+  params: {
+    maker: string             // buyer EOA / signing address
+    buyerQuoteSource: string  // QuoteCoin token account owned by maker to pay premium from
+    premium: string           // e18 offered USD premium per one option unit
+  }
+}
+```
+
+`maker` must be the buyer that signs the generated transaction and must equal
+`Quote.maker`. `premium` is written into the generated underwrite instruction.
+
+```ts
+type UnderwriteTxGenerateResponse = {
+  jsonrpc: "2.0"
+  id: string // rfqId
+  result: {
+    underwriteTx: string       // base64 encoded unsigned transaction
+    lastValidBlockHeight: number
+  }
+}
+```
+
+Before signing, the buyer SHOULD verify the option terms, premium, buyer quote
+source, seller, and transaction fee payer. The buyer MUST NOT change the
+any transaction parameters, including instructions or recent blockhash.
+The buyer signs the transaction and includes the resulting base64
+transaction in `Quote.underwriteTx`.
+
+## 3. Submit a quote for RFQ — `/maker`
 
 Use incoming RFQ JSON-RPC request id that is `rfqId` as quote JSON-RPC request id.
 
@@ -93,7 +119,7 @@ Use incoming RFQ JSON-RPC request id that is `rfqId` as quote JSON-RPC request i
 type QuoteRequest = {
   jsonrpc: "2.0"
   id: string // rfqId from RfqRequest must be used here
-  method: "quote",
+  method: "quote.submit",
   params: Quote
 }
 
@@ -105,9 +131,9 @@ type Quote = {
   maker: string              // maker EOA / signing address
   quantity: string           // e18; must equal RFQ quantity
   strike: string             // e8; must equal RFQ strike
-  usd: string                // must equal RFQ usd
+  premiumAsset: string       // must equal RFQ premiumAsset
   collateralAsset: string    // must equal RFQ collateralAsset
-  
+
   validUntil: number         // Unix seconds, no more than 40 seconds in the future (max time for solana blockhash TTL) until this quote is valid
   premium: string            // e18 USD premium per one option unit
   underwriteTx: string       // maker signed underwriteTx with premium and recentBlockhash set
@@ -138,10 +164,10 @@ type RfqResult = {
 
 - `best` — your quote is currently best.
 - `not_best` — another quote is currently better.
-- `best_received_later` — same as the best quote but received later then another quote with the same best terms
+- `best_received_later` — same as the best quote but received later than another quote with the same best terms
 - `deadline` - your quote submitted after the RFQ deadline
 
-## 3. Get positions — `/maker`
+## 4. Get positions — `/maker`
 
 ```json
 {

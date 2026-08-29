@@ -33,20 +33,12 @@ Do **not** implement these items in this task:
 - The seller is the transaction fee payer. The buyer signs first in time;
   the seller signs the unchanged transaction afterwards.
 - Buyers are unauthenticated. Their transaction signature identifies them.
-- Sellers create underwrite terms and submits them to the rfq-server, 
-  the server sends RFQs to buyers and receive offers over the same unauthenticated
-  WebSocket connection. RFQ has agregation period 2.5 seconds indicated by RFQ deadling.
-  After the deadline of the agragation period Quotes must be rejected.
-  The best Offer is routed by the rfq-server only to that seller.
-- One RFQ contains one premium-free `underwriteTx` value and must produce
-  exactly one `underwrite_call` or `underwrite_put` instruction matching it.
-  The selected buyer offer supplies the premium.
-- A transaction may also contain matching `create_series` instructions. The
-  validator does not impose a count limit on `create_series` instructions.
+- One RFQ must result in exactly one `underwrite_call` or `underwrite_put` instruction matching RFQ terms.
+- A transaction may also contain exactly one matching RFQ terms `create_series` instructions, if series does not exists during RFQ.
 - RFQs and offers are in-memory only. Do not write them to D1 or Durable
   Object storage. A disconnected seller sends a new RFQ after reconnecting.
 - Buyer offers may not be used after `validUntil`; `validUntil` must be no
-  more than 40 seconds in the future when the server receives the offer.
+  more than 60 seconds in the future when the server receives quote request.
 - Broadcast queue concurrency is one per deployed Worker environment. Do not
   partition by market or cluster.
 - An underwrite is `confirmed` after Solana returns `confirmed` commitment;
@@ -54,28 +46,33 @@ Do **not** implement these items in this task:
 
 ## RFQ flow
 
-1. Seller sends → server underwriteTerms
-2. Server builds an underwrite solana transaction with:
-   - series / strike / expiry / quantity and seller account from underwriteTerms
-   - no premium, `= 0`
-   - no buyer yet, `= Pubkey::default()`
-   - no buyer_quote_source, `= Pubkey::default()`
-   - no recentBlockhash yet, `= Hash::default()`
-   - if options series does not exists, server include create_series instruction
-3. Server creates RFQ request with the prepared solana transaction and sends this RFQ to → all market makers in specific WS asset connection
-4. Each market maker:
-   - sets premium
-   - sets its account as buyer
-   - sets its buyer_quote_source to pay premium
-   - sets new recentBlockhash
-   - signs it as buyer
-   - returns quote with partially signed underwriteTx with all instructions params finalized 
-5. Server selects best quote with highest premium
-6. Server respond to → seller with selected partially signed transaction of the best quote
-7. Seller verifies the transaction matches his underwriteTerms, adds seller signature, sends it to the server broadcast queue
-8. Server broadcasts the transaction to the blockchain
+Request, response, notification refers to WebSocket JSON-RPC 2.0 request, response and notification.
 
-FIXME: this design require maker/buyer to either modify compiled solana transaction message in place (decode base64 and then deserialize message) or build transaction himself from given underwriteTerms. Neither of it is optimal, requires either SDK for buyers or extensive docs and may result in rejected buers' built transaction by rfq-server.
+RFQ is short-lived: aggregate, seller-review, signing, simulation, and broadcast must fit comfortably inside the solana blockhash validity time.
+
+1. Seller sends underwriteTerms request (not RFQ yet) to → server with:
+  - market address
+  - call_put_marker / expiry / strike (used to derive option series address)
+  - quantity of contracts to underwrite
+  - seller account / seller_collateral_source account
+3. Server creates RFQ request from seller underwriteTerms and fan-out this RFQ to → all buyer connected to Rfq.asset  `/rfqs/<asset>` WS connection, server stores recentBlockhash and lastValidBlockHeight that will be used for this RFQ.
+3. Buyers produces Quote for this RFQ:
+    3.1 Buyer send underwriteTx.generate request to build an underwriteTx and provides:
+      - premium
+      - buyer address, must match `Quote.maker`
+      - buyer_quote_source address
+    3.2 Server generates underwriteTx from RFQ params and provided by buyer params sends them back to buyer, if series does not exists server includes create_series instruction into the generated transaction
+    3.3 Buyer validates underwriteTx, sings it, build Quote with signed underwriteTx and sends quote.submit request
+4. Server responds if a quote was accepted and if a quote is currently best, if previously best quote was out-bided by a new quote then server sends notification to previous quote buyer that the quote for current RFQ no longer best
+5. Server aggregates buyer Quotes until aggregation window deadline and right after deadline sends the best quote and corresponding signed by buyer underwriteTx to seller
+    - the best quote is the quote with highest premium
+    - quote that came first better than a quote with the same premium that came later
+7. Seller verifies the transaction matches his underwriteTerms, adds seller signature, sends it to the server broadcast queue
+8. Server validates instructions against RFQ seller underwriteTerms and buyer Quote, verifies accounts their flags and expected signatures, simulates underwriteTx and broadcasts it to the blockchain
+
+Known issues:
+- Embedding create_series in competing buyer transactions is unsafe: another transaction can create the deterministic PDA first, making the selected transaction fail. Solution: introduce later `ensure_series` that create series if not exists.
+- buyer_quote_source and seller_collateral_source might have less amount at the point underwriteTx broadcasted to the blockacin. No solution to this, it is expected issue.
 
 ## Configuration
 
