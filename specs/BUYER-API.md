@@ -1,11 +1,11 @@
-# RFQ-Server API documentation
+# Buyer API documentation
 
 ## WebSocket endpoints
 
 | Endpoint | Purpose |
 |---|---|
-| `wss://v12.rysk.finance/rfqs/<asset>` | Receive RFQs for `<asset>` - underlying-token address |
-| `wss://v12.rysk.finance/maker?asset=<BaseCoin-mint>` | Generate underwrite transactions, submit quotes, and request positions for one BaseCoin market |
+| `wss:/<faven api root>/rfqs/<asset>` | Receive RFQs for `<asset>` - base coin mint address |
+| `wss://<faven api root>/maker` | Generate underwrite transactions, submit quotes, and request positions for one BaseCoin market |
 
 ## Common JSON-RPC envelopes
 
@@ -55,7 +55,8 @@ An RFQ is a JSON-RPC request message. `RfqRequest.id` is the RFQ ID you must use
 type RfqRequest = {
   jsonrpc: "2.0"
   id: string // this is rfqId, must be generated UUIDv7
-  result: Rfq
+  method: "rfq.request",
+  params: Rfq
 }
 
 type Rfq = {
@@ -76,14 +77,13 @@ type Rfq = {
 
 ## 2. Generate an underwrite transaction — `/maker?asset=<BaseCoin-mint>`
 
-Use incoming RFQ JSON-RPC request id that is `rfqId` as the transaction-generation request id.
-
 ```ts
 type UnderwriteTxGenerateRequest = {
   jsonrpc: "2.0"
   id: string, // generated UUIDv7
   method: "underwriteTx.generate"
   params: {
+    rfqId: string             // RfqRequest.id value must be used for rfqId
     maker: string             // buyer EOA / signing address
     buyerQuoteSource: string  // QuoteCoin token account owned by maker to pay premium from
     premium: string           // e18 offered USD premium per one option unit
@@ -97,8 +97,9 @@ type UnderwriteTxGenerateRequest = {
 ```ts
 type UnderwriteTxGenerateResponse = {
   jsonrpc: "2.0"
-  id: string // rfqId
+  id: string // UnderwriteTxGenerateRequest.id
   result: {
+    rfqId: string              // RfqRequest.id and UnderwriteTxGenerateRequest.params.rfqId
     underwriteTx: string       // base64 encoded unsigned transaction
     lastValidBlockHeight: number
   }

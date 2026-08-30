@@ -1,4 +1,4 @@
-# RFQ Server Seller WebSocket API
+# Seller API documentation
 
 ## Common JSON-RPC envelopes
 
@@ -6,7 +6,7 @@ This API MUST follow [JSON-RPC 2.0 standard](https://www.jsonrpc.org/specificati
 
 Always encode raw bytes with base64 before sending them in request payload.
 
-## Endpoint `/taker?asset=<BaseCoin-mint>`
+## Endpoint `/taker`
 
 This WebSocket is for a seller to submit underwrite terms, privately receive
 buyer quotes, and submit the selected fully signed transaction. It uses JSON-RPC
@@ -14,9 +14,6 @@ buyer quotes, and submit the selected fully signed transaction. It uses JSON-RPC
 
 The server is non-custodial. It does not hold wallet keys and must not modify a
 transaction after the buyer or seller has signed it.
-
-`asset` MUST be the BaseCoin mint for every RFQ on this socket. It selects the
-market-specific broker before the WebSocket is upgraded.
 
 ## 1. Request quotes with underwrite terms
 
