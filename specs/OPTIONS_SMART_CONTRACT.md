@@ -1,10 +1,10 @@
 # Options Smart-Contract Specification
 
+Coin and token used interchangeably.
+
 ## Scope
 
 This document specifies MVP version of the on-chain smart-contract design for European, physically settled options on Solana.
-
-This document does not specify RFQ servers, market-maker APIs, web UI, indexing, or off-chain quote routing.
 
 ## Normative Language
 

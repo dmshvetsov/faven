@@ -22,9 +22,9 @@ Process in high-level flow for option seller:
 - the server infra broadcasts underwrite transaction to the blockchain
 
 Process in high-level flow for buyers:
-- Connect to both WebSocket channels: `/rfqs/<asset>` to receive RFQ requests and `/maker` to submit quotes and query their account state, current trades, and fills.
-- When an RFQ request comes from `/rfqs/<asset>` with underwrite transaction, buyer sends the signed transaction back as an intent to buy with offer expiry time and offered premium.
-- The RFQ seller can accept the quote (underwrite transaction signed by buyer); the buyer pays the quoted premium and receives the long option token.
+- Connect to `/rfqs/<asset>` to receive RFQ notifications and `/maker` to generate underwrite transactions and submit quotes.
+- When an RFQ notification arrives, choose a premium, request a server-generated underwrite transaction, sign its unchanged bytes, and submit one blind quote with its expiry time.
+- After aggregation, the seller receives the best buyer-signed transaction, adds its signature, and sends it to the server for broadcast. The buyer pays the quoted premium and receives the long option token.
 - the server infra broadcasts underwrite transaction to the blockchain
 
 ## RFQ-server Technical Stack
@@ -53,36 +53,6 @@ Ticker schema examples:
 - `SUI-USDC-SUI-5JUN26-0.97-C` options uses $SUI price, $USDC quote for base $SUI and "cash" for premium, $SUI base coin as collateral
 - `SUI-USDC-HASUI-5JUN26-0.72-P`
 - `DEEP-USDC-DEEP-5JUN26-0.035-C`
-
-## RFQ flow
-
-Request, response, notification refers to WebSocket JSON-RPC 2.0 request, response and notification.
-
-RFQ is short-lived: aggregate, seller-review, signing, simulation, and broadcast must fit comfortably inside the solana blockhash validity time.
-
-1. Seller sends underwriteTerms request (not RFQ yet) to → server with:
-    - market address
-    - call_put_marker / expiry / strike (used to derive option series address)
-    - quantity of contracts to underwrite
-    - seller account / seller_collateral_source account
-3. Server creates RFQ request from seller underwriteTerms and fan-out this RFQ to → all buyer connected to Rfq.asset  `/rfqs/<asset>` WS connection, server stores recentBlockhash and lastValidBlockHeight that will be used for this RFQ.
-3. Buyers produces Quote for this RFQ:
-    3.1 Buyer send underwriteTx.generate request to build an underwriteTx and provides:
-      - premium
-      - buyer address, must match `Quote.maker`
-      - buyer_quote_source address
-    3.2 Server generates underwriteTx from RFQ params and provided by buyer params sends them back to buyer, if series does not exists server includes create_series instruction into the generated transaction
-    3.3 Buyer validates underwriteTx, sings it, build Quote with signed underwriteTx and sends quote.submit request
-4. Server responds if a quote was accepted and if a quote is currently best, if previously best quote was out-bided by a new quote then server sends notification to previous quote buyer that the quote for current RFQ no longer best
-5. Server aggregates buyer Quotes until aggregation window deadline and right after deadline sends the best quote and corresponding signed by buyer underwriteTx to seller
-    - the best quote is the quote with highest premium
-    - quote that came first better than a quote with the same premium that came later
-7. Seller verifies the transaction matches his underwriteTerms, adds seller signature, sends it to the server broadcast queue
-8. Server validates instructions against RFQ seller underwriteTerms and buyer Quote, verifies accounts their flags and expected signatures, simulates underwriteTx and broadcasts it to the blockchain
-
-Known issues:
-- Embedding create_series in competing buyer transactions is unsafe: another transaction can create the deterministic PDA first, making the selected transaction fail. Solution: introduce later `ensure_series` that create series if not exists.
-- buyer_quote_source and seller_collateral_source might have less amount at the point underwriteTx broadcasted to the blockacin. No solution to this, it is expected issue.
 
 ## 1 Server (Off-chain infrastructure)
 
@@ -198,30 +168,65 @@ Buyers connects to public WebSocket API. No authentication is needed.
 
 #### RFQ and buyer quotes
 
-See `./RFQ-SERVER-API.md`.
+See [BUYER-API.md](./BUYER-API.md) and [SELLER-API.md](./SELLER-API.md).
 
-#### Collecting Signatures from Buyer and Seller
+#### RFQ flow
 
-Buyer receives underwrite transaction instruction terms with RFQ request, `Quote.underwriteTx` must be prepared by the rfq-server with terms requested by the seller, except `premium` that must set to 0 and `recentBlockhash` set to "all zero" hash to indicate that they must be replaced.
+Request, response, notification refers to WebSocket JSON-RPC 2.0 request, response and notification.
 
-Buyer must send the complete, buyer-partially-signed transaction in hist Quote request `Quote.underwriteTx`.
+RFQ is short-lived. The server uses one fixed 2.5-second aggregation window.
+It begins when the server fans out the RFQ notification. The server MUST reject
+`underwriteTx.generate` and `quote.submit` after the deadline with error `1005`.
 
-Buyer signed quote `Quote.underwriteTx` MUST include:
+1. Seller sends `rfq.create` to `/taker`. `params` contains a seller-generated
+   UUIDv7 `rfqId`, market address, call/put marker, expiry, strike, quantity,
+   seller, and seller collateral source. The JSON-RPC `id` is only request and
+   response correlation.
+2. The server routes creation to the RFQ Durable Object keyed by `rfqId`. It
+   validates and stores canonical seller terms, fetches and stores
+   `recentBlockhash` and `lastValidBlockHeight`, and rejects a reused `rfqId`.
+3. The RFQ Durable Object fans out `rfq.request` as a JSON-RPC notification to
+   all buyers connected to `/rfqs/<asset>`. Its params follow BUYER-API.md and
+   include `rfqId` plus priceable terms, but not seller or seller collateral
+   source.
+4. A buyer may call `underwriteTx.generate` before the deadline with `rfqId`,
+   premium, maker, and buyer quote source. The server generates a Solana v0
+   transaction with inline accounts only. It adds `create_series` when the
+   series does not exist and records the generated message for later matching.
+   A buyer may generate multiple transactions.
+5. The buyer validates and signs an unchanged generated transaction, then sends
+   `quote.submit`. A maker may have only one accepted blind quote per RFQ across
+   all connections. The quote must reference a previously generated message,
+   use a `validUntil` no more than 40 seconds ahead and later than the
+   aggregation deadline, and include the buyer signature.
+6. The server responds with the current quote status. It selects the highest
+   premium; the earliest accepted quote wins a tie. When a different buyer
+   displaces the current best quote, the server sends that buyer a best-effort
+   `quote.outbid` notification.
+7. At the deadline, the RFQ Durable Object sends the seller one private
+   `quote.best` notification containing the selected signed transaction. When
+   no quote was accepted, it sends `quote.best` with
+   `noQuoteReason: "no_buyers"`.
+8. The seller verifies the transaction, signs the unchanged bytes as fee payer,
+   and sends `underwrite.submit`. The selected quote must still be valid. An
+   expired selected quote makes the RFQ unsuccessful; the seller must start a
+   fresh RFQ.
+9. The server validates the exact v0 message against canonical seller terms and
+   the recorded buyer quote, validates required signatures and account metas,
+   simulates the final transaction, then broadcasts it unchanged.
 
-- offered `premium`
-- a fresh `recentBlockhash`
-- unchanged instruction terms except underwrite `premium` and transactions `recentBlockhash`
-- both buyer and seller public keys as required transaction signers (initialized by rfq-server and received by buyer as `Rfq.underwriteTx` request)
-- seller as fee payer
-- buyer’s signature in the transaction’s signature array
+The RFQ Durable Object MUST retain its canonical state, generated transaction
+messages, accepted quotes, and terminal tombstone for two weeks. A seller
+connection closing cancels every non-terminal RFQ from that connection; a
+reconnected seller MUST create a new RFQ. A buyer disconnect does not remove an
+already accepted quote, while outbid delivery remains best effort.
 
-`Quote.maker` identifies the buyer.
-
-The rqf-server forwards this exact base64 transaction to the RFQ’s seller. The seller adds their signature without changing anything, then submits the fully signed base64 transaction back to the server to broadcast it to the blockchain.
-
-The server verifies both signatures, simulate transaction and broadcasts those exact bytes.
-
-Neither seller nor server may alter the premium, blockhash, instructions, accounts, or fee payer after the buyer signs—any change invalidates the buyer signature.
+Known issues:
+- Embedding `create_series` in a generated transaction remains subject to a
+  deterministic-series race. `ensure_series` is out of scope for this rewrite.
+- `buyer_quote_source` and `seller_collateral_source` may have insufficient
+  funds when the transaction reaches the blockchain. This is expected; final
+  simulation detects it, but the server does not reserve balances.
 
 #### Seller Settlement Cron Job
 
@@ -239,7 +244,13 @@ TBD
 
 MUST implement Cloudflare queues for transaction submission on-chain. All transactions that require sequential broadcasting MUST use the broadcast queue to submit transaction on-chain. Transaction that do not require strict sequential order MAY NOT use broadcast queue but free to use it anyway if it simplifies the application design and maintainability.
 
-RFQ server runs one in-flight transaction per configured queue partition, waits for finality. Before acknowledging the queue message it MUST persists on-chain state in database tables from transaction receipt or/and emitted events during transactions.
+RFQ underwrite broadcasts use one queue with one in-flight transaction. The
+worker simulates and submits each accepted signed transaction once, then waits
+for `confirmed` commitment before acknowledging the message. A simulation,
+send, or confirmation failure MUST be persisted as `failed` and acknowledged;
+the worker MUST NOT retry the signed RFQ transaction. Before acknowledgement it
+MUST persist the resulting on-chain state in database tables from the receipt
+or emitted events.
 
 ## 2 Web App (Off-chain decentralized application with UI)
 

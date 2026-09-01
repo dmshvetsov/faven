@@ -20,31 +20,33 @@ transaction after the buyer or seller has signed it.
 ```ts
 type RfqCreateRequest = {
   jsonrpc: "2.0"
-  id: string // generated UUIDv7; becomes rfqId
+  id: string // generated UUIDv7
   method: "rfq.create"
   params: UnderwriteTerms 
 }
 
-type UnderwriteTerms {
-    market: string                   // configured options market address
-    expiry: number                   // Unix seconds
-    isPut: boolean
-    quantity: string                 // option contracts to underwrite
-    strike: string                   // e8 USD strike
-    seller: string                   // seller EOA / signing address
-    sellerCollateralSource: string   // collateral token account owned by seller
-  }
+type UnderwriteTerms = {
+  rfqId: string                     // MUST be generated UUIDv7
+  market: string                    // configured options market address
+  expiry: number                    // Unix seconds
+  isPut: boolean
+  quantity: string                  // 1e18 option contracts to underwrite
+  strike: string                    // 1e8 USD strike
+  seller: string                    // seller EOA / signing address
+  sellerCollateralSource: string    // collateral token account owned by seller
 }
 ```
-The server rejects an already-active rfqId, an unknown market, or invalid
+
+The server rejects an already-created and known rfqId, an unknown market, or invalid
 underwrite terms. A disconnected seller must create a new RFQ after
 reconnecting.
 
 ```ts
 type RfqCreateResponse = {
   jsonrpc: "2.0"
-  id: string // RfqCreateRequest.id, aka rfqId
+  id: string // RfqCreateRequest.id
   result: {
+    rfqId: string           // will match UnderwriteTerms.rfqId (RfqCreateRequest.params.rfqId)
     requestDeadline: number // Unix milliseconds
   }
 }
@@ -61,7 +63,10 @@ type QuoteNotification = {
   method: "quote.best"
   params: {
     rfqId: string
-    quote: Quote // exactly the type in ../specs/RFQ-SERVER-API.md with underwriteTx signed by buyer
+    quote: Quote                // exactly the type in ./BUYER-API.md with underwriteTx signed by buyer
+  } | {
+    rfqId: string
+    noQuoteReason: "no_buyers"  // received in cases when no buyers and when buyer did not provide a single valid quote
   }
 }
 ```
@@ -81,10 +86,10 @@ the premium, recent blockhash, accounts, or buyer signature.
 ```ts
 type UnderwriteSubmitRequest = {
   jsonrpc: "2.0"
-  id: string // new generated UUIDv7; not rfqId
+  id: string // new generated UUIDv7
   method: "underwrite.submit"
   params: {
-    rfqId: string
+    rfqId: string        // Must match UnderwriteTerms.rfqId (RfqCreateRequest.params.rfqId)
     underwriteTx: string // base64, signed by both buyer and this seller
   }
 }
@@ -93,8 +98,8 @@ type UnderwriteSubmitResponse = {
   jsonrpc: "2.0"
   id: string // UnderwriteSubmitRequest.id
   result?: {
-    rfqId: string
-    txHash: string // SHA-256 of signed transaction bytes
+    rfqId: string   // Must match UnderwriteTerms.rfqId (RfqCreateRequest.params.rfqId)
+    txSignature: string  // solana transaction identifier
     status: "queued" 
   }
   error?: {
@@ -110,7 +115,7 @@ type UnderwriteSubmitResponse = {
 The server accepts a submission only if it exactly matches the selected,
 unexpired quote for that RFQ, has valid buyer and seller signatures, and passes
 the transaction validation rules. The first accepted submission consumes the
-RFQ. Later submissions for that RFQ are rejected.
+RFQ. Later submissions for that RFQ will produce the same queued response.
 
 `queued` means the server has durably recorded and queued the transaction. It
 does not mean that Solana has accepted or confirmed it.
@@ -127,6 +132,7 @@ Errors use the JSON-RPC error envelope. The server SHOULD use these codes:
 | `1002` | RFQ or transaction terms do not match configured market rules. |
 | `1003` | Invalid, missing, altered, or expired transaction signatures. |
 | `1004` | Submitted transaction does not exactly match a stored buyer offer. |
+| `1005` | RFQ aggregation window has closed. |
 
 The error `data` SHOULD include `rfqId` when available and a stable,
 machine-readable reason string.
