@@ -10,12 +10,14 @@ interface __BaseEnv_Env {
     | "production:mainnet"
     | "development:testnet";
   SOLANA_CLUSTER: "devnet" | "mainnet-beta" | "testnet";
-  RFQ_BROKER?: DurableObjectNamespace<import("./src/worker").RfqBroker>;
+  ASSET_HUB?: DurableObjectNamespace<import("./src/worker").AssetHub>;
+  CONNECTION_HUB?: DurableObjectNamespace<import("./src/worker").ConnectionHub>;
+  RFQ_OBJECT?: DurableObjectNamespace<import("./src/worker").RfqDurableObject>;
 }
 declare namespace Cloudflare {
   interface GlobalProps {
     mainModule: typeof import("./src/worker");
-    durableNamespaces: "RfqBroker";
+    durableNamespaces: "AssetHub" | "ConnectionHub" | "RfqDurableObject";
   }
   interface DevelopmentEnv {
     DB: D1Database;

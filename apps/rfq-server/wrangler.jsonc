@@ -7,10 +7,19 @@
   "workers_dev": false,
 
   "durable_objects": {
-    "bindings": [{ "name": "RFQ_BROKER", "class_name": "RfqBroker" }],
+    "bindings": [
+      { "name": "ASSET_HUB", "class_name": "AssetHub" },
+      { "name": "CONNECTION_HUB", "class_name": "ConnectionHub" },
+      { "name": "RFQ_OBJECT", "class_name": "RfqDurableObject" },
+    ],
   },
 
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RfqBroker"] }],
+  "migrations": [
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["AssetHub", "ConnectionHub", "RfqDurableObject"],
+    },
+  ],
 
   "d1_databases": [
     {

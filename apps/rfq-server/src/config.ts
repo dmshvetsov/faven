@@ -85,3 +85,14 @@ export function configuredMarket(
     ) ?? null
   );
 }
+
+export function configuredMarketByAddress(
+  environment: ProductEnvironment,
+  marketAddress: string
+): MarketConfig | null {
+  return (
+    getEnvironmentConfig(environment).markets.find(
+      (market) => market.marketAddress === marketAddress
+    ) ?? null
+  );
+}

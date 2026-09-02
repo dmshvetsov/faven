@@ -17,11 +17,15 @@ import {
   type UnderwriteStatus,
 } from "./database/underwrite-repository";
 import { JsonSolanaRpc } from "./solana-rpc";
-export { RfqBroker } from "./rfq-broker";
+export { AssetHub } from "./asset-hub";
+export { ConnectionHub } from "./connection-hub";
+export { RfqDurableObject } from "./rfq-durable-object";
 
 export interface Env {
   readonly DB: D1Database;
-  readonly RFQ_BROKER: DurableObjectNamespace;
+  readonly ASSET_HUB: DurableObjectNamespace;
+  readonly CONNECTION_HUB: DurableObjectNamespace;
+  readonly RFQ_OBJECT: DurableObjectNamespace;
   readonly BROADCAST_QUEUE: Queue;
   readonly PRODUCT_ENVIRONMENT: ProductEnvironment;
   readonly SOLANA_CLUSTER: SolanaCluster;
@@ -63,9 +67,9 @@ app.get("/sellers/:sellerAddress/underwrites", async (context) => {
   return context.json({ underwrites });
 });
 
-app.get("/rfqs/:asset", (context) => brokerFetch(context));
-app.get("/maker", (context) => brokerFetch(context));
-app.get("/taker", (context) => brokerFetch(context));
+app.get("/rfqs/:asset", (context) => assetHubFetch(context));
+app.get("/maker", (context) => connectionHubFetch(context));
+app.get("/taker", (context) => connectionHubFetch(context));
 
 app.notFound((context) => context.json({ error: "Not found." }, 404));
 
@@ -90,11 +94,11 @@ export default {
   },
 } satisfies ExportedHandler<Env>;
 
-function brokerFetch(context: {
+function assetHubFetch(context: {
   readonly env: Env;
   readonly req: { readonly raw: Request };
 }): Promise<Response> {
-  const asset = brokerAssetFromRequest(context.req.raw.url);
+  const asset = assetFromRequest(context.req.raw.url);
   if (asset === null) {
     return Promise.resolve(
       new Response("BaseCoin asset is required.", { status: 400 })
@@ -105,28 +109,33 @@ function brokerFetch(context: {
       new Response("RFQ market not found.", { status: 404 })
     );
   }
-  return context.env.RFQ_BROKER.get(
-    context.env.RFQ_BROKER.idFromName(rfqBrokerName(asset))
+  return context.env.ASSET_HUB.get(
+    context.env.ASSET_HUB.idFromName(assetHubName(asset))
   ).fetch(context.req.raw);
 }
 
-export function rfqBrokerName(asset: string): string {
-  return `rfq-broker:${asset}`;
+function connectionHubFetch(context: {
+  readonly env: Env;
+  readonly req: { readonly raw: Request };
+}): Promise<Response> {
+  return context.env.CONNECTION_HUB.get(
+    context.env.CONNECTION_HUB.idFromName("connections")
+  ).fetch(context.req.raw);
 }
 
-function brokerAssetFromRequest(value: string): string | null {
+export function assetHubName(asset: string): string {
+  return `asset-hub:${asset}`;
+}
+
+function assetFromRequest(value: string): string | null {
   const url = new URL(value);
-  const { pathname } = url;
   const prefix = "/rfqs/";
-  if (pathname.startsWith(prefix)) {
+  if (url.pathname.startsWith(prefix)) {
     try {
-      return decodeURIComponent(pathname.slice(prefix.length));
+      return decodeURIComponent(url.pathname.slice(prefix.length));
     } catch {
       return "";
     }
-  }
-  if (pathname === "/maker" || pathname === "/taker") {
-    return url.searchParams.get("asset");
   }
   return null;
 }
