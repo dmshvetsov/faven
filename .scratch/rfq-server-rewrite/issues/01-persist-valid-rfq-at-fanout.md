@@ -6,5 +6,5 @@
 
 **Status:** ready-for-agent
 
-- [ ] Creation validates the RFQ against the configured Market and stores canonical terms, blockhash, last valid block height, and series state before fan-out.
-- [ ] Fan-out starts the fixed aggregation window; cancellation, alarms, restart recovery, and two-week terminal cleanup preserve the specified lifecycle.
+- [x] Creation validates the RFQ against the configured Market and stores canonical terms, blockhash, last valid block height, and series state before fan-out.
+- [x] Fan-out starts the fixed aggregation window; cancellation, alarms, restart recovery, and two-week terminal cleanup preserve the specified lifecycle.

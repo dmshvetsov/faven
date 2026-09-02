@@ -13,6 +13,39 @@ const task: BroadcastTask = {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Solana JSON-RPC broadcast adapter", () => {
+  it("reads the blockhash and Series account needed to create an RFQ", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: unknown, init: RequestInit) => {
+        const request = JSON.parse(String(init.body)) as { method: string };
+        if (request.method === "getLatestBlockhash") {
+          return Response.json({
+            jsonrpc: "2.0",
+            id: request.method,
+            result: {
+              value: {
+                blockhash: "11111111111111111111111111111111",
+                lastValidBlockHeight: 42,
+              },
+            },
+          });
+        }
+        return Response.json({
+          jsonrpc: "2.0",
+          id: request.method,
+          result: { value: null },
+        });
+      })
+    );
+    const rpc = new JsonSolanaRpc("https://solana.example");
+
+    await expect(rpc.getLatestBlockhash()).resolves.toEqual({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 42,
+    });
+    await expect(rpc.accountExists("series-address")).resolves.toBe(false);
+  });
+
   it("persists a confirmed underwrite after successful mocked RPC responses", async () => {
     const requests: unknown[] = [];
     vi.stubGlobal(

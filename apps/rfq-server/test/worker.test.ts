@@ -1,4 +1,4 @@
-import { env, SELF } from "cloudflare:test";
+import { env, evictDurableObject, SELF } from "cloudflare:test";
 import {
   generateKeyPairSigner,
   getBase64EncodedWireTransaction,
@@ -6,13 +6,161 @@ import {
   getTransactionDecoder,
   partiallySignTransaction,
 } from "@solana/kit";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { isRecord } from "../src/rfq-rpc";
 
 Object.defineProperty(globalThis, "isSecureContext", { value: true });
 
+beforeEach(() => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_input: unknown, init: RequestInit) => {
+      const request = JSON.parse(String(init.body)) as { method: string };
+      if (request.method === "getLatestBlockhash") {
+        return Response.json({
+          jsonrpc: "2.0",
+          id: request.method,
+          result: {
+            value: {
+              blockhash: "11111111111111111111111111111111",
+              lastValidBlockHeight: 100,
+            },
+          },
+        });
+      }
+      return Response.json({
+        jsonrpc: "2.0",
+        id: request.method,
+        result: { value: null },
+      });
+    })
+  );
+});
+
+afterEach(() => vi.unstubAllGlobals());
+
 describe("RFQ server", () => {
+  it("rejects seller terms outside the configured market range", async () => {
+    const seller = acceptSocket(
+      await SELF.fetch("https://example.com/taker", webSocketHeaders())
+    );
+    const response = nextSocketMessage(seller);
+    seller.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: "0193c3c5-1967-7000-8000-000000000070",
+        method: "rfq.create",
+        params: {
+          ...canonicalRfq("0193c3c5-1967-7000-8000-000000000069"),
+          quantity: "1001",
+        },
+      })
+    );
+
+    await expect(response).resolves.toMatchObject({
+      id: "0193c3c5-1967-7000-8000-000000000070",
+      error: { code: 1002, data: { reason: "quantity-outside-market-range" } },
+    });
+    seller.close();
+  });
+
+  it("rejects an RFQ with an invalid seller collateral account", async () => {
+    const seller = acceptSocket(
+      await SELF.fetch("https://example.com/taker", webSocketHeaders())
+    );
+    const response = nextSocketMessage(seller);
+    seller.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: "0193c3c5-1967-7000-8000-000000000075",
+        method: "rfq.create",
+        params: {
+          ...canonicalRfq("0193c3c5-1967-7000-8000-000000000074"),
+          sellerCollateralSource: "not-a-solana-address",
+        },
+      })
+    );
+
+    await expect(response).resolves.toMatchObject({
+      id: "0193c3c5-1967-7000-8000-000000000075",
+      error: {
+        code: 1002,
+        data: { reason: "invalid-rfq-sellerCollateralSource" },
+      },
+    });
+    seller.close();
+  });
+
+  it("uses the stored blockhash and existing Series when generating a quote", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: unknown, init: RequestInit) => {
+        const request = JSON.parse(String(init.body)) as { method: string };
+        if (request.method === "getLatestBlockhash") {
+          return Response.json({
+            jsonrpc: "2.0",
+            id: request.method,
+            result: {
+              value: {
+                blockhash: "So11111111111111111111111111111111111111112",
+                lastValidBlockHeight: 42,
+              },
+            },
+          });
+        }
+        return Response.json({
+          jsonrpc: "2.0",
+          id: request.method,
+          result: { value: { lamports: 1 } },
+        });
+      })
+    );
+    const seller = acceptSocket(
+      await SELF.fetch("https://example.com/taker", webSocketHeaders())
+    );
+    const maker = acceptSocket(
+      await SELF.fetch("https://example.com/maker", webSocketHeaders())
+    );
+    const rfqId = "0193c3c5-1967-7000-8000-000000000071";
+    const created = nextSocketMessage(seller);
+    seller.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: "0193c3c5-1967-7000-8000-000000000072",
+        method: "rfq.create",
+        params: canonicalRfq(rfqId),
+      })
+    );
+    await created;
+
+    const generated = nextSocketMessage(maker);
+    maker.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: "0193c3c5-1967-7000-8000-000000000073",
+        method: "underwriteTx.generate",
+        params: generationParams(
+          rfqId,
+          "So11111111111111111111111111111111111111112"
+        ),
+      })
+    );
+    const transaction = getTransactionDecoder().decode(
+      base64Bytes(resultField(await generated, "underwriteTx"))
+    );
+    const message = getCompiledTransactionMessageDecoder().decode(
+      new Uint8Array(transaction.messageBytes)
+    );
+
+    expect(message.lifetimeToken).toBe(
+      "So11111111111111111111111111111111111111112"
+    );
+    expect(message.instructions).toHaveLength(1);
+    seller.close();
+    maker.close();
+  });
+
   it("fans out a canonical RFQ request without seller details", async () => {
     const baseCoinMint = "So11111111111111111111111111111111111111112";
     const seller = acceptSocket(
@@ -79,6 +227,35 @@ describe("RFQ server", () => {
       })
     );
     await created;
+
+    await expect(nextSocketMessage(seller)).resolves.toEqual({
+      jsonrpc: "2.0",
+      method: "quote.best",
+      params: { rfqId, noQuoteReason: "no_buyers" },
+    });
+    seller.close();
+  }, 5_000);
+
+  it("keeps the persisted aggregation deadline after RFQ object eviction", async () => {
+    const seller = acceptSocket(
+      await SELF.fetch("https://example.com/taker", webSocketHeaders())
+    );
+    const rfqId = "0193c3c5-1967-7000-8000-000000000076";
+    const created = nextSocketMessage(seller);
+    seller.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: "0193c3c5-1967-7000-8000-000000000077",
+        method: "rfq.create",
+        params: canonicalRfq(rfqId),
+      })
+    );
+    await created;
+    const rfqObject = env.RFQ_OBJECT;
+    if (rfqObject === undefined)
+      throw new Error("RFQ object binding is missing.");
+    const rfq = rfqObject.get(rfqObject.idFromName(rfqId));
+    await evictDurableObject(rfq);
 
     await expect(nextSocketMessage(seller)).resolves.toEqual({
       jsonrpc: "2.0",

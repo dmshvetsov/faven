@@ -45,6 +45,13 @@ export interface UnderwriteTransactionInput {
   readonly seriesExists: boolean;
 }
 
+export interface OptionSeriesInput {
+  readonly market: MarketConfig;
+  readonly expiry: number;
+  readonly isPut: boolean;
+  readonly strike: string;
+}
+
 export async function buildUnderwriteTransaction(
   input: UnderwriteTransactionInput
 ): Promise<string> {
@@ -82,7 +89,7 @@ async function deriveAccounts(input: UnderwriteTransactionInput) {
   const sellerCollateralSource = address(input.sellerCollateralSource);
   const feeRecipient = address(input.market.feeRecipient);
   const [series, longMint, sellerVault] = await Promise.all([
-    deriveSeriesPda("option_series", input, programAddress, market),
+    deriveOptionSeriesAddress(input),
     deriveSeriesPda("option_series_mint", input, programAddress, market),
     deriveSellerVault(input, programAddress, market, seller),
   ]);
@@ -118,6 +125,14 @@ async function deriveAccounts(input: UnderwriteTransactionInput) {
     baseCollateralVault,
     quoteCollateralVault,
   };
+}
+
+export async function deriveOptionSeriesAddress(
+  input: OptionSeriesInput
+): Promise<ReturnType<typeof address>> {
+  const programAddress = address(input.market.optionsProgramId);
+  const market = address(input.market.marketAddress);
+  return deriveSeriesPda("option_series", input, programAddress, market);
 }
 
 function createSeriesInstruction(
@@ -196,7 +211,7 @@ function underwriteData(input: UnderwriteTransactionInput): Uint8Array {
 
 async function deriveSeriesPda(
   seed: string,
-  input: UnderwriteTransactionInput,
+  input: OptionSeriesInput,
   programAddress: ReturnType<typeof address>,
   market: ReturnType<typeof address>
 ) {

@@ -7,9 +7,13 @@ import {
 } from "@solana/kit";
 import { validate as validateUuid, version as uuidVersion } from "uuid";
 
-import { configuredMarketByAddress } from "./config";
+import { configuredMarketByAddress, type MarketConfig } from "./config";
 import { jsonRpcError, jsonRpcResult, isRecord } from "./rfq-rpc";
-import { buildUnderwriteTransaction } from "./underwrite-transaction-builder";
+import { JsonSolanaRpc } from "./solana-rpc";
+import {
+  buildUnderwriteTransaction,
+  deriveOptionSeriesAddress,
+} from "./underwrite-transaction-builder";
 import type { Env } from "./worker";
 
 const RFQ_AGGREGATION_MS = 2_500;
@@ -456,6 +460,18 @@ export class RfqDurableObject implements DurableObject {
         parsed.market
       );
       if (market === null) throw new Error("unknown-market");
+      validateRfqForMarket(parsed, market);
+      const rpc = new JsonSolanaRpc(this.env.SOLANA_RPC_URL);
+      const [latestBlockhash, seriesAddress] = await Promise.all([
+        rpc.getLatestBlockhash(),
+        deriveOptionSeriesAddress({
+          market,
+          expiry: parsed.expiry,
+          isPut: parsed.isPut,
+          strike: parsed.strike,
+        }),
+      ]);
+      const seriesExists = await rpc.accountExists(seriesAddress);
       const requestDeadline = Date.now() + RFQ_AGGREGATION_MS;
       const rfq: RfqState = {
         ...parsed,
@@ -469,9 +485,9 @@ export class RfqDurableObject implements DurableObject {
         premiumAsset: market.quoteCoinMint,
         requestDeadline,
         status: "aggregating",
-        blockhash: "11111111111111111111111111111111",
-        lastValidBlockHeight: 0,
-        seriesExists: false,
+        blockhash: latestBlockhash.blockhash,
+        lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+        seriesExists,
         generatedMessages: [],
         quotes: [],
         bestQuote: undefined,
@@ -565,6 +581,38 @@ function parseRfq(
     seller: stringField(value, "seller"),
     sellerCollateralSource: stringField(value, "sellerCollateralSource"),
   };
+}
+
+function validateRfqForMarket(
+  rfq: {
+    readonly quantity: string;
+    readonly expiry: number;
+    readonly seller: string;
+    readonly sellerCollateralSource: string;
+  },
+  market: MarketConfig
+): void {
+  const quantity = BigInt(rfq.quantity);
+  if (
+    quantity < market.quantity.minimum ||
+    quantity > market.quantity.maximum
+  ) {
+    throw new Error("quantity-outside-market-range");
+  }
+  if ((quantity - market.quantity.minimum) % market.quantity.step !== 0n) {
+    throw new Error("quantity-does-not-use-market-step");
+  }
+  if (rfq.expiry <= 0) throw new Error("invalid-rfq-expiry");
+  validateAddress(rfq.seller, "seller");
+  validateAddress(rfq.sellerCollateralSource, "sellerCollateralSource");
+}
+
+function validateAddress(value: string, field: string): void {
+  try {
+    getAddressEncoder().encode(address(value));
+  } catch {
+    throw new Error(`invalid-rfq-${field}`);
+  }
 }
 
 function rfqRequest(rfq: RfqState): Record<string, unknown> {

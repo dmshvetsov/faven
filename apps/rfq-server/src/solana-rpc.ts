@@ -3,6 +3,36 @@ import type { SolanaBroadcastRpc } from "./broadcast";
 export class JsonSolanaRpc implements SolanaBroadcastRpc {
   constructor(private readonly endpoint: string) {}
 
+  async getLatestBlockhash(): Promise<{
+    readonly blockhash: string;
+    readonly lastValidBlockHeight: number;
+  }> {
+    const result = await this.call("getLatestBlockhash", [
+      { commitment: "confirmed" },
+    ]);
+    const value = resultValue(result);
+    if (
+      typeof value.blockhash !== "string" ||
+      typeof value.lastValidBlockHeight !== "number" ||
+      !Number.isSafeInteger(value.lastValidBlockHeight)
+    ) {
+      throw new Error("Solana RPC returned an invalid latest blockhash.");
+    }
+    return {
+      blockhash: value.blockhash,
+      lastValidBlockHeight: value.lastValidBlockHeight,
+    };
+  }
+
+  async accountExists(accountAddress: string): Promise<boolean> {
+    const result = await this.call("getAccountInfo", [
+      accountAddress,
+      { commitment: "confirmed", encoding: "base64" },
+    ]);
+    const value = accountInfoValue(result);
+    return value !== null;
+  }
+
   async simulate(
     transaction: string
   ): Promise<{ readonly error: string | null }> {
@@ -89,6 +119,17 @@ function resultValue(value: unknown): Record<string, unknown> {
     throw new Error("Solana RPC returned an invalid response.");
   }
   return value.value;
+}
+
+function accountInfoValue(value: unknown): Record<string, unknown> | null {
+  if (!isRecord(value) || !("value" in value)) {
+    throw new Error("Solana RPC returned an invalid response.");
+  }
+  const account = value.value;
+  if (account !== null && !isRecord(account)) {
+    throw new Error("Solana RPC returned an invalid account.");
+  }
+  return account;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
