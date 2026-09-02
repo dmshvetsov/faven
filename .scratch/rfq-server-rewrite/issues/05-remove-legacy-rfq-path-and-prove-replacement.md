@@ -4,7 +4,7 @@
 
 **Blocked by:** 01: Persist a valid RFQ at fan-out; 02: Generate and accept v0 buyer quotes; 03: Select and queue the signed winning underwrite; 04: Make RFQ broadcasts terminal and auditable.
 
-**Status:** ready-for-agent
+**Status:** complete
 
-- [ ] Obsolete RFQ flow and contract behavior are removed without changing the dashboard's durable underwrite records.
-- [ ] Focused RFQ-server tests cover the replacement lifecycle, then formatting, linting, and the complete test suite pass.
+- [x] Obsolete RFQ flow and contract behavior are removed without changing the dashboard's durable underwrite records.
+- [x] Focused RFQ-server tests cover the replacement lifecycle, then formatting, linting, and the complete test suite pass.

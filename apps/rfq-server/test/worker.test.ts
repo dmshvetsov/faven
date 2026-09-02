@@ -41,6 +41,33 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("RFQ server", () => {
+  it("does not expose buyer positions", async () => {
+    const maker = acceptSocket(
+      await SELF.fetch("https://example.com/maker", webSocketHeaders())
+    );
+    const response = nextSocketMessage(maker);
+
+    maker.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: "0193c3c5-1967-7000-8000-000000000068",
+        method: "positions",
+        params: { account: "11111111111111111111111111111111" },
+      })
+    );
+
+    await expect(response).resolves.toEqual({
+      jsonrpc: "2.0",
+      id: "0193c3c5-1967-7000-8000-000000000068",
+      error: {
+        code: -32601,
+        message: "Unknown method.",
+        data: { reason: "unknown-method" },
+      },
+    });
+    maker.close();
+  });
+
   it("rejects seller terms outside the configured market range", async () => {
     const seller = acceptSocket(
       await SELF.fetch("https://example.com/taker", webSocketHeaders())
