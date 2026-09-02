@@ -31,11 +31,19 @@ export interface BroadcastRepository {
 export interface SolanaBroadcastRpc {
   simulate(transaction: string): Promise<{ readonly error: string | null }>;
   send(transaction: string): Promise<void>;
-  confirm(signature: string): Promise<{
-    readonly error: string | null;
-    readonly receipt: string;
-  }>;
+  confirm(signature: string): Promise<SolanaConfirmation>;
 }
+
+export type SolanaConfirmation =
+  | { readonly status: "pending" }
+  | { readonly status: "confirmed"; readonly receipt: string }
+  | {
+      readonly status: "failed";
+      readonly error: string;
+      readonly receipt: string;
+    };
+
+export class PendingConfirmationError extends Error {}
 
 export class BroadcastProcessor {
   constructor(
@@ -93,10 +101,7 @@ export class BroadcastProcessor {
   }
 
   private async confirm(task: BroadcastTask, nowMs: number): Promise<void> {
-    let confirmation: {
-      readonly error: string | null;
-      readonly receipt: string;
-    };
+    let confirmation: SolanaConfirmation;
     try {
       confirmation = await this.rpc.confirm(task.txSignature);
     } catch (error) {
@@ -109,7 +114,10 @@ export class BroadcastProcessor {
       );
       return;
     }
-    if (confirmation.error !== null) {
+    if (confirmation.status === "pending") {
+      throw new PendingConfirmationError("Solana confirmation is pending.");
+    }
+    if (confirmation.status === "failed") {
       await this.repository.markFailed(
         task.txSignature,
         task.ixIndex,

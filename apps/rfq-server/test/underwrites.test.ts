@@ -157,6 +157,37 @@ describe("underwrite repository", () => {
     ]);
   });
 
+  it("keeps one terminal failed audit entry when a queue message is delivered again", async () => {
+    const repository = new UnderwriteRepository(env.DB);
+    await repository.createQueued(underwrite);
+
+    await repository.markFailed(
+      underwrite.txSignature,
+      underwrite.ixIndex,
+      1_735_600_001_000,
+      "simulation failed"
+    );
+    await repository.markFailed(
+      underwrite.txSignature,
+      underwrite.ixIndex,
+      1_735_600_002_000,
+      "a later failure must not replace the terminal result"
+    );
+
+    await expect(
+      repository.get(underwrite.txSignature, underwrite.ixIndex)
+    ).resolves.toMatchObject({
+      status: "failed",
+      lastError: "simulation failed",
+    });
+    await expect(
+      repository.auditFor(underwrite.txSignature, underwrite.ixIndex)
+    ).resolves.toEqual([
+      { createdAtMs: underwrite.createdAtMs, status: "queued" },
+      { createdAtMs: 1_735_600_001_000, status: "failed" },
+    ]);
+  });
+
   it("updates an existing confirmed series when another underwrite confirms", async () => {
     const repository = new UnderwriteRepository(env.DB);
     const first = {

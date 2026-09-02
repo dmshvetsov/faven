@@ -1,6 +1,10 @@
 import { Hono } from "hono";
 
-import { BroadcastProcessor, type BroadcastTask } from "./broadcast";
+import {
+  BroadcastProcessor,
+  PendingConfirmationError,
+  type BroadcastTask,
+} from "./broadcast";
 import {
   configuredMarket,
   getEnvironmentConfig,
@@ -82,7 +86,11 @@ export default {
           throw new Error("Invalid broadcast queue message.");
         }
         await processor.process(message.body, Date.now());
-      } catch {
+      } catch (error) {
+        if (error instanceof PendingConfirmationError) {
+          message.retry();
+          continue;
+        }
         throw new Error("RFQ broadcast queue message could not be processed.");
       }
     }

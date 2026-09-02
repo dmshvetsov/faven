@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { BroadcastProcessor, type BroadcastTask } from "../src/broadcast";
+import {
+  BroadcastProcessor,
+  PendingConfirmationError,
+  type BroadcastTask,
+} from "../src/broadcast";
 
 const task: BroadcastTask = {
   txSignature: "transaction-signature",
@@ -33,7 +37,7 @@ describe("broadcast queue processing", () => {
       simulate: vi.fn().mockResolvedValue({ error: null }),
       send: vi.fn().mockResolvedValue(undefined),
       confirm: vi.fn().mockResolvedValue({
-        error: null,
+        status: "confirmed",
         receipt: '{"confirmationStatus":"confirmed","slot":123}',
       }),
     });
@@ -90,13 +94,30 @@ describe("broadcast queue processing", () => {
     );
   });
 
+  it("retries a pending confirmation without recording a terminal failure", async () => {
+    const repository = repositoryMock("submitted");
+    const rpc = {
+      simulate: vi.fn(),
+      send: vi.fn(),
+      confirm: vi.fn().mockResolvedValue({ status: "pending" }),
+    };
+
+    await expect(
+      new BroadcastProcessor(repository, rpc).process(task, 1_735_600_000_000)
+    ).rejects.toBeInstanceOf(PendingConfirmationError);
+
+    expect(rpc.simulate).not.toHaveBeenCalled();
+    expect(rpc.send).not.toHaveBeenCalled();
+    expect(repository.markFailed).not.toHaveBeenCalled();
+  });
+
   it("only polls for confirmation when an earlier queue attempt submitted the transaction", async () => {
     const repository = repositoryMock("submitted");
     const rpc = {
       simulate: vi.fn(),
       send: vi.fn(),
       confirm: vi.fn().mockResolvedValue({
-        error: null,
+        status: "confirmed",
         receipt: '{"confirmationStatus":"confirmed"}',
       }),
     };

@@ -73,6 +73,23 @@ describe("Solana JSON-RPC broadcast adapter", () => {
     );
   });
 
+  it("reports a transaction that has not reached confirmed as pending", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          jsonrpc: "2.0",
+          id: "getSignatureStatuses",
+          result: { value: [null] },
+        })
+      )
+    );
+
+    await expect(
+      new JsonSolanaRpc("https://solana.example").confirm(task.txSignature)
+    ).resolves.toEqual({ status: "pending" });
+  });
+
   it("persists a deterministic RPC rejection as failed", async () => {
     vi.stubGlobal(
       "fetch",

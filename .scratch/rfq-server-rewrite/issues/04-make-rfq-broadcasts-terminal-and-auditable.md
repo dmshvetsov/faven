@@ -4,7 +4,7 @@
 
 **Blocked by:** 03: Select and queue the signed winning underwrite.
 
-**Status:** ready-for-agent
+**Status:** complete
 
-- [ ] Queue processing waits for Solana `confirmed` commitment before acknowledgement and persists the resulting receipt and underwrite state.
-- [ ] Simulation, send, and confirmation failures each create one failed audit entry and are acknowledged without transient or blockhash-validity retries.
+- [x] Queue processing waits for Solana `confirmed` commitment before acknowledgement and persists the resulting receipt and underwrite state.
+- [x] Simulation, send, and confirmation failures each create one failed audit entry and are acknowledged without transient or blockhash-validity retries.

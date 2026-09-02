@@ -1,4 +1,4 @@
-import type { SolanaBroadcastRpc } from "./broadcast";
+import type { SolanaBroadcastRpc, SolanaConfirmation } from "./broadcast";
 
 export class JsonSolanaRpc implements SolanaBroadcastRpc {
   constructor(private readonly endpoint: string) {}
@@ -55,10 +55,7 @@ export class JsonSolanaRpc implements SolanaBroadcastRpc {
     ]);
   }
 
-  async confirm(signature: string): Promise<{
-    readonly error: string | null;
-    readonly receipt: string;
-  }> {
+  async confirm(signature: string): Promise<SolanaConfirmation> {
     const result = await this.call("getSignatureStatuses", [
       [signature],
       { searchTransactionHistory: true },
@@ -66,19 +63,19 @@ export class JsonSolanaRpc implements SolanaBroadcastRpc {
     if (!isRecord(result) || !Array.isArray(result.value))
       throw new Error("Solana RPC returned an invalid status.");
     const status = result.value[0];
-    if (status === null) throw new Error("network confirmation pending");
+    if (status === null) return { status: "pending" };
     if (!isRecord(status))
       throw new Error("Solana RPC returned an invalid status.");
     const receipt = JSON.stringify(status);
     if (status.err !== null)
-      return { error: JSON.stringify(status.err), receipt };
+      return { status: "failed", error: JSON.stringify(status.err), receipt };
     if (
       status.confirmationStatus !== "confirmed" &&
       status.confirmationStatus !== "finalized"
     ) {
-      throw new Error("network confirmation pending");
+      return { status: "pending" };
     }
-    return { error: null, receipt };
+    return { status: "confirmed", receipt };
   }
 
   private async call(method: string, params: unknown): Promise<unknown> {
