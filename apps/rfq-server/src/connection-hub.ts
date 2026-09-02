@@ -70,7 +70,12 @@ export class ConnectionHub implements DurableObject {
         return;
       }
       if (role === "maker" && request.method === "quote.submit") {
-        await this.submitQuote(socket, request.id, request.params);
+        await this.submitQuote(
+          socket,
+          connectionId,
+          request.id,
+          request.params
+        );
         return;
       }
       if (role === "taker" && request.method === "underwrite.submit") {
@@ -146,6 +151,7 @@ export class ConnectionHub implements DurableObject {
 
   private async submitQuote(
     socket: WebSocket,
+    connectionId: string,
     requestId: string,
     params: unknown
   ): Promise<void> {
@@ -155,7 +161,7 @@ export class ConnectionHub implements DurableObject {
     ).fetch(
       new Request("https://rfq/quote", {
         method: "POST",
-        body: JSON.stringify({ requestId, params }),
+        body: JSON.stringify({ requestId, connectionId, params }),
       })
     );
     socket.send(await responseMessage(response));

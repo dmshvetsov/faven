@@ -58,6 +58,7 @@ interface GeneratedMessage {
 
 interface StoredQuote extends Quote {
   readonly receivedAtMs: number;
+  readonly makerConnectionId: string;
 }
 
 interface Quote {
@@ -231,7 +232,11 @@ export class RfqDurableObject implements DurableObject {
 
   private async quote(request: Request): Promise<Response> {
     const body: unknown = await request.json();
-    if (!isRecord(body) || typeof body.requestId !== "string") {
+    if (
+      !isRecord(body) ||
+      typeof body.requestId !== "string" ||
+      typeof body.connectionId !== "string"
+    ) {
       return response(
         jsonRpcError(null, 1002, "RFQ request was rejected.", "invalid-request")
       );
@@ -273,7 +278,12 @@ export class RfqDurableObject implements DurableObject {
         parsedQuote.underwriteTx,
         parsedQuote.maker
       );
-      const stored: StoredQuote = { ...parsedQuote, receivedAtMs: nowMs };
+      const stored: StoredQuote = {
+        ...parsedQuote,
+        receivedAtMs: nowMs,
+        makerConnectionId: body.connectionId,
+      };
+      const displacedQuote = rfq.bestQuote;
       const bestQuote = isBetterQuote(stored, rfq.bestQuote)
         ? stored
         : rfq.bestQuote;
@@ -283,6 +293,13 @@ export class RfqDurableObject implements DurableObject {
         quotes: [...rfq.quotes, stored],
         bestQuote: selectedQuote,
       });
+      if (
+        displacedQuote !== undefined &&
+        displacedQuote.maker !== stored.maker &&
+        selectedQuote === stored
+      ) {
+        await this.notifyOutbid(displacedQuote, stored.premium);
+      }
       const providedStatus =
         selectedQuote === stored
           ? "best"
@@ -310,6 +327,36 @@ export class RfqDurableObject implements DurableObject {
           quote?.rfqId
         )
       );
+    }
+  }
+
+  private async notifyOutbid(
+    displacedQuote: StoredQuote,
+    bestQuote: string
+  ): Promise<void> {
+    try {
+      await this.env.CONNECTION_HUB.get(
+        this.env.CONNECTION_HUB.idFromName("connections")
+      ).fetch(
+        new Request("https://connection-hub/notify", {
+          method: "POST",
+          body: JSON.stringify({
+            connectionId: displacedQuote.makerConnectionId,
+            message: JSON.stringify({
+              jsonrpc: "2.0",
+              method: "quote.outbid",
+              params: {
+                rfqId: displacedQuote.rfqId,
+                bestQuote,
+                providedQuote: displacedQuote.premium,
+                providedStatus: "outbid",
+              },
+            }),
+          }),
+        })
+      );
+    } catch {
+      // Outbid notifications are best effort and must not reject a valid quote.
     }
   }
 
