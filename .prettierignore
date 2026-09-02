@@ -5,3 +5,4 @@ src/generated
 .agents
 agent
 pnpm-workspace.yaml
+*.md
