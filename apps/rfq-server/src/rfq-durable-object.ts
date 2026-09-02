@@ -57,6 +57,7 @@ interface GeneratedMessage {
   readonly maker: string;
   readonly buyerQuoteSource: string;
   readonly premium: string;
+  readonly messageHash: string;
   readonly message: string;
 }
 
@@ -88,6 +89,12 @@ export class RfqDurableObject implements DurableObject {
   ) {}
 
   async fetch(request: Request): Promise<Response> {
+    return this.state.blockConcurrencyWhile(() =>
+      this.fetchExclusively(request)
+    );
+  }
+
+  private async fetchExclusively(request: Request): Promise<Response> {
     const url = new URL(request.url);
     if (request.method !== "POST") {
       return new Response("Not found.", { status: 404 });
@@ -101,6 +108,10 @@ export class RfqDurableObject implements DurableObject {
   }
 
   async alarm(): Promise<void> {
+    await this.state.blockConcurrencyWhile(() => this.runAlarm());
+  }
+
+  private async runAlarm(): Promise<void> {
     const rfq = await this.state.storage.get<RfqState>("rfq");
     if (rfq === undefined) return;
     if (rfq.status !== "aggregating") {
@@ -204,12 +215,14 @@ export class RfqDurableObject implements DurableObject {
         seriesExists: rfq.seriesExists,
       });
       const message = transactionMessage(underwriteTx);
+      const messageHash = await generatedMessageHash(message);
       const generatedMessages = [
         ...rfq.generatedMessages,
         {
           maker: maker.maker,
           buyerQuoteSource: maker.buyerQuoteSource,
           premium: maker.premium,
+          messageHash,
           message,
         },
       ];
@@ -268,12 +281,15 @@ export class RfqDurableObject implements DurableObject {
       if (rfq.quotes.some((stored) => stored.maker === parsedQuote.maker)) {
         throw new RfqRequestError(1004, "maker-already-quoted");
       }
+      const message = transactionMessage(parsedQuote.underwriteTx);
+      const messageHash = await generatedMessageHash(message);
       if (
         !rfq.generatedMessages.some(
           (generated) =>
             generated.maker === parsedQuote.maker &&
             generated.premium === parsedQuote.premium &&
-            generated.message === transactionMessage(parsedQuote.underwriteTx)
+            generated.messageHash === messageHash &&
+            generated.message === message
         )
       ) {
         throw new RfqRequestError(1004, "transaction-was-not-generated");
@@ -775,6 +791,14 @@ function transactionMessage(encodedTransaction: string): string {
     base64Bytes(encodedTransaction)
   );
   return bytesBase64(new Uint8Array(transaction.messageBytes));
+}
+
+async function generatedMessageHash(message: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    arrayBuffer(base64Bytes(message))
+  );
+  return bytesBase64(new Uint8Array(digest));
 }
 
 function base64Bytes(value: string): Uint8Array {

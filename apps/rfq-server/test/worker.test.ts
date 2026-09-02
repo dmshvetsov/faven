@@ -346,18 +346,20 @@ describe("RFQ server", () => {
     const transaction = getTransactionDecoder().decode(
       base64Bytes(underwriteTx)
     );
-    expect(
-      getCompiledTransactionMessageDecoder().decode(
-        new Uint8Array(transaction.messageBytes)
-      ).version
-    ).toBe(0);
+    const compiledMessage = getCompiledTransactionMessageDecoder().decode(
+      new Uint8Array(transaction.messageBytes)
+    );
+    expect(compiledMessage.version).toBe(0);
+    expect("addressTableLookups" in compiledMessage).toBe(false);
+    expect(compiledMessage.instructions).toHaveLength(2);
     seller.close();
     maker.close();
   });
 
-  it("accepts a maker signature for exactly its generated transaction", async () => {
+  it("accepts a maker signature for its persisted generated transaction", async () => {
     const sellerSigner = await generateKeyPairSigner();
     const makerSigner = await generateKeyPairSigner();
+    const buyerQuoteSource = await generateKeyPairSigner();
     const seller = acceptSocket(
       await SELF.fetch("https://example.com/taker", webSocketHeaders())
     );
@@ -382,7 +384,11 @@ describe("RFQ server", () => {
         jsonrpc: "2.0",
         id: "0193c3c5-1967-7000-8000-000000000054",
         method: "underwriteTx.generate",
-        params: generationParams(rfqId, makerSigner.address),
+        params: generationParams(
+          rfqId,
+          makerSigner.address,
+          buyerQuoteSource.address
+        ),
       })
     );
     const unsignedTransaction = getTransactionDecoder().decode(
@@ -392,6 +398,11 @@ describe("RFQ server", () => {
       [makerSigner.keyPair],
       unsignedTransaction
     );
+    const rfqObject = env.RFQ_OBJECT;
+    if (rfqObject === undefined)
+      throw new Error("RFQ object binding is missing.");
+    const rfq = rfqObject.get(rfqObject.idFromName(rfqId));
+    await evictDurableObject(rfq);
     const quoteResult = nextSocketMessage(maker);
     maker.send(
       JSON.stringify({
@@ -434,6 +445,126 @@ describe("RFQ server", () => {
     await expect(queued).resolves.toMatchObject({
       id: "0193c3c5-1967-7000-8000-000000000056",
       result: { rfqId, txSignature: expect.any(String), status: "queued" },
+    });
+    seller.close();
+    maker.close();
+  });
+
+  it("accepts only one quote from a maker across simultaneous connections", async () => {
+    const sellerSigner = await generateKeyPairSigner();
+    const makerSigner = await generateKeyPairSigner();
+    const seller = acceptSocket(
+      await SELF.fetch("https://example.com/taker", webSocketHeaders())
+    );
+    const firstMaker = acceptSocket(
+      await SELF.fetch("https://example.com/maker", webSocketHeaders())
+    );
+    const secondMaker = acceptSocket(
+      await SELF.fetch("https://example.com/maker", webSocketHeaders())
+    );
+    const rfqId = "0193c3c5-1967-7000-8000-000000000078";
+    const created = nextSocketMessage(seller);
+    seller.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: "0193c3c5-1967-7000-8000-000000000079",
+        method: "rfq.create",
+        params: canonicalRfq(rfqId, sellerSigner.address),
+      })
+    );
+    await created;
+
+    const generated = nextSocketMessage(firstMaker);
+    firstMaker.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: "0193c3c5-1967-7000-8000-000000000080",
+        method: "underwriteTx.generate",
+        params: generationParams(rfqId, makerSigner.address),
+      })
+    );
+    const signedTransaction = getBase64EncodedWireTransaction(
+      await partiallySignTransaction(
+        [makerSigner.keyPair],
+        getTransactionDecoder().decode(
+          base64Bytes(resultField(await generated, "underwriteTx"))
+        )
+      )
+    );
+    const firstResponse = nextSocketMessage(firstMaker);
+    const secondResponse = nextSocketMessage(secondMaker);
+    const quote = {
+      ...quoteFields(rfqId, makerSigner.address),
+      underwriteTx: signedTransaction,
+    };
+    firstMaker.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: "0193c3c5-1967-7000-8000-000000000081",
+        method: "quote.submit",
+        params: quote,
+      })
+    );
+    secondMaker.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: "0193c3c5-1967-7000-8000-000000000082",
+        method: "quote.submit",
+        params: quote,
+      })
+    );
+
+    await expect(Promise.all([firstResponse, secondResponse])).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          result: expect.objectContaining({ rfqId, providedStatus: "best" }),
+        }),
+        expect.objectContaining({
+          error: expect.objectContaining({
+            code: 1004,
+            data: expect.objectContaining({ reason: "maker-already-quoted" }),
+          }),
+        }),
+      ])
+    );
+    seller.close();
+    firstMaker.close();
+    secondMaker.close();
+  });
+
+  it("rejects an expired signed quote", async () => {
+    const sellerSigner = await generateKeyPairSigner();
+    const makerSigner = await generateKeyPairSigner();
+    const seller = acceptSocket(
+      await SELF.fetch("https://example.com/taker", webSocketHeaders())
+    );
+    const maker = acceptSocket(
+      await SELF.fetch("https://example.com/maker", webSocketHeaders())
+    );
+    const rfqId = "0193c3c5-1967-7000-8000-000000000083";
+    const created = nextSocketMessage(seller);
+    seller.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: "0193c3c5-1967-7000-8000-000000000084",
+        method: "rfq.create",
+        params: canonicalRfq(rfqId, sellerSigner.address),
+      })
+    );
+    await created;
+
+    await expect(
+      signedQuote(
+        maker,
+        rfqId,
+        makerSigner,
+        "25",
+        "0193c3c5-1967-7000-8000-000000000085",
+        "0193c3c5-1967-7000-8000-000000000086",
+        { validUntil: Math.floor(Date.now() / 1_000) - 1 }
+      )
+    ).resolves.toMatchObject({
+      error: { code: 1003, data: { reason: "invalid-quote-validity" } },
     });
     seller.close();
     maker.close();
@@ -536,9 +667,10 @@ function canonicalRfq(
 
 function generationParams(
   rfqId: string,
-  maker: string
+  maker: string,
+  buyerQuoteSource = maker
 ): Record<string, unknown> {
-  return { rfqId, maker, buyerQuoteSource: maker, premium: "25" };
+  return { rfqId, maker, buyerQuoteSource, premium: "25" };
 }
 
 function quoteFields(rfqId: string, maker: string): Record<string, unknown> {
@@ -564,7 +696,8 @@ async function signedQuote(
   makerSigner: Awaited<ReturnType<typeof generateKeyPairSigner>>,
   premium: string,
   generationRequestId: string,
-  quoteRequestId: string
+  quoteRequestId: string,
+  quoteOverrides: Readonly<Record<string, unknown>> = {}
 ): Promise<unknown> {
   const generated = nextSocketMessage(makerSocket);
   makerSocket.send(
@@ -590,6 +723,7 @@ async function signedQuote(
       params: {
         ...quoteFields(rfqId, makerSigner.address),
         premium,
+        ...quoteOverrides,
         underwriteTx: getBase64EncodedWireTransaction(
           await partiallySignTransaction(
             [makerSigner.keyPair],

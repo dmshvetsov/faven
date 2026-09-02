@@ -6,5 +6,5 @@
 
 **Status:** ready-for-agent
 
-- [ ] Generated transactions use the stored RFQ terms and blockhash, add `create_series` only when needed, and record the exact unsigned message with maker, premium, and buyer quote source.
-- [ ] Quote submission enforces RFQ terms, signatures, expiry, the aggregation deadline, and one accepted quote per maker across connections.
+- [x] Generated transactions use the stored RFQ terms and blockhash, add `create_series` only when needed, and record the exact unsigned message with maker, premium, and buyer quote source.
+- [x] Quote submission enforces RFQ terms, signatures, expiry, the aggregation deadline, and one accepted quote per maker across connections.
