@@ -357,6 +357,7 @@ describe("RFQ server", () => {
   });
 
   it("accepts a maker signature for its persisted generated transaction", async () => {
+    await createUnderwriteTables();
     const sellerSigner = await generateKeyPairSigner();
     const makerSigner = await generateKeyPairSigner();
     const buyerQuoteSource = await generateKeyPairSigner();
@@ -425,6 +426,9 @@ describe("RFQ server", () => {
       method: "quote.best",
       params: { rfqId, quote: { premium: "25" } },
     });
+    const fullySignedTransaction = getBase64EncodedWireTransaction(
+      await partiallySignTransaction([sellerSigner.keyPair], signedTransaction)
+    );
     const queued = nextSocketMessage(seller);
     seller.send(
       JSON.stringify({
@@ -433,18 +437,40 @@ describe("RFQ server", () => {
         method: "underwrite.submit",
         params: {
           rfqId,
-          underwriteTx: getBase64EncodedWireTransaction(
-            await partiallySignTransaction(
-              [sellerSigner.keyPair],
-              signedTransaction
-            )
-          ),
+          underwriteTx: fullySignedTransaction,
         },
       })
     );
-    await expect(queued).resolves.toMatchObject({
+    const queuedResult = await queued;
+    expect(queuedResult).toMatchObject({
       id: "0193c3c5-1967-7000-8000-000000000056",
       result: { rfqId, txSignature: expect.any(String), status: "queued" },
+    });
+    const txSignature = resultField(queuedResult, "txSignature");
+    const repeated = nextSocketMessage(seller);
+    seller.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: "0193c3c5-1967-7000-8000-000000000057",
+        method: "underwrite.submit",
+        params: { rfqId, underwriteTx: fullySignedTransaction },
+      })
+    );
+    await expect(repeated).resolves.toMatchObject({
+      id: "0193c3c5-1967-7000-8000-000000000057",
+      result: { rfqId, txSignature, status: "queued" },
+    });
+    const underwrites = await SELF.fetch(
+      `https://example.com/sellers/${sellerSigner.address}/underwrites?status=queued`
+    );
+    await expect(underwrites.json()).resolves.toMatchObject({
+      underwrites: [
+        {
+          rfqId,
+          status: "queued",
+          txSignature: expect.any(String),
+        },
+      ],
     });
     seller.close();
     maker.close();
@@ -777,4 +803,43 @@ function resultField(message: unknown, field: string): string {
 
 function base64Bytes(value: string): Uint8Array {
   return Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
+}
+
+async function createUnderwriteTables(): Promise<void> {
+  await env.DB.batch([
+    env.DB.prepare(`CREATE TABLE underwrites (
+      tx_signature TEXT NOT NULL,
+      ix_index INTEGER NOT NULL,
+      rfq_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      seller_address TEXT NOT NULL,
+      buyer_address TEXT NOT NULL,
+      market_address TEXT NOT NULL,
+      series_address TEXT NOT NULL,
+      ticker TEXT NOT NULL,
+      is_put INTEGER NOT NULL,
+      expiry_ms INTEGER NOT NULL,
+      strike TEXT NOT NULL,
+      quantity TEXT NOT NULL,
+      premium TEXT NOT NULL,
+      base_coin_mint TEXT NOT NULL,
+      quote_coin_mint TEXT NOT NULL,
+      fee_recipient TEXT NOT NULL,
+      operational_fee_bps INTEGER NOT NULL,
+      created_at_ms INTEGER NOT NULL,
+      submitted_at_ms INTEGER,
+      confirmed_at_ms INTEGER,
+      confirmed_receipt TEXT,
+      last_error TEXT,
+      PRIMARY KEY (tx_signature, ix_index)
+    )`),
+    env.DB.prepare(`CREATE TABLE underwrite_audit (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tx_signature TEXT NOT NULL,
+      ix_index INTEGER NOT NULL,
+      created_at_ms INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      UNIQUE (tx_signature, ix_index, status)
+    )`),
+  ]);
 }

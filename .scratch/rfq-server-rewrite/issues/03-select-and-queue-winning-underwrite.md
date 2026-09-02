@@ -6,6 +6,6 @@
 
 **Status:** ready-for-agent
 
-- [ ] The RFQ selects the highest premium, preserves first-arrival tie-breaking, and never delivers a quote after cancellation or seller disconnect.
-- [ ] Seller submission validates the exact selected v0 message, canonical terms, account layout, required signatures, and simulation; matching repeats return the original queued result while changed bytes fail.
-- [ ] The queued underwrite and audit record are durable before the queue is admitted, with a migration only if existing durable fields are insufficient.
+- [x] The RFQ selects the highest premium, preserves first-arrival tie-breaking, and never delivers a quote after cancellation or seller disconnect.
+- [x] Seller submission validates the exact selected v0 message, canonical terms, account layout, required signatures, and simulation; matching repeats return the original queued result while changed bytes fail.
+- [x] The queued underwrite and audit record are durable before the queue is admitted, with a migration only if existing durable fields are insufficient.

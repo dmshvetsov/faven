@@ -2,7 +2,6 @@ export interface BroadcastTask {
   readonly txSignature: string;
   readonly ixIndex: number;
   readonly signedTransaction: string;
-  readonly recentBlockhash: string;
 }
 
 export interface BroadcastRepository {
@@ -36,10 +35,7 @@ export interface SolanaBroadcastRpc {
     readonly error: string | null;
     readonly receipt: string;
   }>;
-  isBlockhashValid(blockhash: string): Promise<boolean>;
 }
-
-export class RetryableBroadcastError extends Error {}
 
 export class BroadcastProcessor {
   constructor(
@@ -63,10 +59,6 @@ export class BroadcastProcessor {
       simulation = await this.rpc.simulate(task.signedTransaction);
     } catch (error) {
       const message = errorMessage(error);
-      if (isTransient(message)) {
-        await this.retryWhileBlockhashValid(task, nowMs, message);
-        return;
-      }
       await this.repository.markFailed(
         task.txSignature,
         task.ixIndex,
@@ -88,10 +80,6 @@ export class BroadcastProcessor {
       await this.rpc.send(task.signedTransaction);
     } catch (error) {
       const message = errorMessage(error);
-      if (isTransient(message)) {
-        await this.retryWhileBlockhashValid(task, nowMs, message);
-        return;
-      }
       await this.repository.markFailed(
         task.txSignature,
         task.ixIndex,
@@ -113,7 +101,6 @@ export class BroadcastProcessor {
       confirmation = await this.rpc.confirm(task.txSignature);
     } catch (error) {
       const message = errorMessage(error);
-      if (isTransient(message)) throw new RetryableBroadcastError(message);
       await this.repository.markFailed(
         task.txSignature,
         task.ixIndex,
@@ -138,41 +125,8 @@ export class BroadcastProcessor {
       confirmation.receipt
     );
   }
-
-  private async retryWhileBlockhashValid(
-    task: BroadcastTask,
-    nowMs: number,
-    retryError: string
-  ): Promise<void> {
-    let isValid: boolean;
-    try {
-      isValid = await this.rpc.isBlockhashValid(task.recentBlockhash);
-    } catch (error) {
-      await this.repository.markFailed(
-        task.txSignature,
-        task.ixIndex,
-        nowMs,
-        `Unable to verify signed transaction blockhash: ${errorMessage(error)}`
-      );
-      return;
-    }
-    if (!isValid) {
-      await this.repository.markFailed(
-        task.txSignature,
-        task.ixIndex,
-        nowMs,
-        "Signed transaction blockhash has expired."
-      );
-      return;
-    }
-    throw new RetryableBroadcastError(retryError);
-  }
 }
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Solana RPC failed.";
-}
-
-function isTransient(message: string): boolean {
-  return /network|timeout|temporar|429|50[0-9]/i.test(message);
 }

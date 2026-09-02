@@ -81,17 +81,6 @@ export class JsonSolanaRpc implements SolanaBroadcastRpc {
     return { error: null, receipt };
   }
 
-  async isBlockhashValid(blockhash: string): Promise<boolean> {
-    const result = await this.call("isBlockhashValid", [
-      blockhash,
-      { commitment: "confirmed" },
-    ]);
-    if (!isRecord(result) || typeof result.value !== "boolean") {
-      throw new Error("Solana RPC returned an invalid blockhash validity.");
-    }
-    return result.value;
-  }
-
   private async call(method: string, params: unknown): Promise<unknown> {
     const response = await fetch(this.endpoint, {
       method: "POST",

@@ -1,10 +1,6 @@
 import { Hono } from "hono";
 
-import {
-  BroadcastProcessor,
-  RetryableBroadcastError,
-  type BroadcastTask,
-} from "./broadcast";
+import { BroadcastProcessor, type BroadcastTask } from "./broadcast";
 import {
   configuredMarket,
   getEnvironmentConfig,
@@ -86,9 +82,8 @@ export default {
           throw new Error("Invalid broadcast queue message.");
         }
         await processor.process(message.body, Date.now());
-      } catch (error) {
-        if (error instanceof RetryableBroadcastError) message.retry();
-        else throw error;
+      } catch {
+        throw new Error("RFQ broadcast queue message could not be processed.");
       }
     }
   },
@@ -148,8 +143,7 @@ function isBroadcastTask(value: unknown): value is BroadcastTask {
     typeof value.txSignature === "string" &&
     typeof value.ixIndex === "number" &&
     Number.isSafeInteger(value.ixIndex) &&
-    typeof value.signedTransaction === "string" &&
-    typeof value.recentBlockhash === "string"
+    typeof value.signedTransaction === "string"
   );
 }
 

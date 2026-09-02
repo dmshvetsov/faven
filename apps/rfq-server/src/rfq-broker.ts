@@ -16,7 +16,6 @@ import {
 } from "./rfq-rpc";
 import {
   offerTransactionHash,
-  recentBlockhashForSignedTransaction,
   signedTransactionHash,
   validateSignedUnderwrite,
 } from "./transaction-validation";
@@ -275,9 +274,6 @@ export class RfqBroker implements DurableObject {
         txSignature,
         ixIndex: validated.ixIndex,
         signedTransaction: submission.underwriteTx,
-        recentBlockhash: recentBlockhashForSignedTransaction(
-          submission.underwriteTx
-        ),
       };
       try {
         await this.env.BROADCAST_QUEUE.send(task);

@@ -8,6 +8,8 @@ import {
 import { validate as validateUuid, version as uuidVersion } from "uuid";
 
 import { configuredMarketByAddress, type MarketConfig } from "./config";
+import { UnderwriteRepository } from "./database/underwrite-repository";
+import { tickerForSeries } from "./format";
 import { jsonRpcError, jsonRpcResult, isRecord } from "./rfq-rpc";
 import { JsonSolanaRpc } from "./solana-rpc";
 import {
@@ -154,7 +156,11 @@ export class RfqDurableObject implements DurableObject {
       return new Response("Invalid cancellation.", { status: 400 });
     }
     const rfq = await this.state.storage.get<RfqState>("rfq");
-    if (rfq !== undefined && rfq.sellerConnectionId === body.connectionId) {
+    if (
+      rfq !== undefined &&
+      rfq.sellerConnectionId === body.connectionId &&
+      (rfq.status === "aggregating" || rfq.status === "selected")
+    ) {
       await this.state.storage.put("rfq", { ...rfq, status: "cancelled" });
       await this.state.storage.setAlarm(Date.now() + TOMBSTONE_MS);
     }
@@ -434,9 +440,54 @@ export class RfqDurableObject implements DurableObject {
         ),
         verifyTransactionSignature(submission.underwriteTx, rfq.seller),
       ]);
+      const market = configuredMarketByAddress(
+        this.env.PRODUCT_ENVIRONMENT,
+        rfq.market
+      );
+      if (market === null) throw new Error("unknown-market");
       const txSignature = getSignatureFromTransaction(
         getTransactionDecoder().decode(base64Bytes(submission.underwriteTx))
       );
+      const seriesAddress = await deriveOptionSeriesAddress({
+        market,
+        expiry: rfq.expiry,
+        isPut: rfq.isPut,
+        strike: rfq.strike,
+      });
+      const createdAtMs = Date.now();
+      await new UnderwriteRepository(this.env.DB).createQueued({
+        txSignature,
+        ixIndex: rfq.seriesExists ? 0 : 1,
+        rfqId: rfq.rfqId,
+        sellerAddress: rfq.seller,
+        buyerAddress: rfq.bestQuote.maker,
+        marketAddress: market.marketAddress,
+        seriesAddress,
+        ticker: tickerForSeries({
+          oracleBase: market.oracleBase,
+          quoteCoinSymbol: market.quoteCoinSymbol,
+          baseCoinSymbol: market.baseCoinSymbol,
+          expirySeconds: rfq.expiry,
+          isPut: rfq.isPut,
+          strike: BigInt(rfq.strike),
+          strikeDecimals: 8,
+        }),
+        isPut: rfq.isPut,
+        expiryMs: rfq.expiry * 1_000,
+        strike: rfq.strike,
+        quantity: rfq.quantity,
+        premium: rfq.bestQuote.premium,
+        baseCoinMint: market.baseCoinMint,
+        quoteCoinMint: market.quoteCoinMint,
+        feeRecipient: market.feeRecipient,
+        operationalFeeBps: market.operationalFeeBps,
+        createdAtMs,
+      });
+      await this.env.BROADCAST_QUEUE.send({
+        txSignature,
+        ixIndex: rfq.seriesExists ? 0 : 1,
+        signedTransaction: submission.underwriteTx,
+      });
       const queued: RfqState = {
         ...rfq,
         status: "queued",

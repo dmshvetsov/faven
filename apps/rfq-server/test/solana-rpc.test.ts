@@ -7,7 +7,6 @@ const task: BroadcastTask = {
   txSignature: "seller-transaction-signature",
   ixIndex: 0,
   signedTransaction: "signed-transaction",
-  recentBlockhash: "11111111111111111111111111111111",
 };
 
 afterEach(() => vi.unstubAllGlobals());

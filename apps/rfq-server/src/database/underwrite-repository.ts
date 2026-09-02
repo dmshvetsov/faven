@@ -48,25 +48,24 @@ export class UnderwriteRepository {
   async createQueued(
     underwrite: QueuedUnderwrite
   ): Promise<{ created: boolean }> {
-    if (await this.getByTransactionSignature(underwrite.txSignature))
+    const existing = await this.getByTransactionSignature(
+      underwrite.txSignature
+    );
+    if (existing !== null) {
+      await this.recordQueuedAudit({
+        txSignature: existing.txSignature,
+        ixIndex: existing.ixIndex,
+        createdAtMs: existing.createdAtMs,
+      });
       return { created: false };
+    }
     const inserted = await this.database
       .insert(underwrites)
       .values({ ...underwrite, status: "queued" })
       .onConflictDoNothing()
       .returning({ txSignature: underwrites.txSignature });
-    if (inserted.length === 0) {
-      return { created: false };
-    }
-    await this.database
-      .insert(underwriteAudit)
-      .values({
-        txSignature: underwrite.txSignature,
-        ixIndex: underwrite.ixIndex,
-        createdAtMs: underwrite.createdAtMs,
-        status: "queued",
-      })
-      .onConflictDoNothing();
+    if (inserted.length === 0) return { created: false };
+    await this.recordQueuedAudit(underwrite);
     return { created: true };
   }
 
@@ -282,6 +281,18 @@ export class UnderwriteRepository {
         .values({ txSignature, ixIndex, createdAtMs: atMs, status: to })
         .onConflictDoNothing(),
     ]);
+  }
+
+  private async recordQueuedAudit(
+    underwrite: Pick<
+      QueuedUnderwrite,
+      "txSignature" | "ixIndex" | "createdAtMs"
+    >
+  ): Promise<void> {
+    await this.database
+      .insert(underwriteAudit)
+      .values({ ...underwrite, status: "queued" })
+      .onConflictDoNothing();
   }
 }
 
