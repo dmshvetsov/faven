@@ -91,7 +91,7 @@ export default {
           message.retry();
           continue;
         }
-        throw new Error("RFQ broadcast queue message could not be processed.");
+        logBroadcastProcessingError(error, message.body);
       }
     }
   },
@@ -157,6 +157,15 @@ function isBroadcastTask(value: unknown): value is BroadcastTask {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function logBroadcastProcessingError(error: unknown, body: unknown): void {
+  const task = isBroadcastTask(body) ? body : null;
+  console.error("RFQ broadcast queue message could not be processed.", {
+    error: error instanceof Error ? error.message : "Unknown error.",
+    ixIndex: task?.ixIndex,
+    txSignature: task?.txSignature,
+  });
 }
 
 function statusFromQuery(value: string | undefined): UnderwriteStatus | null {
