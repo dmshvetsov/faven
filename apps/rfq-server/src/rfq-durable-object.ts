@@ -13,6 +13,10 @@ import { tickerForSeries } from "./format";
 import { jsonRpcError, jsonRpcResult, isRecord } from "./rfq-rpc";
 import { JsonSolanaRpc } from "./solana-rpc";
 import {
+  FinalTransactionValidationError,
+  validateFinalUnderwriteTransaction,
+} from "./transaction-validation";
+import {
   buildUnderwriteTransaction,
   deriveOptionSeriesAddress,
 } from "./underwrite-transaction-builder";
@@ -423,6 +427,50 @@ export class RfqDurableObject implements DurableObject {
       if (rfq.bestQuote.validUntil * 1_000 <= Date.now()) {
         throw new RfqRequestError(1003, "selected-quote-expired");
       }
+      const market = configuredMarketByAddress(
+        this.env.PRODUCT_ENVIRONMENT,
+        rfq.market
+      );
+      if (market === null) throw new Error("unknown-market");
+      const selectedMessage = transactionMessage(rfq.bestQuote.underwriteTx);
+      const generated = rfq.generatedMessages.find(
+        (candidate) =>
+          candidate.message === selectedMessage &&
+          candidate.maker === rfq.bestQuote?.maker &&
+          candidate.premium === rfq.bestQuote?.premium
+      );
+      if (generated === undefined) {
+        throw new RfqRequestError(
+          1004,
+          "selected-transaction-was-not-generated"
+        );
+      }
+      const canonicalTransaction = await buildUnderwriteTransaction({
+        market,
+        expiry: rfq.expiry,
+        isPut: rfq.isPut,
+        quantity: rfq.quantity,
+        strike: rfq.strike,
+        seller: rfq.seller,
+        sellerCollateralSource: rfq.sellerCollateralSource,
+        maker: rfq.bestQuote.maker,
+        buyerQuoteSource: generated.buyerQuoteSource,
+        premium: rfq.bestQuote.premium,
+        blockhash: rfq.blockhash,
+        lastValidBlockHeight: rfq.lastValidBlockHeight,
+        seriesExists: rfq.seriesExists,
+      });
+      try {
+        validateFinalUnderwriteTransaction({
+          underwriteTx: submission.underwriteTx,
+          canonicalTransaction,
+        });
+      } catch (error) {
+        if (error instanceof FinalTransactionValidationError) {
+          throw new RfqRequestError(1003, error.message);
+        }
+        throw error;
+      }
       if (
         submission.rfqId !== rfq.rfqId ||
         transactionMessage(submission.underwriteTx) !==
@@ -440,11 +488,6 @@ export class RfqDurableObject implements DurableObject {
         ),
         verifyTransactionSignature(submission.underwriteTx, rfq.seller),
       ]);
-      const market = configuredMarketByAddress(
-        this.env.PRODUCT_ENVIRONMENT,
-        rfq.market
-      );
-      if (market === null) throw new Error("unknown-market");
       const txSignature = getSignatureFromTransaction(
         getTransactionDecoder().decode(base64Bytes(submission.underwriteTx))
       );
