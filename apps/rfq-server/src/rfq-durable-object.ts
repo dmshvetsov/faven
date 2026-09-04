@@ -144,24 +144,31 @@ export class RfqDurableObject implements DurableObject {
       status: selected === undefined ? "no_quote" : "selected",
     });
     await this.state.storage.setAlarm(Date.now() + TOMBSTONE_MS);
-    await this.env.CONNECTION_HUB.get(
-      this.env.CONNECTION_HUB.idFromName("connections")
-    ).fetch(
-      new Request("https://connection-hub/notify", {
-        method: "POST",
-        body: JSON.stringify({
-          connectionId: rfq.sellerConnectionId,
-          message: JSON.stringify({
-            jsonrpc: "2.0",
-            method: "quote.best",
-            params:
-              selected === undefined
-                ? { rfqId: rfq.rfqId, noQuoteReason: "no_buyers" }
-                : { rfqId: rfq.rfqId, quote: quoteNotification(selected) },
+    try {
+      await this.env.CONNECTION_HUB.get(
+        this.env.CONNECTION_HUB.idFromName("connections")
+      ).fetch(
+        new Request("https://connection-hub/notify", {
+          method: "POST",
+          body: JSON.stringify({
+            connectionId: rfq.sellerConnectionId,
+            message: JSON.stringify({
+              jsonrpc: "2.0",
+              method: "quote.best",
+              params:
+                selected === undefined
+                  ? { rfqId: rfq.rfqId, noQuoteReason: "no_buyers" }
+                  : { rfqId: rfq.rfqId, quote: quoteNotification(selected) },
+            }),
           }),
-        }),
-      })
-    );
+        })
+      );
+    } catch (error) {
+      console.error("Failed to notify seller of RFQ result.", {
+        error,
+        rfqId: rfq.rfqId,
+      });
+    }
   }
 
   private async cancel(request: Request): Promise<Response> {
