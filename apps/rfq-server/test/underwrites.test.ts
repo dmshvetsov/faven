@@ -54,7 +54,26 @@ describe("underwrite repository", () => {
     ).resolves.toEqual([{ createdAtMs: 1_735_600_000_000, status: "queued" }]);
   });
 
-  it("uses the fee-payer transaction signature as the idempotency key", async () => {
+  it("repairs a missing queued audit record when a transaction is retried", async () => {
+    const repository = new UnderwriteRepository(env.DB);
+    await repository.createQueued(underwrite);
+    await env.DB.prepare(
+      "DELETE FROM underwrite_audit WHERE tx_signature = ? AND ix_index = ?"
+    )
+      .bind(underwrite.txSignature, underwrite.ixIndex)
+      .run();
+
+    await expect(repository.createQueued(underwrite)).resolves.toEqual({
+      created: false,
+    });
+    await expect(
+      repository.auditFor(underwrite.txSignature, underwrite.ixIndex)
+    ).resolves.toEqual([
+      { createdAtMs: underwrite.createdAtMs, status: "queued" },
+    ]);
+  });
+
+  it("uses the transaction signature and instruction index as the idempotency key", async () => {
     const repository = new UnderwriteRepository(env.DB);
     const replayWithAnotherInstruction = {
       ...underwrite,
@@ -66,17 +85,23 @@ describe("underwrite repository", () => {
     });
     await expect(
       repository.createQueued(replayWithAnotherInstruction)
-    ).resolves.toEqual({
-      created: false,
-    });
+    ).resolves.toEqual({ created: true });
     await expect(
       repository.get(
         underwrite.txSignature,
         replayWithAnotherInstruction.ixIndex
       )
-    ).resolves.toBeNull();
+    ).resolves.toMatchObject({ status: "queued" });
     await expect(
       repository.auditFor(underwrite.txSignature, underwrite.ixIndex)
+    ).resolves.toEqual([
+      { createdAtMs: underwrite.createdAtMs, status: "queued" },
+    ]);
+    await expect(
+      repository.auditFor(
+        underwrite.txSignature,
+        replayWithAnotherInstruction.ixIndex
+      )
     ).resolves.toEqual([
       { createdAtMs: underwrite.createdAtMs, status: "queued" },
     ]);

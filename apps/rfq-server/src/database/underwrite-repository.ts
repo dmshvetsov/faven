@@ -48,24 +48,15 @@ export class UnderwriteRepository {
   async createQueued(
     underwrite: QueuedUnderwrite
   ): Promise<{ created: boolean }> {
-    const existing = await this.getByTransactionSignature(
-      underwrite.txSignature
-    );
-    if (existing !== null) {
-      await this.recordQueuedAudit({
-        txSignature: existing.txSignature,
-        ixIndex: existing.ixIndex,
-        createdAtMs: existing.createdAtMs,
-      });
-      return { created: false };
-    }
-    const inserted = await this.database
-      .insert(underwrites)
-      .values({ ...underwrite, status: "queued" })
-      .onConflictDoNothing()
-      .returning({ txSignature: underwrites.txSignature });
+    const [inserted] = await this.database.batch([
+      this.database
+        .insert(underwrites)
+        .values({ ...underwrite, status: "queued" })
+        .onConflictDoNothing()
+        .returning({ txSignature: underwrites.txSignature }),
+      this.queuedAuditInsert(underwrite),
+    ]);
     if (inserted.length === 0) return { created: false };
-    await this.recordQueuedAudit(underwrite);
     return { created: true };
   }
 
@@ -87,17 +78,6 @@ export class UnderwriteRepository {
   ): Promise<UnderwriteStatus | null> {
     const underwrite = await this.get(txSignature, ixIndex);
     return underwrite?.status ?? null;
-  }
-
-  async getByTransactionSignature(
-    txSignature: string
-  ): Promise<StoredUnderwrite | null> {
-    const result = await this.database
-      .select()
-      .from(underwrites)
-      .where(eq(underwrites.txSignature, txSignature))
-      .limit(1);
-    return result[0] ?? null;
   }
 
   async auditFor(txSignature: string, ixIndex: number) {
@@ -283,13 +263,13 @@ export class UnderwriteRepository {
     ]);
   }
 
-  private async recordQueuedAudit(
+  private queuedAuditInsert(
     underwrite: Pick<
       QueuedUnderwrite,
       "txSignature" | "ixIndex" | "createdAtMs"
     >
-  ): Promise<void> {
-    await this.database
+  ) {
+    return this.database
       .insert(underwriteAudit)
       .values({ ...underwrite, status: "queued" })
       .onConflictDoNothing();

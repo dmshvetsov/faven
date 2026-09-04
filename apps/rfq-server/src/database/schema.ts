@@ -43,7 +43,6 @@ export const underwrites = sqliteTable(
       table.status,
       table.expiryMs
     ),
-    uniqueIndex("underwrites_tx_signature_idx").on(table.txSignature),
   ]
 );
 
