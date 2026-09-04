@@ -47,6 +47,13 @@ interface RfqState {
   readonly collateralAsset: string;
   readonly premiumAsset: string;
   readonly requestDeadline: number;
+  /**
+    * aggregating - collecting quotes from buyers
+    * selected - a best quote selected from received quotes
+    * queued - RFQ underwrite transaction was queued to be broadcasted on-chain
+    * no_quote - no quotes provided, e.g. no buyers, buyer did not provide quotes
+    * cancelled - RFQ was canceled by seller or seller related reasons
+    */
   readonly status:
     "aggregating" | "selected" | "queued" | "no_quote" | "cancelled";
   readonly blockhash: string;
@@ -117,6 +124,9 @@ export class RfqDurableObject implements DurableObject {
     await this.state.blockConcurrencyWhile(() => this.runAlarm());
   }
 
+  /**
+    * logic at the end of aggregating window undefined in requestDeadline
+    */
   private async runAlarm(): Promise<void> {
     const rfq = await this.state.storage.get<RfqState>("rfq");
     if (rfq === undefined) return;
@@ -171,6 +181,9 @@ export class RfqDurableObject implements DurableObject {
     return new Response(null, { status: 204 });
   }
 
+  /**
+    * Generate solana transaction for give RFQ
+    */
   private async generate(request: Request): Promise<Response> {
     const body: unknown = await request.json();
     if (!isRecord(body) || typeof body.requestId !== "string") {
@@ -257,6 +270,9 @@ export class RfqDurableObject implements DurableObject {
     }
   }
 
+  /**
+    * Provide a quote for given RFQ
+    */
   private async quote(request: Request): Promise<Response> {
     const body: unknown = await request.json();
     if (
@@ -553,6 +569,9 @@ export class RfqDurableObject implements DurableObject {
     }
   }
 
+  /**
+    * Create a new RFQ for given undewrite terms
+    */
   private async create(request: Request): Promise<Response> {
     let requestId: string | null = null;
     let rfqId: string | undefined;
