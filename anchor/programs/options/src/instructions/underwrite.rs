@@ -7,7 +7,7 @@ use anchor_spl::{
 use crate::{
     errors::OptionsError,
     events::Underwritten,
-    math::{operational_fee, premium_total, put_collateral},
+    math,
     state::{
         current_time_ms, Market, OptionType, SellerVault, Series, SeriesState, LONG_MINT_SEED,
         MIN_UNDERWRITING_LEAD_TIME_MS, SELLER_VAULT_SEED, SERIES_SEED,
@@ -103,15 +103,15 @@ fn underwrite(
         OptionsError::InvalidFundingAccount
     );
 
-    let premium = premium_total(quantity, premium_per_contract, market.base_coin_scale)?;
-    let fee = operational_fee(premium, operational_fee_bps, market.min_fee)?;
+    let premium = math::premium_total(quantity, premium_per_contract, market.base_coin_scale)?;
+    let fee = math::operational_fee(premium, operational_fee_bps, market.min_fee)?;
     require!(fee <= premium, OptionsError::FeeExceedsPremium);
     let seller_premium = premium
         .checked_sub(fee)
         .ok_or(error!(OptionsError::ArithmeticOverflow))?;
     let collateral = match expected_option_type {
         OptionType::Call => quantity,
-        OptionType::Put => put_collateral(
+        OptionType::Put => math::put_collateral(
             quantity,
             series.strike_price,
             market.quote_coin_scale,
