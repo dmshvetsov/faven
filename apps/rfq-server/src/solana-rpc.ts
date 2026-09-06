@@ -55,6 +55,33 @@ export class JsonSolanaRpc implements SolanaBroadcastRpc {
     ]);
   }
 
+  async submitFundingTransaction(transaction: string): Promise<string> {
+    const result = await this.call("sendTransaction", [
+      transaction,
+      {
+        encoding: "base64",
+        skipPreflight: false,
+        preflightCommitment: "confirmed",
+      },
+    ]);
+    if (typeof result !== "string") {
+      throw new Error("Solana RPC returned an invalid transaction signature.");
+    }
+    return result;
+  }
+
+  async waitForConfirmedFunding(signature: string): Promise<void> {
+    for (let attempt = 0; attempt < 45; attempt += 1) {
+      const confirmation = await this.confirm(signature);
+      if (confirmation.status === "confirmed") return;
+      if (confirmation.status === "failed") {
+        throw new FundingTransactionFailedError(confirmation.error);
+      }
+      await delay(1_000);
+    }
+    throw new FundingConfirmationTimeoutError();
+  }
+
   async confirm(signature: string): Promise<SolanaConfirmation> {
     const result = await this.call("getSignatureStatuses", [
       [signature],
@@ -98,6 +125,22 @@ export class JsonSolanaRpc implements SolanaBroadcastRpc {
     if (!("result" in body)) throw new Error("Solana RPC returned no result.");
     return body.result;
   }
+}
+
+export class FundingTransactionFailedError extends Error {
+  constructor(readonly rpcError: string) {
+    super("Solana transaction failed.");
+  }
+}
+
+export class FundingConfirmationTimeoutError extends Error {
+  constructor() {
+    super("Timed out waiting for Solana transaction confirmation.");
+  }
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function resultValue(value: unknown): Record<string, unknown> {

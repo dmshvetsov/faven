@@ -1,0 +1,129 @@
+import { address, isOffCurveAddress } from "@solana/kit";
+
+import { DEVNET_FUNDING, WALLET_FUNDING_COOLDOWN_MS } from "./config";
+import { WalletFundingRepository } from "./database/wallet-funding-repository";
+import {
+  FundingConfirmationTimeoutError,
+  FundingTransactionFailedError,
+  JsonSolanaRpc,
+} from "./solana-rpc";
+import {
+  buildWalletFundingTransaction,
+  treasurySignerFromSecret,
+} from "./wallet-funding-transaction";
+
+export type WalletFundingResult =
+  | { readonly status: "invalid-wallet-address" }
+  | { readonly status: "funding-in-progress" }
+  | { readonly status: "wallet-cooldown-active"; readonly retryAt: Date }
+  | { readonly status: "funding-unavailable" }
+  | { readonly status: "funded"; readonly signature: string };
+
+export async function fundWallet(input: {
+  readonly database: D1Database;
+  readonly rpcUrl: string;
+  readonly treasuryPrivateKey: string | undefined;
+  readonly walletAddress: string;
+  readonly now?: number;
+}): Promise<WalletFundingResult> {
+  if (!isEoaWalletAddress(input.walletAddress)) {
+    return { status: "invalid-wallet-address" };
+  }
+
+  let treasury;
+  try {
+    treasury = await treasurySignerFromSecret(input.treasuryPrivateKey);
+  } catch {
+    return { status: "funding-unavailable" };
+  }
+
+  const now = input.now ?? Date.now();
+  const repository = new WalletFundingRepository(input.database);
+  const latestSuccess = await repository.latestSucceeded(input.walletAddress);
+  const retryAt =
+    latestSuccess?.completedAtMs === null || latestSuccess === null
+      ? null
+      : new Date(latestSuccess.completedAtMs + WALLET_FUNDING_COOLDOWN_MS);
+  if (retryAt !== null && retryAt.getTime() > now) {
+    return { status: "wallet-cooldown-active", retryAt };
+  }
+
+  const pending = await repository.createPending(input.walletAddress, now);
+  if (!pending.created || pending.id === null) {
+    return { status: "funding-in-progress" };
+  }
+
+  try {
+    const rpc = new JsonSolanaRpc(input.rpcUrl);
+    const latestBlockhash = await rpc.getLatestBlockhash();
+    const transaction = await buildWalletFundingTransaction({
+      recipient: input.walletAddress,
+      treasury,
+      ...latestBlockhash,
+    });
+    await repository.recordTransactionSignature(
+      pending.id,
+      transaction.signature
+    );
+    await rpc.submitFundingTransaction(transaction.wireTransaction);
+    await rpc.waitForConfirmedFunding(transaction.signature);
+    await repository.markSucceeded(
+      pending.id,
+      transaction.signature,
+      Date.now()
+    );
+    return { status: "funded", signature: transaction.signature };
+  } catch (error) {
+    if (error instanceof FundingConfirmationTimeoutError) {
+      console.error("Wallet funding confirmation timed out.", {
+        walletAddress: input.walletAddress,
+      });
+      return { status: "funding-unavailable" };
+    }
+    console.error("Wallet funding failed.", {
+      walletAddress: input.walletAddress,
+      error:
+        error instanceof FundingTransactionFailedError
+          ? error.rpcError
+          : error instanceof Error
+            ? error.message
+            : "Unknown error.",
+    });
+    await repository.markFailed(
+      pending.id,
+      sanitizedFailureReason(error),
+      Date.now()
+    );
+    return { status: "funding-unavailable" };
+  }
+}
+
+export function isEoaWalletAddress(value: string): boolean {
+  try {
+    const walletAddress = address(value);
+    return !isOffCurveAddress(walletAddress);
+  } catch {
+    return false;
+  }
+}
+
+export function retryAfterSeconds(retryAt: Date, now = Date.now()): number {
+  return Math.max(1, Math.ceil((retryAt.getTime() - now) / 1_000));
+}
+
+function sanitizedFailureReason(error: unknown): string {
+  if (error instanceof FundingTransactionFailedError) {
+    return "transaction-failed";
+  }
+  return "funding-unavailable";
+}
+
+export function fundedResponse(signature: string) {
+  return {
+    signature,
+    funded: {
+      [DEVNET_FUNDING.mint]: DEVNET_FUNDING.mintAmount.toString(),
+      solLamport: DEVNET_FUNDING.solLamports.toString(),
+    },
+  };
+}

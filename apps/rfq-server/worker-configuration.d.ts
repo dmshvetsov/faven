@@ -10,6 +10,7 @@ interface __BaseEnv_Env {
     | "production:mainnet"
     | "development:testnet";
   SOLANA_CLUSTER: "devnet" | "mainnet-beta" | "testnet";
+  TREASURY_PRIVATE_KEY?: string;
   ASSET_HUB?: DurableObjectNamespace<import("./src/worker").AssetHub>;
   CONNECTION_HUB?: DurableObjectNamespace<import("./src/worker").ConnectionHub>;
   RFQ_OBJECT?: DurableObjectNamespace<import("./src/worker").RfqDurableObject>;

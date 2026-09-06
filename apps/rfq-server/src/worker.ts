@@ -17,6 +17,11 @@ import {
   type UnderwriteStatus,
 } from "./database/underwrite-repository";
 import { JsonSolanaRpc } from "./solana-rpc";
+import {
+  fundedResponse,
+  fundWallet,
+  retryAfterSeconds,
+} from "./wallet-funding";
 export { AssetHub } from "./asset-hub";
 export { ConnectionHub } from "./connection-hub";
 export { RfqDurableObject } from "./rfq-durable-object";
@@ -31,6 +36,7 @@ export interface Env {
   readonly SOLANA_CLUSTER: SolanaCluster;
   readonly SOLANA_RPC_URL: string;
   readonly SOLANA_WEBSOCKET_URL: string;
+  readonly TREASURY_PRIVATE_KEY?: string;
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -55,6 +61,38 @@ app.use("*", async (context, next) => {
 app.get("/health", (context) =>
   context.json({ environment: context.env.PRODUCT_ENVIRONMENT, status: "ok" })
 );
+
+app.post("/wallet-fundings", async (context) => {
+  if (context.env.SOLANA_CLUSTER !== "devnet") {
+    return context.json({ error: "Not found." }, 404);
+  }
+  const walletAddress = await walletAddressFromRequest(context.req.raw);
+  if (walletAddress === null) {
+    return context.json({ error: "invalid-wallet-address" }, 400);
+  }
+  const result = await fundWallet({
+    database: context.env.DB,
+    rpcUrl: context.env.SOLANA_RPC_URL,
+    treasuryPrivateKey: context.env.TREASURY_PRIVATE_KEY,
+    walletAddress,
+  });
+  switch (result.status) {
+    case "invalid-wallet-address":
+      return context.json({ error: result.status }, 400);
+    case "funding-in-progress":
+      return context.json({ error: result.status }, 409);
+    case "wallet-cooldown-active":
+      return context.json(
+        { error: result.status, retryAt: result.retryAt.toISOString() },
+        429,
+        { "Retry-After": retryAfterSeconds(result.retryAt).toString() }
+      );
+    case "funding-unavailable":
+      return context.json({ error: result.status }, 503);
+    case "funded":
+      return context.json(fundedResponse(result.signature), 201);
+  }
+});
 
 app.get("/sellers/:sellerAddress/underwrites", async (context) => {
   const status = statusFromQuery(context.req.query("status"));
@@ -176,4 +214,16 @@ function statusFromQuery(value: string | undefined): UnderwriteStatus | null {
     value === "failed"
     ? value
     : null;
+}
+
+async function walletAddressFromRequest(
+  request: Request
+): Promise<string | null> {
+  try {
+    const body: unknown = await request.json();
+    if (!isRecord(body) || typeof body.walletAddress !== "string") return null;
+    return body.walletAddress;
+  } catch {
+    return null;
+  }
 }

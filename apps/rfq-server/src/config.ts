@@ -29,6 +29,16 @@ export interface EnvironmentConfig {
   readonly markets: readonly MarketConfig[];
 }
 
+export const DEVNET_FUNDING = {
+  mint: "4CzuKBggjWZ6SMxQgrrtJbQhJ3Vz4nXPvb7dKfvzqVQX",
+  tokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  decimals: 9,
+  mintAmount: 100_000_000_000_000n,
+  solLamports: 5_000_000n,
+} as const;
+
+export const WALLET_FUNDING_COOLDOWN_MS = 24 * 60 * 60 * 1_000;
+
 const LOCAL_ORIGIN = "http://localhost:5173";
 
 const TESTNET_SOL_MARKET: MarketConfig = {

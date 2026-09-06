@@ -79,3 +79,25 @@ export const optionSeries = sqliteTable("option_series", {
   quoteCoinMint: text("quote_coin_mint").notNull(),
   confirmedAtMs: integer("confirmed_at_ms").notNull(),
 });
+
+export type WalletFundingStatus = "pending" | "succeeded" | "failed";
+
+export const walletFundings = sqliteTable(
+  "wallet_fundings",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    walletAddress: text("wallet_address").notNull(),
+    status: text("status").$type<WalletFundingStatus>().notNull(),
+    createdAtMs: integer("created_at_ms").notNull(),
+    transactionSignature: text("transaction_signature"),
+    completedAtMs: integer("completed_at_ms"),
+    failureReason: text("failure_reason"),
+  },
+  (table) => [
+    index("wallet_fundings_wallet_succeeded_idx").on(
+      table.walletAddress,
+      table.status,
+      table.completedAtMs
+    ),
+  ]
+);
