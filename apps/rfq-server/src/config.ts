@@ -1,3 +1,5 @@
+import { baseUnits } from "./math";
+
 export type ProductEnvironment =
   | "development:testnet"
   | "development:devnet"
@@ -41,24 +43,26 @@ export const WALLET_FUNDING_COOLDOWN_MS = 24 * 60 * 60 * 1_000;
 
 const LOCAL_ORIGIN = "http://localhost:5173";
 
-const TESTNET_SOL_MARKET: MarketConfig = {
-  optionsProgramId: "11111111111111111111111111111111",
-  marketAddress: "11111111111111111111111111111111",
-  oracleBase: "SOL",
-  baseCoinMint: "So11111111111111111111111111111111111111112",
-  quoteCoinMint: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
-  baseCoinSymbol: "SOL",
-  quoteCoinSymbol: "USDC",
-  feeRecipient: "11111111111111111111111111111111",
+const FAVEN_TREASURY = "FvNtr5ZWQxcJPkknFNTSWLBtg3UhP431CxtapqSodVXe";
+
+const TESTNET_WSOL_MARKET: MarketConfig = {
+  optionsProgramId: "11111111111111111111111111111111", // TBD
+  marketAddress: "11111111111111111111111111111111", // TBD
+  oracleBase: "SOL", // Pyth SOLUSD
+  baseCoinMint: "wSoLCzXHe214cjx7CFjP1axzXyqLkEwq5Xf873hy1JP",
+  quoteCoinMint: "usdcHvyN6fvECJ1poPYkt1vztze1pQ6psC8i4cji2Ly",
+  baseCoinSymbol: "twSOL",
+  quoteCoinSymbol: "tUSDC",
+  feeRecipient: FAVEN_TREASURY,
   operationalFeeBps: 50,
-  quantity: { minimum: 1n, step: 1n, maximum: 1_000n },
+  quantity: { minimum: baseUnits(1n, 9), step: baseUnits(1n, 9), maximum: baseUnits(100n, 9) },
 };
 
 const environmentConfig: Record<ProductEnvironment, EnvironmentConfig> = {
   "development:testnet": {
     cluster: "testnet",
     allowedOrigins: [LOCAL_ORIGIN],
-    markets: [TESTNET_SOL_MARKET],
+    markets: [TESTNET_WSOL_MARKET],
   },
   "development:devnet": { cluster: "devnet", allowedOrigins: [], markets: [] },
   "staging:devnet": { cluster: "devnet", allowedOrigins: [], markets: [] },
