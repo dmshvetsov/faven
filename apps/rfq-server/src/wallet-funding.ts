@@ -39,11 +39,7 @@ export async function fundWallet(input: {
 
   const now = input.now ?? Date.now();
   const repository = new WalletFundingRepository(input.database);
-  const latestSuccess = await repository.latestSucceeded(input.walletAddress);
-  const retryAt =
-    latestSuccess?.completedAtMs === null || latestSuccess === null
-      ? null
-      : new Date(latestSuccess.completedAtMs + WALLET_FUNDING_COOLDOWN_MS);
+  const retryAt = await cooldownRetryAt(repository, input.walletAddress);
   if (retryAt !== null && retryAt.getTime() > now) {
     return { status: "wallet-cooldown-active", retryAt };
   }
@@ -51,6 +47,15 @@ export async function fundWallet(input: {
   const pending = await repository.createPending(input.walletAddress, now);
   if (!pending.created || pending.id === null) {
     return { status: "funding-in-progress" };
+  }
+
+  const retryAtAfterClaim = await cooldownRetryAt(
+    repository,
+    input.walletAddress
+  );
+  if (retryAtAfterClaim !== null && retryAtAfterClaim.getTime() > now) {
+    await repository.markFailed(pending.id, "wallet-cooldown-active", now);
+    return { status: "wallet-cooldown-active", retryAt: retryAtAfterClaim };
   }
 
   try {
@@ -96,6 +101,16 @@ export async function fundWallet(input: {
     );
     return { status: "funding-unavailable" };
   }
+}
+
+async function cooldownRetryAt(
+  repository: WalletFundingRepository,
+  walletAddress: string
+): Promise<Date | null> {
+  const latestSuccess = await repository.latestSucceeded(walletAddress);
+  return latestSuccess?.completedAtMs === null || latestSuccess === null
+    ? null
+    : new Date(latestSuccess.completedAtMs + WALLET_FUNDING_COOLDOWN_MS);
 }
 
 export function isEoaWalletAddress(value: string): boolean {

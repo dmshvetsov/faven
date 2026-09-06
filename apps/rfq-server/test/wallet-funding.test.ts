@@ -4,11 +4,13 @@ import {
   getCompiledTransactionMessageDecoder,
   getTransactionDecoder,
 } from "@solana/kit";
+import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
 import { DEVNET_FUNDING, WALLET_FUNDING_COOLDOWN_MS } from "../src/config";
 import {
   fundedResponse,
+  fundWallet,
   isEoaWalletAddress,
   retryAfterSeconds,
 } from "../src/wallet-funding";
@@ -47,6 +49,69 @@ describe("wallet funding", () => {
     expect(retryAfterSeconds(new Date(1_001), 1)).toBe(1);
     expect(retryAfterSeconds(new Date(1_002), 1)).toBe(2);
     expect(WALLET_FUNDING_COOLDOWN_MS).toBe(86_400_000);
+  });
+
+  it("rechecks the cooldown after claiming a pending funding attempt", async () => {
+    await env.DB.prepare("DROP TABLE IF EXISTS wallet_fundings").run();
+    await env.DB.prepare(
+      `CREATE TABLE wallet_fundings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        wallet_address TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at_ms INTEGER NOT NULL,
+        transaction_signature TEXT,
+        completed_at_ms INTEGER,
+        failure_reason TEXT
+      )`
+    ).run();
+    await env.DB.prepare(
+      `CREATE UNIQUE INDEX wallet_fundings_one_pending_per_wallet_idx
+       ON wallet_fundings (wallet_address) WHERE status = 'pending'`
+    ).run();
+    await env.DB.prepare(
+      `CREATE TRIGGER wallet_fundings_complete_previous_attempt
+       AFTER INSERT ON wallet_fundings
+       WHEN NEW.status = 'pending'
+       BEGIN
+         INSERT INTO wallet_fundings (
+           wallet_address, status, created_at_ms, completed_at_ms
+         ) VALUES (NEW.wallet_address, 'succeeded', NEW.created_at_ms, NEW.created_at_ms);
+       END`
+    ).run();
+    const recipient = await createKeyPairFromPrivateKeyBytes(
+      new Uint8Array(32).fill(2)
+    );
+    const treasuryPrivateKeyBytes = new Uint8Array(32).fill(1);
+    const treasury = await createKeyPairFromPrivateKeyBytes(
+      treasuryPrivateKeyBytes,
+      true
+    );
+    const treasuryPublicKeyBytes = new Uint8Array(
+      await crypto.subtle.exportKey("raw", treasury.publicKey)
+    );
+    const now = 1_000;
+
+    await expect(
+      fundWallet({
+        database: env.DB,
+        rpcUrl: "https://unused.example.com",
+        treasuryPrivateKey: JSON.stringify([
+          ...treasuryPrivateKeyBytes,
+          ...treasuryPublicKeyBytes,
+        ]),
+        walletAddress: await getAddressFromPublicKey(recipient.publicKey),
+        now,
+      })
+    ).resolves.toEqual({
+      status: "wallet-cooldown-active",
+      retryAt: new Date(now + WALLET_FUNDING_COOLDOWN_MS),
+    });
+
+    await expect(
+      env.DB.prepare(
+        "SELECT status FROM wallet_fundings WHERE status = 'pending'"
+      ).first()
+    ).resolves.toBeNull();
   });
 
   it("creates the ATA, mints tokens, then transfers SOL in one transaction", async () => {
