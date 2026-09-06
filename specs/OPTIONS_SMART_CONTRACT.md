@@ -192,7 +192,7 @@ Each `SellerVault` MUST store:
 
 Each `Long` token MUST be SPL fungible token with deterministic PDA mint address `["option_series_mint", market_address, call_put_marker, expiry, strike_price]`. This PDA is mint authority for `Long` SPL token. `Long` freeze authority is none.
 
-`Long` quantity represents a claim amount. `Long` (option contract) quantity  Contract quantities use the same decimal precision as the underlying `BaseCoin`; therefore, one whole contract represents 1.0 `BaseCoin`. Actual `BaseCoin` and `QuoteCoin` collateral MUST remain in the `Series` PDA token accounts
+`Long` quantity represents a claim amount. `Long` (option contract) quantity use the same decimal precision as the underlying `BaseCoin`; therefore, one whole contract represents 1 whole `BaseCoin` if `BaseCoin` has 9 decimals (1e9 scale) then one whole option contract is 1_000_000_000 `BaseCoin` base units. Actual `BaseCoin` and `QuoteCoin` collateral MUST remain in the `Series` PDA token accounts
 
 `Long` tokens MUST have the same decimal scale as Base Coin.
 
@@ -262,9 +262,9 @@ For a BaseCoin quantity `q` (where q is number of contracts which is the same as
 Use round down for put payouts and round up for put collateral, leaving any difference as dust.
 
 Example: call option for 1 SUI, strike $3.50, quote is USDC:
-- 1 Sui base_quantity = 1_000_000_000 because SUI has 9 decimals
-- $3.5 strike_price = 3_500_000 if strike scale is 1e6
-- quote_scale = 1_000_000 because USDC has 6 decimals
+- 1 Sui has 1_000_000_000 base units because SUI has 9 decimals, 1e9 scale
+- $3.5 strike_price = 3_500_000 because strike scale is 1e6
+- quote_scale = 1_000_000 because USDC has 6 decimals, 1e6 scale
 - base_scale = 1_000_000_000
 - strike_scale = 1_000_000
 - `ceil_div(1_000_000_000 * 3_500_000 * 1_000_000, 1_000_000_000 * 1_000_000) = 3_500_000`

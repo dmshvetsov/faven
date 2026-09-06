@@ -135,14 +135,14 @@ type Quote = {
   expiry: number             // must equal RfqRequest.params.expiry
   isPut: boolean             // must equal RfqRequest.params.isPut
   maker: string              // maker EOA / signing address
-  quantity: string           // e18; must equal RFQ quantity
-  strike: string             // e8; must equal RFQ strike
+  quantity: string           // 1e18; must equal RFQ quantity
+  strike: string             // 1e8; must equal RFQ strike
   premiumAsset: string       // must equal RFQ premiumAsset
   collateralAsset: string    // must equal RFQ collateralAsset
 
   // provided quote values
   validUntil: number         // Unix seconds, no more than 40 seconds in the future (max time for solana blockhash TTL) until this quote is valid
-  premium: string            // e18 USD premium per one option unit
+  premium: string            // 1e18 USD premium per one option unit
   underwriteTx: string       // maker signed underwriteTx, from UnderwriteTxGenerateResponse.result.underwriteTx, generated underwriteTx must not be changed or modified
 }
 ```

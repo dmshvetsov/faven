@@ -169,6 +169,8 @@ Buyers connects to public WebSocket API. No authentication is needed.
 #### RFQ and buyer quotes
 
 See [BUYER-API.md](./BUYER-API.md) and [SELLER-API.md](./SELLER-API.md).
+The durable RFQ architecture, lifecycle, transaction validation, and quote
+requirements are specified in [RFQ-SERVER-RFQ-PROCESS.md](./RFQ-SERVER-RFQ-PROCESS.md).
 
 #### RFQ flow
 
@@ -242,6 +244,9 @@ TBD
 
 #### Broadcasting transactions on-chain
 
+The RFQ underwrite queue requirements are specified in
+[RFQ-SERVER-BROADCASE-QUEUE.md](./RFQ-SERVER-BROADCASE-QUEUE.md).
+
 MUST implement Cloudflare queues for transaction submission on-chain. All transactions that require sequential broadcasting MUST use the broadcast queue to submit transaction on-chain. Transaction that do not require strict sequential order MAY NOT use broadcast queue but free to use it anyway if it simplifies the application design and maintainability.
 
 RFQ underwrite broadcasts use one queue with one in-flight transaction. The
@@ -271,24 +276,6 @@ MUST use RFQ server broadcast queue to submit transaction on-chain that requires
 ## 3 Oracles
 
 MUST use Pyth Hermess off-chain client to fetch prices for assets.
-
-### Supported Markets
-
-All possible permutations of `QuoteCoin` + `BaseCoin` listed below.
-
-List of supported `QuoteCoin`:
-- USDC
-  - mainnet mint TBD
-  - devenet mint TBD (must deploy custom tesnet coin that mimics UDSC)
-
-List of supported BaseCoin and their corresponding oracles:
-- wBTC
-  - mainnet mint `3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh`
-  - devenet mint TBD (must deploy custom tesnet coin that mimics wBTC)
-  - Pyth oracle: `Crypto.BTC/USD` symbol and price feed id `0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43`
-  - 1 option contract = 1 BTC
-  - min position size purchase is 0.005 BTC option contract, step 0.005 BTC, means that next higher min purchase will be 0.01 BTC, then 0.015 BTC, purchases must be multiplies of 0.05
-  - max position size 1 BTC
 
 ## Premium
 
