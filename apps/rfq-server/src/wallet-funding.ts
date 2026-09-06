@@ -79,26 +79,27 @@ export async function fundWallet(input: {
     );
     return { status: "funded", signature: transaction.signature };
   } catch (error) {
-    if (error instanceof FundingConfirmationTimeoutError) {
-      console.error("Wallet funding confirmation timed out.", {
-        walletAddress: input.walletAddress,
-      });
+    if (!(error instanceof FundingTransactionFailedError)) {
+      console.error(
+        "Wallet funding outcome is unknown; attempt remains pending.",
+        {
+          walletAddress: input.walletAddress,
+          error:
+            error instanceof FundingConfirmationTimeoutError
+              ? "confirmation timed out"
+              : error instanceof Error
+                ? error.message
+                : "Unknown error.",
+        }
+      );
       return { status: "funding-unavailable" };
     }
-    console.error("Wallet funding failed.", {
+
+    console.error("Wallet funding transaction failed on-chain.", {
       walletAddress: input.walletAddress,
-      error:
-        error instanceof FundingTransactionFailedError
-          ? error.rpcError
-          : error instanceof Error
-            ? error.message
-            : "Unknown error.",
+      error: error.rpcError,
     });
-    await repository.markFailed(
-      pending.id,
-      sanitizedFailureReason(error),
-      Date.now()
-    );
+    await repository.markFailed(pending.id, "transaction-failed", Date.now());
     return { status: "funding-unavailable" };
   }
 }
@@ -124,13 +125,6 @@ export function isEoaWalletAddress(value: string): boolean {
 
 export function retryAfterSeconds(retryAt: Date, now = Date.now()): number {
   return Math.max(1, Math.ceil((retryAt.getTime() - now) / 1_000));
-}
-
-function sanitizedFailureReason(error: unknown): string {
-  if (error instanceof FundingTransactionFailedError) {
-    return "transaction-failed";
-  }
-  return "funding-unavailable";
 }
 
 export function fundedResponse(signature: string) {

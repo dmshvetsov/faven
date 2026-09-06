@@ -5,7 +5,7 @@ import {
   getTransactionDecoder,
 } from "@solana/kit";
 import { env } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DEVNET_FUNDING, WALLET_FUNDING_COOLDOWN_MS } from "../src/config";
 import {
@@ -20,6 +20,8 @@ import {
 } from "../src/wallet-funding-transaction";
 
 Object.defineProperty(globalThis, "isSecureContext", { value: true });
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe("wallet funding", () => {
   it("rejects malformed treasury secrets without exposing their contents", async () => {
@@ -52,22 +54,7 @@ describe("wallet funding", () => {
   });
 
   it("rechecks the cooldown after claiming a pending funding attempt", async () => {
-    await env.DB.prepare("DROP TABLE IF EXISTS wallet_fundings").run();
-    await env.DB.prepare(
-      `CREATE TABLE wallet_fundings (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        wallet_address TEXT NOT NULL,
-        status TEXT NOT NULL,
-        created_at_ms INTEGER NOT NULL,
-        transaction_signature TEXT,
-        completed_at_ms INTEGER,
-        failure_reason TEXT
-      )`
-    ).run();
-    await env.DB.prepare(
-      `CREATE UNIQUE INDEX wallet_fundings_one_pending_per_wallet_idx
-       ON wallet_fundings (wallet_address) WHERE status = 'pending'`
-    ).run();
+    await createWalletFundingsTable();
     await env.DB.prepare(
       `CREATE TRIGGER wallet_fundings_complete_previous_attempt
        AFTER INSERT ON wallet_fundings
@@ -142,7 +129,151 @@ describe("wallet funding", () => {
       message.instructions.map((instruction) => instruction.data?.[0])
     ).toEqual([1, 7, 2]);
   });
+
+  it("keeps an attempt pending when the send response is lost", async () => {
+    await createWalletFundingsTable();
+    const { treasuryPrivateKey, walletAddress } = await fundingInput();
+    const methods: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: unknown, init: RequestInit) => {
+        const { method } = JSON.parse(String(init.body)) as { method: string };
+        methods.push(method);
+        if (method === "getLatestBlockhash") {
+          return Response.json({
+            result: {
+              value: {
+                blockhash: "11111111111111111111111111111111",
+                lastValidBlockHeight: 42,
+              },
+            },
+          });
+        }
+        return Response.json({ error: { message: "upstream timeout" } });
+      })
+    );
+
+    await expect(
+      fundWallet({
+        database: env.DB,
+        rpcUrl: "https://solana.example",
+        treasuryPrivateKey,
+        walletAddress,
+      })
+    ).resolves.toEqual({ status: "funding-unavailable" });
+
+    await expect(
+      env.DB.prepare(
+        "SELECT status, transaction_signature FROM wallet_fundings"
+      ).first()
+    ).resolves.toMatchObject({
+      status: "pending",
+      transaction_signature: expect.any(String),
+    });
+    expect(methods).toEqual(["getLatestBlockhash", "sendTransaction"]);
+    await expect(
+      fundWallet({
+        database: env.DB,
+        rpcUrl: "https://solana.example",
+        treasuryPrivateKey,
+        walletAddress,
+      })
+    ).resolves.toEqual({ status: "funding-in-progress" });
+  });
+
+  it("marks an attempt failed when Solana confirms an on-chain failure", async () => {
+    await createWalletFundingsTable();
+    const { treasuryPrivateKey, walletAddress } = await fundingInput();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: unknown, init: RequestInit) => {
+        const { method } = JSON.parse(String(init.body)) as { method: string };
+        if (method === "getLatestBlockhash") {
+          return Response.json({
+            result: {
+              value: {
+                blockhash: "11111111111111111111111111111111",
+                lastValidBlockHeight: 42,
+              },
+            },
+          });
+        }
+        if (method === "sendTransaction") {
+          return Response.json({ result: "ignored-signature" });
+        }
+        return Response.json({
+          result: {
+            value: [
+              {
+                err: { InstructionError: [0, "Custom"] },
+                confirmationStatus: "confirmed",
+              },
+            ],
+          },
+        });
+      })
+    );
+
+    await fundWallet({
+      database: env.DB,
+      rpcUrl: "https://solana.example",
+      treasuryPrivateKey,
+      walletAddress,
+    });
+
+    await expect(
+      env.DB.prepare(
+        "SELECT status, failure_reason FROM wallet_fundings"
+      ).first()
+    ).resolves.toMatchObject({
+      status: "failed",
+      failure_reason: "transaction-failed",
+    });
+  });
 });
+
+async function createWalletFundingsTable(): Promise<void> {
+  await env.DB.prepare("DROP TABLE IF EXISTS wallet_fundings").run();
+  await env.DB.prepare(
+    `CREATE TABLE wallet_fundings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      wallet_address TEXT NOT NULL,
+      status TEXT NOT NULL,
+      created_at_ms INTEGER NOT NULL,
+      transaction_signature TEXT,
+      completed_at_ms INTEGER,
+      failure_reason TEXT
+    )`
+  ).run();
+  await env.DB.prepare(
+    `CREATE UNIQUE INDEX wallet_fundings_one_pending_per_wallet_idx
+     ON wallet_fundings (wallet_address) WHERE status = 'pending'`
+  ).run();
+}
+
+async function fundingInput(): Promise<{
+  readonly treasuryPrivateKey: string;
+  readonly walletAddress: string;
+}> {
+  const treasuryPrivateKeyBytes = new Uint8Array(32).fill(1);
+  const treasury = await createKeyPairFromPrivateKeyBytes(
+    treasuryPrivateKeyBytes,
+    true
+  );
+  const treasuryPublicKeyBytes = new Uint8Array(
+    await crypto.subtle.exportKey("raw", treasury.publicKey)
+  );
+  const recipient = await createKeyPairFromPrivateKeyBytes(
+    new Uint8Array(32).fill(2)
+  );
+  return {
+    treasuryPrivateKey: JSON.stringify([
+      ...treasuryPrivateKeyBytes,
+      ...treasuryPublicKeyBytes,
+    ]),
+    walletAddress: await getAddressFromPublicKey(recipient.publicKey),
+  };
+}
 
 function base64Bytes(value: string): Uint8Array {
   return Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
