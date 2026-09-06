@@ -1,6 +1,14 @@
 # Buyer API documentation
 
-Maker(s) and buyer is used interchangeably in this document.
+Faven API for buyers.
+
+Maker and buyer is used interchangeably in this document.
+
+Token and coin is used interchangeably in this document.
+
+Underlying and base token (base token mint) is used interchangeably in this document.
+
+Raw bytes, such as transaction bytes, are encoded using base64. Unless otherwise noted, encoded strings are encoded using base64. Solana public keys are always encoded using base58.
 
 ## WebSocket endpoints
 
@@ -11,11 +19,9 @@ Maker(s) and buyer is used interchangeably in this document.
 
 This API MUST follow [JSON-RPC 2.0 standard](https://www.jsonrpc.org/specification).
 
-Always encode raw bytes with base64 before sending them in request payload.
-
 ### Outgoing request
 
-Use UUIDv7 for JSON-RPC requests ids.
+Always use UUIDv7 for JSON-RPC requests ids. Non UUIDv7 JSON-RPC envelop ids will be rejected.
 
 ```ts
 type JsonRpcRequest = {
@@ -44,9 +50,9 @@ type JsonRpcResponse = {
 }
 ```
 
-## 1. Incoming RFQ — `/rfqs/<asset>`
+## 1. Incoming RFQ — `/rfqs/<asset>` endpoint
 
-`<asset>` is the underlying solana token mint address
+`<asset>` is the underlying (base) solana token mint address
 
 ```text
 wss://<faven base API url>/rfqs/5XZw2LKTyrfvfiskJ78AMpackRjPcyCif1WhUsPDuVqQ
@@ -62,23 +68,24 @@ type RfqRequest = {
 }
 
 type Rfq = {
-  rfqId: string             // UUIDv7
-  assetAddress: string      // underlying token address
-  assetName: string         // oracle price "wBTC", "wETH", "wSOL", "JUP" etc
+  rfqId: string             // will be UUIDv7
+  assetAddress: string      // underlying (base) token mint address
+  assetName: string         // asset name from oracle "SOL", "BTC", "ETH", "JUP" etc
   chainId: string           // solana:mainnet, solana:devnet, solana:testnet
   expiry: number            // Unix seconds
   isPut: boolean
   quantity: string          // 1e18 option amount
   strike: string            // 1e8 USD strike
-  collateralAsset: string   // asset used as collateral by option seller
-  premiumAsset: string      // premium-payment token mint address
-  requestDeadline: number   // Unix milliseconds
+  collateralAsset: string   // token mint address of an asset used as collateral by an option seller
+  premiumAsset: string      // token mint address used to pay premium
+  requestDeadline: number   // RFQ window deadline, Unix milliseconds
 }
 ```
 
-## 2. Generate an underwrite transaction — `/maker`
+## 2. Generate an underwrite transaction — `/maker` endpoint
 
-Can be called multiple times per RFQ until RFQ deadline.
+Can be called multiple times per RFQ until RFQ `requestDeadline`.
+
 
 ```ts
 type UnderwriteTxGenerateRequest = {
@@ -87,37 +94,43 @@ type UnderwriteTxGenerateRequest = {
   method: "underwriteTx.generate"
   params: {
     rfqId: string             // must match Rfq.rfqId (RfqRequest.params.rfqId)
-    maker: string             // buyer EOA / signing address
-    buyerQuoteSource: string  // QuoteCoin token account owned by maker to pay premium from
-    premium: string           // e18 offered USD premium per one option unit
+    maker: string             // buyer EOA / public key of a key-pair used to sign underwriteTx and pay premium
+    buyerQuoteSource: string  // QuoteCoin token account owned by maker to pay premium from, recommended to use associated token account (ATA)
+    premium: string           // 1e18 offered Rfq.premiumAsset token premium per one whole Rfq.assetAddress option token
   }
 }
 ```
 
-`maker` must be the buyer that signs the generated transaction and must equal
-`Quote.maker`. `premium` is written into the generated underwrite instruction.
+`premium` field is a amount of premiumAsset base units paid for one whole unit of long option contract. For example an `underwriteTx` for 0.05 wBTC will have `Rfq.quantity` = 0.05 * 10 ** 18 (despite the fact that BTC has 8 decimals) with a maker's premium 764 USDC  `UnderwriteTxGenerateRequest.params.premium` must be = 764 * 10 ** 18 (despite that USDC has 6 decimals). Maker with given `underwriteTx` will pay on-chain 764 * 0.05 * 10 ** 6 USDC. Decimal scaling from RFQ to underlying token mint decimals handled by the protocol, RFQ always use 1e18 scale for premium and quantity and 1e8 for strike price, settlement always happens in underlying token mint decimals.
+
+`maker` must be the buyer that signs the generated transaction and must equal `Quote.maker`. `premium` is written into the generated underwrite instruction.
 
 ```ts
 type UnderwriteTxGenerateResponse = {
   jsonrpc: "2.0"
   id: string // will match UnderwriteTxGenerateRequest.id
   result: {
-    rfqId: string              // will match UnderwriteTxGenerateRequest.params.rfqId
-    underwriteTx: string       // v0 solana transaction without ALT, base64 encoded unsigned transaction
+    rfqId: string                 // will match UnderwriteTxGenerateRequest.params.rfqId
+    underwriteTx: string          // v0 solana transaction without ALT, base64 encoded unsigned transaction
     lastValidBlockHeight: number
   }
 }
 ```
 
-Before signing, the buyer SHOULD verify the option terms, premium, buyer quote
-source, seller, and transaction fee payer. The buyer MUST NOT change the
-any transaction parameters, including instructions or recent blockhash.
+Before signing, the buyer SHOULD verify the option terms: premium, quantity,
+assetAddress, premiumAsset, expiry, isPut flag, strike.
+The buyer MUST NOT change any transaction parameters,
+including instructions or recent blockhash.
+
 The buyer signs the transaction and includes the resulting base64
-transaction in `Quote.underwriteTx`.
+encoded transaction in `Quote.underwriteTx`.
 
-## 3. Submit a quote for RFQ — `/maker`
+## 3. Submit a quote for RFQ — `/maker` endpoint
 
-Each buyer quote blindly without knowing quotes of other buyers until buyer provides his quote. Buyer only allowed to provide quote only once per RFQ, provided quote is final and duplicates or update are not allowed. Invalid quotes, including quotes sent after deadline, do not consume one quote per RFQ slot.
+Each buyer quote blindly without knowing quotes of other buyers.
+Buyer allowed to provide quote only once per RFQ. Provided quote is final,
+duplicates or updates are not allowed. Invalid quotes,
+including quotes sent after deadline, do not consume one quote per RFQ slot.
 
 ```ts
 type QuoteRequest = {
@@ -128,26 +141,13 @@ type QuoteRequest = {
 }
 
 type Quote = {
-  // values that must be reused from RfqRequest.params notification
   rfqId: string              // must equal to RfqRequest.params.rfqId
-  assetAddress: string       // must equal RfqRequest.params.assetAddress
   chainId: string            // must equal RfqRequest.params.chainId
-  expiry: number             // must equal RfqRequest.params.expiry
-  isPut: boolean             // must equal RfqRequest.params.isPut
-  maker: string              // maker EOA / signing address
-  quantity: string           // 1e18; must equal RFQ quantity
-  strike: string             // 1e8; must equal RFQ strike
-  premiumAsset: string       // must equal RFQ premiumAsset
-  collateralAsset: string    // must equal RFQ collateralAsset
-
-  // provided quote values
   validUntil: number         // Unix seconds, no more than 40 seconds in the future (max time for solana blockhash TTL) until this quote is valid
   premium: string            // 1e18 USD premium per one option unit
-  underwriteTx: string       // maker signed underwriteTx, from UnderwriteTxGenerateResponse.result.underwriteTx, generated underwriteTx must not be changed or modified
+  underwriteTx: string       // signed by maker underwriteTx, from UnderwriteTxGenerateResponse.result.underwriteTx, generated underwriteTx must not be changed or modified
 }
 ```
-
-`underwriteTx` is used to validate correctness of Quote.signature and whole QuoteRequest.params (Quote) against sent RfqRequest.result
 
 `validUntil` (counted in seconds) must be bigger than `RfqRequest.params.requestDeadline` (counted in milliseconds), but validity must not exceed Solana max block height validity thus `validUntil` max value is 40 seconds - `RfqRequest.params.requestDeadline + 40_000 milliseconds`.
 
@@ -163,8 +163,8 @@ type QuoteResponse = {
 ```ts
 type QuoteResult = {
   rfqId: string                                               // will match Quote.rfqId (QuoteRequest.params.rfqId)
-  bestQuote: string                                           // best quote tat was sent to seller
-  providedQuote: string                                       // quote provided connected maker (you)
+  bestQuote: string                                           // 1e18 best quote premium tat was sent to seller
+  providedQuote: string                                       // quote provided in QuoteRequest
   providedStatus: "best" | "not_best" | "best_received_later"
 }
 ```
@@ -175,7 +175,8 @@ QuoteRequest.providedStatus:
 - `best_received_later` — same as the best quote but received later than another quote with the same best terms
 - `outbid` - other buyer provided better quote and out-bided previous best quote
 
-If buyer's previous best quote was out-bided by another buyer during the aggregation window, the server MUST send notification to the buyer who was out-bided
+If buyer's previous best quote was out-bided by another buyer during the aggregation window,
+the protocol rfq-server SHOULD send notification to the buyer who was out-bided
 
 ```ts
 type QuoteOutbidNotification = {
@@ -190,7 +191,9 @@ type QuoteOutbidNotification = {
 }
 ```
 
-## 4. Get positions — `/maker`
+## 4. Get positions — `/maker` endpoint
+
+> Not yet implemented WIP
 
 ```ts
 {
@@ -203,7 +206,13 @@ type QuoteOutbidNotification = {
 }
 ```
 
-### RFQ errors `1xxx` codes
+## 5. Exercise - `/maker` endpoint
+
+> Not yet implemented TBD
+
+## Errors codes
+
+- `1xxx` RFQ errors
 
 | Code | Meaning |
 |---|---|
@@ -213,5 +222,4 @@ type QuoteOutbidNotification = {
 | `1004` | Submitted transaction does not exactly match a stored buyer offer. |
 | `1005` | RFQ aggregation window has closed. |
 
-The error `data` SHOULD include `rfqId` when available and a stable,
-machine-readable reason string.
+The error `data` SHOULD include `rfqId` when available.
