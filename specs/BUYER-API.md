@@ -101,9 +101,11 @@ type UnderwriteTxGenerateRequest = {
 }
 ```
 
-`premium` field is a amount of premiumAsset base units paid for one whole unit of long option contract. For example an `underwriteTx` for 0.05 wBTC will have `Rfq.quantity` = 0.05 * 10 ** 18 (despite the fact that BTC has 8 decimals) with a maker's premium 764 USDC  `UnderwriteTxGenerateRequest.params.premium` must be = 764 * 10 ** 18 (despite that USDC has 6 decimals). Maker with given `underwriteTx` will pay on-chain 764 * 0.05 * 10 ** 6 USDC. Decimal scaling from RFQ to underlying token mint decimals handled by the protocol, RFQ always use 1e18 scale for premium and quantity and 1e8 for strike price, settlement always happens in underlying token mint decimals.
+`premium` field is a amount of premiumAsset base units paid for one whole underlying token unit option contract. For example an `underwriteTx` for 0.05 wBTC will have `Rfq.quantity` = 0.05 * 10 ** 18 (despite the fact that BTC has 8 decimals) with a maker's premium $764 whole USDC `UnderwriteTxGenerateRequest.params.premium` must be = 764 * 10 ** 18 (despite that USDC premiumAsset has 6 decimals). Maker with given `underwriteTx` will pay on-chain $764 * 0.05 quantity * (10 ** 6 USDC decimals) = 38_200_000 USDC base units or $38.2 whole units. The protocol handles decimal scaling from RFQ scales to corresponding underlying token mint decimal scales, RFQ always use 1e18 scale for premium and quantity and 1e8 for strike price, on-chain settlement always happens in underlying token mint decimals. 
 
-`maker` must be the buyer that signs the generated transaction and must equal `Quote.maker`. `premium` is written into the generated underwrite instruction.
+One whole option contract token represents one whole underlying token.
+
+`maker` must be the buyer that signs the generated transaction. `premium` and other option terms are written into the generated underwrite instruction.
 
 ```ts
 type UnderwriteTxGenerateResponse = {
@@ -144,7 +146,6 @@ type Quote = {
   rfqId: string              // must equal to RfqRequest.params.rfqId
   chainId: string            // must equal RfqRequest.params.chainId
   validUntil: number         // Unix seconds, no more than 40 seconds in the future (max time for solana blockhash TTL) until this quote is valid
-  premium: string            // 1e18 USD premium per one option unit
   underwriteTx: string       // signed by maker underwriteTx, from UnderwriteTxGenerateResponse.result.underwriteTx, generated underwriteTx must not be changed or modified
 }
 ```
