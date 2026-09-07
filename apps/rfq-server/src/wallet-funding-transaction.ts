@@ -16,14 +16,12 @@ import {
   signTransaction,
 } from "@solana/kit";
 
-import { DEVNET_FUNDING } from "./config";
+import { DEVNET_FUNDING, type DevnetSplTokenFunding } from "./config";
 
 const ASSOCIATED_TOKEN_PROGRAM = address(
   "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
 );
 const SYSTEM_PROGRAM = address("11111111111111111111111111111111");
-const TOKEN_PROGRAM = address(DEVNET_FUNDING.tokenProgram);
-const FUNDING_MINT = address(DEVNET_FUNDING.mint);
 
 export interface TreasurySigner {
   readonly address: string;
@@ -77,16 +75,35 @@ export async function buildWalletFundingTransaction(input: {
 }): Promise<WalletFundingTransaction> {
   const treasury = address(input.treasury.address);
   const recipient = address(input.recipient);
-  const recipientAta = await deriveAssociatedTokenAddress(recipient);
+  const splFunding = DEVNET_FUNDING.filter(
+    (funding) => funding.kind === "spl-token"
+  );
+  const solFunding = DEVNET_FUNDING.find((funding) => funding.kind === "sol");
+  const tokenInstructions = await Promise.all(
+    splFunding.map(async (funding) => {
+      const recipientAta = await deriveAssociatedTokenAddress(
+        recipient,
+        funding
+      );
+      return [
+        createAssociatedTokenAccountIdempotentInstruction(
+          treasury,
+          recipientAta,
+          recipient,
+          funding
+        ),
+        mintToInstruction(treasury, recipientAta, funding),
+      ];
+    })
+  );
   const message = appendTransactionMessageInstructions(
     [
-      createAssociatedTokenAccountIdempotentInstruction(
-        treasury,
-        recipientAta,
-        recipient
-      ),
-      mintToInstruction(treasury, recipientAta),
-      systemTransferInstruction(treasury, recipient),
+      ...tokenInstructions.flat(),
+      ...(solFunding === undefined
+        ? []
+        : [
+            systemTransferInstruction(treasury, recipient, solFunding.lamports),
+          ]),
     ],
     setTransactionMessageLifetimeUsingBlockhash(
       {
@@ -109,13 +126,18 @@ export async function buildWalletFundingTransaction(input: {
   };
 }
 
-async function deriveAssociatedTokenAddress(owner: ReturnType<typeof address>) {
+async function deriveAssociatedTokenAddress(
+  owner: ReturnType<typeof address>,
+  funding: DevnetSplTokenFunding
+) {
+  const tokenProgram = address(funding.tokenProgram);
+  const mint = address(funding.mint);
   const [associatedTokenAddress] = await getProgramDerivedAddress({
     programAddress: ASSOCIATED_TOKEN_PROGRAM,
     seeds: [
       getAddressEncoder().encode(owner),
-      getAddressEncoder().encode(TOKEN_PROGRAM),
-      getAddressEncoder().encode(FUNDING_MINT),
+      getAddressEncoder().encode(tokenProgram),
+      getAddressEncoder().encode(mint),
     ],
   });
   return associatedTokenAddress;
@@ -124,8 +146,11 @@ async function deriveAssociatedTokenAddress(owner: ReturnType<typeof address>) {
 function createAssociatedTokenAccountIdempotentInstruction(
   payer: ReturnType<typeof address>,
   associatedTokenAccount: ReturnType<typeof address>,
-  owner: ReturnType<typeof address>
+  owner: ReturnType<typeof address>,
+  funding: DevnetSplTokenFunding
 ) {
+  const tokenProgram = address(funding.tokenProgram);
+  const mint = address(funding.mint);
   return {
     programAddress: ASSOCIATED_TOKEN_PROGRAM,
     data: new Uint8Array([1]),
@@ -133,25 +158,28 @@ function createAssociatedTokenAccountIdempotentInstruction(
       writableSigner(payer),
       writable(associatedTokenAccount),
       readonly(owner),
-      readonly(FUNDING_MINT),
+      readonly(mint),
       readonly(SYSTEM_PROGRAM),
-      readonly(TOKEN_PROGRAM),
+      readonly(tokenProgram),
     ],
   };
 }
 
 function mintToInstruction(
   authority: ReturnType<typeof address>,
-  recipientAta: ReturnType<typeof address>
+  recipientAta: ReturnType<typeof address>,
+  funding: DevnetSplTokenFunding
 ) {
+  const tokenProgram = address(funding.tokenProgram);
+  const mint = address(funding.mint);
   const data = new Uint8Array(9);
   data[0] = 7;
-  writeU64(data, 1, DEVNET_FUNDING.mintAmount);
+  writeU64(data, 1, funding.mintAmount);
   return {
-    programAddress: TOKEN_PROGRAM,
+    programAddress: tokenProgram,
     data,
     accounts: [
-      writable(FUNDING_MINT),
+      writable(mint),
       writable(recipientAta),
       readonlySigner(authority),
     ],
@@ -160,11 +188,12 @@ function mintToInstruction(
 
 function systemTransferInstruction(
   sender: ReturnType<typeof address>,
-  recipient: ReturnType<typeof address>
+  recipient: ReturnType<typeof address>,
+  lamports: bigint
 ) {
   const data = new Uint8Array(12);
   new DataView(data.buffer).setUint32(0, 2, true);
-  writeU64(data, 4, DEVNET_FUNDING.solLamports);
+  writeU64(data, 4, lamports);
   return {
     programAddress: SYSTEM_PROGRAM,
     data,

@@ -131,8 +131,14 @@ export function fundedResponse(signature: string) {
   return {
     signature,
     funded: {
-      [DEVNET_FUNDING.mint]: DEVNET_FUNDING.mintAmount.toString(),
-      solLamport: DEVNET_FUNDING.solLamports.toString(),
+      ...Object.fromEntries(
+        DEVNET_FUNDING.filter((funding) => funding.kind === "spl-token").map(
+          (funding) => [funding.mint, funding.mintAmount.toString()]
+        )
+      ),
+      solLamport: DEVNET_FUNDING.find(
+        (funding) => funding.kind === "sol"
+      )?.lamports.toString(),
     },
   };
 }

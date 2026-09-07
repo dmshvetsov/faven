@@ -34,22 +34,38 @@ export interface EnvironmentConfig {
   readonly markets: readonly MarketConfig[];
 }
 
-export const DEVNET_FUNDING = [{
-  mint: "wSoLCzXHe214cjx7CFjP1axzXyqLkEwq5Xf873hy1JP",
-  tokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-  decimals: 9,
-  mintAmount: 1_000_000_000_000n,
-}, {
-  mint: "usdcHvyN6fvECJ1poPYkt1vztze1pQ6psC8i4cji2Ly",
-  tokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-  decimals: 6,
-  mintAmount: 250_000_000n,
-}, {
-  mint: "SOL",
-  tokenProgram: "11111111111111111111111111111111",
-  decimals: 9,
-  mintAmount: 5_000_000n,
-}] as const;
+export type DevnetFunding = DevnetSplTokenFunding | DevnetSolFunding;
+
+export interface DevnetSplTokenFunding {
+  readonly kind: "spl-token";
+  readonly mint: string;
+  readonly tokenProgram: string;
+  readonly decimals: number;
+  readonly mintAmount: bigint;
+}
+
+export interface DevnetSolFunding {
+  readonly kind: "sol";
+  readonly lamports: bigint;
+}
+
+export const DEVNET_FUNDING: readonly DevnetFunding[] = [
+  {
+    kind: "spl-token",
+    mint: "wSoLCzXHe214cjx7CFjP1axzXyqLkEwq5Xf873hy1JP",
+    tokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    decimals: 9,
+    mintAmount: 1_000_000_000_000n,
+  },
+  {
+    kind: "spl-token",
+    mint: "usdcHvyN6fvECJ1poPYkt1vztze1pQ6psC8i4cji2Ly",
+    tokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    decimals: 6,
+    mintAmount: 250_000_000n,
+  },
+  { kind: "sol", lamports: 5_000_000n },
+];
 
 export const WALLET_FUNDING_COOLDOWN_MS = 24 * 60 * 60 * 1_000;
 

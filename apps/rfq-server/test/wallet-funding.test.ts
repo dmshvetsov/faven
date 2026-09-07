@@ -7,7 +7,7 @@ import {
 import { env } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { DEVNET_FUNDING, WALLET_FUNDING_COOLDOWN_MS } from "../src/config";
+import { WALLET_FUNDING_COOLDOWN_MS } from "../src/config";
 import {
   fundedResponse,
   fundWallet,
@@ -44,7 +44,8 @@ describe("wallet funding", () => {
     expect(fundedResponse("signature")).toEqual({
       signature: "signature",
       funded: {
-        [DEVNET_FUNDING.mint]: "100000000000000",
+        wSoLCzXHe214cjx7CFjP1axzXyqLkEwq5Xf873hy1JP: "1000000000000",
+        usdcHvyN6fvECJ1poPYkt1vztze1pQ6psC8i4cji2Ly: "250000000",
         solLamport: "5000000",
       },
     });
@@ -101,7 +102,7 @@ describe("wallet funding", () => {
     ).resolves.toBeNull();
   });
 
-  it("creates the ATA, mints tokens, then transfers SOL in one transaction", async () => {
+  it("creates ATAs, mints every configured SPL token, then transfers SOL", async () => {
     const treasuryKeyPair = await createKeyPairFromPrivateKeyBytes(
       new Uint8Array(32).fill(1)
     );
@@ -124,10 +125,10 @@ describe("wallet funding", () => {
       new Uint8Array(decoded.messageBytes)
     );
 
-    expect(message.instructions).toHaveLength(3);
+    expect(message.instructions).toHaveLength(5);
     expect(
       message.instructions.map((instruction) => instruction.data?.[0])
-    ).toEqual([1, 7, 2]);
+    ).toEqual([1, 7, 1, 7, 2]);
   });
 
   it("keeps an attempt pending when the send response is lost", async () => {
