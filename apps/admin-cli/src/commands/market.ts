@@ -4,10 +4,8 @@ import {
   appendTransactionMessageInstructions,
   blockhash,
   compileTransaction,
-  createKeyPairFromBytes,
   createTransactionMessage,
   getAddressEncoder,
-  getAddressFromPublicKey,
   getBase64EncodedWireTransaction,
   getProgramDerivedAddress,
   getSignatureFromTransaction,
@@ -18,11 +16,20 @@ import {
 } from "@solana/kit";
 import { confirm, isCancel, log, note, text } from "@clack/prompts";
 
+import {
+  fetchMint,
+  LEGACY_TOKEN_PROGRAM,
+  loadSolanaCliConfig,
+  loadSolanaKeypair,
+  loadSolanaRpcClient,
+  type SolanaKeypair,
+  type SolanaMint,
+  type SolanaRpcClient,
+} from "../solana.js";
 import { unavailableCommand } from "./unavailable-command.js";
 import type { CliCommand, CommandGroup } from "./types.js";
 
 const OPTIONS_PROGRAM = address("Hvfbh72e5Vw1Gq8RFsKLj9BLq1m5y9WFzBYn2fZR8UYX");
-const TOKEN_PROGRAM = address("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 const SYSTEM_PROGRAM = address("11111111111111111111111111111111");
 const CREATE_MARKET_DISCRIMINATOR = new Uint8Array([
   103, 226, 97, 235, 200, 188, 251, 254,
@@ -31,13 +38,8 @@ const MAX_MINT_DECIMALS = 19;
 const MAX_BPS = 10_000;
 const U64_MAX = (1n << 64n) - 1n;
 
-interface AdminSigner {
-  readonly address: Address;
-  readonly keyPair: CryptoKeyPair;
-}
-
 interface PreparedMarket {
-  readonly admin: AdminSigner;
+  readonly admin: SolanaKeypair;
   readonly feedId: Uint8Array;
   readonly feedIdHex: string;
   readonly quoteMint: Address;
@@ -60,9 +62,9 @@ const createMarketCommand: CliCommand = {
       throw new Error("faven market create does not accept arguments.");
     }
 
-    const rpcEndpoint = requiredEnvironment("SOLANA_RPC_URL");
-    validateRpcEndpoint(rpcEndpoint);
-    const admin = await adminSignerFromEnvironment();
+    const solanaConfig = await loadSolanaCliConfig();
+    const rpc = loadSolanaRpcClient(solanaConfig);
+    const admin = await loadSolanaKeypair(solanaConfig);
 
     const feedIdInput = await promptText({
       message: "Pyth TWAP feed ID",
@@ -112,10 +114,12 @@ const createMarketCommand: CliCommand = {
       );
     }
 
-    const [quoteMintDetails] = await Promise.all([
-      fetchMint(rpcEndpoint, quoteMint, "Quote mint"),
-      fetchMint(rpcEndpoint, baseMint, "Base mint"),
+    const [quoteMintDetails, baseMintDetails] = await Promise.all([
+      fetchMint(rpc, quoteMint),
+      fetchMint(rpc, baseMint),
     ]);
+    validateMarketMint(quoteMintDetails, "Quote mint");
+    validateMarketMint(baseMintDetails, "Base mint");
     const minFee = parseQuoteAmount(minimumFeeInput, quoteMintDetails.decimals);
     const market = await deriveMarketAddress(
       feedId,
@@ -134,12 +138,12 @@ const createMarketCommand: CliCommand = {
       maxOperationalFeeBps,
       market,
     };
-    const latestBlockhash = await fetchLatestBlockhash(rpcEndpoint);
-    await simulateMarketCreation(rpcEndpoint, preparedMarket, latestBlockhash);
+    const latestBlockhash = await fetchLatestBlockhash(rpc);
+    await simulateMarketCreation(rpc, preparedMarket, latestBlockhash);
 
     note(
       [
-        `RPC endpoint: ${rpcEndpoint}`,
+        `RPC endpoint: ${rpc.label}`,
         `Admin public address: ${admin.address}`,
         `Oracle feed ID: ${preparedMarket.feedIdHex}`,
         `Quote mint: ${quoteMint}`,
@@ -157,13 +161,13 @@ const createMarketCommand: CliCommand = {
     });
     if (isCancel(confirmed) || !confirmed) return { outcome: "cancelled" };
 
-    const signingBlockhash = await fetchLatestBlockhash(rpcEndpoint);
+    const signingBlockhash = await fetchLatestBlockhash(rpc);
     const signedTransaction = await signTransaction(
       [admin.keyPair],
       createMarketTransaction(preparedMarket, signingBlockhash)
     );
     const signature = getSignatureFromTransaction(signedTransaction);
-    const returnedSignature = await rpcCall(rpcEndpoint, "sendTransaction", [
+    const returnedSignature = await rpc.call("sendTransaction", [
       getBase64EncodedWireTransaction(signedTransaction),
       {
         encoding: "base64",
@@ -203,61 +207,6 @@ async function promptText(options: {
     validate: (input) => options.validate(input ?? ""),
   });
   return isCancel(value) ? null : value;
-}
-
-function requiredEnvironment(name: string): string {
-  const value = process.env[name]?.trim();
-  if (value === undefined || value === "")
-    throw new Error(`${name} must be set.`);
-  return value;
-}
-
-function validateRpcEndpoint(value: string): void {
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    throw new Error("SOLANA_RPC_URL must be a valid HTTP(S) URL.");
-  }
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("SOLANA_RPC_URL must be a valid HTTP(S) URL.");
-  }
-}
-
-async function adminSignerFromEnvironment(): Promise<AdminSigner> {
-  const secret = requiredEnvironment("FAVEN_ADMIN_KEYPAIR");
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(secret);
-  } catch {
-    throw new Error(
-      "FAVEN_ADMIN_KEYPAIR must be a JSON array of 64 keypair bytes."
-    );
-  }
-  if (
-    !Array.isArray(parsed) ||
-    parsed.length !== 64 ||
-    parsed.some(
-      (value) =>
-        typeof value !== "number" ||
-        !Number.isInteger(value) ||
-        value < 0 ||
-        value > 255
-    )
-  ) {
-    throw new Error(
-      "FAVEN_ADMIN_KEYPAIR must be a JSON array of 64 keypair bytes."
-    );
-  }
-  try {
-    const keyPair = await createKeyPairFromBytes(new Uint8Array(parsed));
-    return {
-      address: await getAddressFromPublicKey(keyPair.publicKey),
-      keyPair,
-    };
-  } catch {
-    throw new Error("FAVEN_ADMIN_KEYPAIR is not a valid Solana keypair.");
-  }
 }
 
 function validateFeedId(value: string): string | undefined {
@@ -341,58 +290,15 @@ function parseBps(value: string): number {
   return Number(BigInt(value.trim()));
 }
 
-async function fetchMint(
-  rpcEndpoint: string,
-  mint: Address,
-  name: string
-): Promise<{ readonly decimals: number }> {
-  const result = await rpcCall(rpcEndpoint, "getAccountInfo", [
-    mint,
-    { encoding: "base64", commitment: "confirmed" },
-  ]);
-  const account = accountInfoValue(result);
-  if (account === null)
-    throw new Error(`${name} account does not exist on this network.`);
-  if (account.owner !== TOKEN_PROGRAM)
-    throw new Error(`${name} must be a legacy SPL Token mint.`);
-  if (
-    account.executable ||
-    account.data.length !== 82 ||
-    account.data[45] !== 1
-  ) {
+function validateMarketMint(mint: SolanaMint, name: string): void {
+  if (mint.tokenProgram !== LEGACY_TOKEN_PROGRAM || !mint.isInitialized) {
     throw new Error(`${name} is not an initialized legacy SPL Token mint.`);
   }
-  const decimals = account.data[44];
-  if (decimals === undefined || decimals > MAX_MINT_DECIMALS) {
+  if (mint.decimals > MAX_MINT_DECIMALS) {
     throw new Error(
       `${name} has unsupported decimals (maximum is ${MAX_MINT_DECIMALS}).`
     );
   }
-  return { decimals };
-}
-
-function accountInfoValue(value: unknown): {
-  readonly owner: string;
-  readonly executable: boolean;
-  readonly data: Uint8Array;
-} | null {
-  if (!isRecord(value) || !("value" in value))
-    throw new Error("RPC returned an invalid account response.");
-  if (value.value === null) return null;
-  if (!isRecord(value.value))
-    throw new Error("RPC returned an invalid account response.");
-  const { owner, executable, data } = value.value;
-  if (
-    typeof owner !== "string" ||
-    typeof executable !== "boolean" ||
-    !Array.isArray(data) ||
-    data.length !== 2 ||
-    typeof data[0] !== "string" ||
-    data[1] !== "base64"
-  ) {
-    throw new Error("RPC returned an invalid account response.");
-  }
-  return { owner, executable, data: Buffer.from(data[0], "base64") };
 }
 
 async function deriveMarketAddress(
@@ -416,9 +322,9 @@ async function deriveMarketAddress(
 }
 
 async function fetchLatestBlockhash(
-  rpcEndpoint: string
+  rpc: SolanaRpcClient
 ): Promise<LatestBlockhash> {
-  const result = await rpcCall(rpcEndpoint, "getLatestBlockhash", [
+  const result = await rpc.call("getLatestBlockhash", [
     { commitment: "confirmed" },
   ]);
   if (
@@ -438,11 +344,11 @@ async function fetchLatestBlockhash(
 }
 
 async function simulateMarketCreation(
-  rpcEndpoint: string,
+  rpc: SolanaRpcClient,
   market: PreparedMarket,
   latestBlockhash: LatestBlockhash
 ): Promise<void> {
-  const result = await rpcCall(rpcEndpoint, "simulateTransaction", [
+  const result = await rpc.call("simulateTransaction", [
     getBase64EncodedWireTransaction(
       createMarketTransaction(market, latestBlockhash)
     ),
@@ -492,7 +398,7 @@ function createMarketInstruction(market: PreparedMarket) {
       readonly(market.quoteMint),
       readonly(market.baseMint),
       writable(market.market),
-      readonly(TOKEN_PROGRAM),
+      readonly(LEGACY_TOKEN_PROGRAM),
       readonly(SYSTEM_PROGRAM),
     ],
   };
@@ -554,38 +460,6 @@ function formatBps(value: number): string {
   return fraction === 0
     ? String(whole)
     : `${whole}.${String(fraction).padStart(2, "0").replace(/0$/, "")}`;
-}
-
-async function rpcCall(
-  rpcEndpoint: string,
-  method: string,
-  params: readonly unknown[]
-): Promise<unknown> {
-  let response: Response;
-  try {
-    response = await fetch(rpcEndpoint, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-    });
-  } catch {
-    throw new Error(`Could not reach Solana RPC endpoint: ${rpcEndpoint}`);
-  }
-  if (!response.ok)
-    throw new Error(`Solana RPC endpoint returned HTTP ${response.status}.`);
-  let payload: unknown;
-  try {
-    payload = await response.json();
-  } catch {
-    throw new Error("Solana RPC endpoint returned invalid JSON.");
-  }
-  if (!isRecord(payload))
-    throw new Error("Solana RPC endpoint returned an invalid response.");
-  if ("error" in payload)
-    throw new Error(`Solana RPC ${method} request failed.`);
-  if (!("result" in payload))
-    throw new Error("Solana RPC endpoint returned an invalid response.");
-  return payload.result;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -2,6 +2,18 @@
 
 `faven` is the command-line tool for Faven administrators.
 
+## Solana configuration
+
+Commands that access Solana use the default Solana CLI configuration at
+`~/.config/solana/cli/config.yaml`. Configure its RPC endpoint and keypair with
+the Solana CLI, then verify them before running a command:
+
+    $ solana config get
+
+    $ solana config set -k <path to keypair json file>
+
+    $ solana config set -u <rpc url>
+
 ## Install locally
 
 From the repository root, build the CLI and install it into your user-owned
