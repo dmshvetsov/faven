@@ -549,8 +549,8 @@ export class RfqDurableObject implements DurableObject {
         strike: rfq.strike,
         quantity: rfq.quantity,
         premium: rfq.bestQuote.premium,
-        baseCoinMint: market.baseCoinMint,
-        quoteCoinMint: market.quoteCoinMint,
+        baseMint: market.baseMint,
+        quoteMint: market.quoteMint,
         feeRecipient: market.feeRecipient,
         operationalFeeBps: market.operationalFeeBps,
         createdAtMs,
@@ -618,13 +618,11 @@ export class RfqDurableObject implements DurableObject {
       const rfq: RfqState = {
         ...parsed,
         sellerConnectionId: create.sellerConnectionId,
-        assetAddress: market.baseCoinMint,
+        assetAddress: market.baseMint,
         assetName: market.oracleBase,
         chainId: `solana:${this.env.SOLANA_CLUSTER}`,
-        collateralAsset: parsed.isPut
-          ? market.quoteCoinMint
-          : market.baseCoinMint,
-        premiumAsset: market.quoteCoinMint,
+        collateralAsset: parsed.isPut ? market.quoteMint : market.baseMint,
+        premiumAsset: market.quoteMint,
         requestDeadline,
         status: "aggregating",
         blockhash: latestBlockhash.blockhash,
@@ -639,7 +637,7 @@ export class RfqDurableObject implements DurableObject {
       await this.state.storage.put("rfq", rfq);
       await this.state.storage.setAlarm(requestDeadline);
       await this.env.ASSET_HUB.get(
-        this.env.ASSET_HUB.idFromName(`asset-hub:${market.baseCoinMint}`)
+        this.env.ASSET_HUB.idFromName(`asset-hub:${market.baseMint}`)
       ).fetch(
         new Request("https://asset-hub/fanout", {
           method: "POST",

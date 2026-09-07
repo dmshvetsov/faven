@@ -29,8 +29,8 @@ export const underwrites = sqliteTable(
     quantity: text("quantity").notNull(),
     // premium is e18 decimals base unit.
     premium: text("premium").notNull(),
-    baseCoinMint: text("base_coin_mint").notNull(),
-    quoteCoinMint: text("quote_coin_mint").notNull(),
+    baseMint: text("base_mint").notNull(),
+    quoteMint: text("quote_mint").notNull(),
     feeRecipient: text("fee_recipient").notNull(),
     operationalFeeBps: integer("operational_fee_bps").notNull(),
     createdAtMs: integer("created_at_ms").notNull(),
@@ -79,8 +79,8 @@ export const optionSeries = sqliteTable("option_series", {
   expiryMs: integer("expiry_ms").notNull(),
   // USD strike using 8 decimals (e8).
   strike: text("strike").notNull(),
-  baseCoinMint: text("base_coin_mint").notNull(),
-  quoteCoinMint: text("quote_coin_mint").notNull(),
+  baseMint: text("base_mint").notNull(),
+  quoteMint: text("quote_mint").notNull(),
   confirmedAtMs: integer("confirmed_at_ms").notNull(),
 });
 

@@ -13,8 +13,8 @@ CREATE TABLE underwrites (
   strike TEXT NOT NULL,
   quantity TEXT NOT NULL,
   premium TEXT NOT NULL,
-  base_coin_mint TEXT NOT NULL,
-  quote_coin_mint TEXT NOT NULL,
+  base_mint TEXT NOT NULL,
+  quote_mint TEXT NOT NULL,
   fee_recipient TEXT NOT NULL,
   operational_fee_bps INTEGER NOT NULL,
   created_at_ms INTEGER NOT NULL,
@@ -45,7 +45,7 @@ CREATE TABLE option_series (
   is_put INTEGER NOT NULL CHECK (is_put IN (0, 1)),
   expiry_ms INTEGER NOT NULL,
   strike TEXT NOT NULL,
-  base_coin_mint TEXT NOT NULL,
-  quote_coin_mint TEXT NOT NULL,
+  base_mint TEXT NOT NULL,
+  quote_mint TEXT NOT NULL,
   confirmed_at_ms INTEGER NOT NULL
 );

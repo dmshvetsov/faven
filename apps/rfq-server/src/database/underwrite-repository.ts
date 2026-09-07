@@ -27,8 +27,8 @@ export interface QueuedUnderwrite {
   readonly quantity: string;
   /** QuoteCoin premium per whole option contract using 18 decimals. */
   readonly premium: string;
-  readonly baseCoinMint: string;
-  readonly quoteCoinMint: string;
+  readonly baseMint: string;
+  readonly quoteMint: string;
   readonly feeRecipient: string;
   readonly operationalFeeBps: number;
   readonly createdAtMs: number;
@@ -154,8 +154,8 @@ export class UnderwriteRepository {
           isPut: underwrite.isPut,
           expiryMs: underwrite.expiryMs,
           strike: underwrite.strike,
-          baseCoinMint: underwrite.baseCoinMint,
-          quoteCoinMint: underwrite.quoteCoinMint,
+          baseMint: underwrite.baseMint,
+          quoteMint: underwrite.quoteMint,
           confirmedAtMs,
         })
         .onConflictDoUpdate({
@@ -227,7 +227,7 @@ export class UnderwriteRepository {
 
   async listConfirmedPositions(
     buyerAddress: string,
-    baseCoinMint: string
+    baseMint: string
   ): Promise<StoredUnderwrite[]> {
     return this.database
       .select()
@@ -235,7 +235,7 @@ export class UnderwriteRepository {
       .where(
         and(
           eq(underwrites.buyerAddress, buyerAddress),
-          eq(underwrites.baseCoinMint, baseCoinMint),
+          eq(underwrites.baseMint, baseMint),
           eq(underwrites.status, "confirmed")
         )
       )

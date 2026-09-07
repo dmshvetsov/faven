@@ -12,8 +12,8 @@ export interface MarketConfig {
   readonly optionsProgramId: string;
   readonly marketAddress: string;
   readonly oracleBase: string;
-  readonly baseCoinMint: string;
-  readonly quoteCoinMint: string;
+  readonly baseMint: string;
+  readonly quoteMint: string;
   readonly baseCoinSymbol: string;
   readonly quoteCoinSymbol: string;
   readonly feeRecipient: string;
@@ -52,8 +52,8 @@ const TESTNET_WSOL_MARKET: MarketConfig = {
   optionsProgramId: "11111111111111111111111111111111", // TBD
   marketAddress: "11111111111111111111111111111111", // TBD
   oracleBase: "SOL", // Pyth SOLUSD
-  baseCoinMint: "wSoLCzXHe214cjx7CFjP1axzXyqLkEwq5Xf873hy1JP",
-  quoteCoinMint: "usdcHvyN6fvECJ1poPYkt1vztze1pQ6psC8i4cji2Ly",
+  baseMint: "wSoLCzXHe214cjx7CFjP1axzXyqLkEwq5Xf873hy1JP",
+  quoteMint: "usdcHvyN6fvECJ1poPYkt1vztze1pQ6psC8i4cji2Ly",
   baseCoinSymbol: "twSOL",
   quoteCoinSymbol: "tUSDC",
   feeRecipient: FAVEN_TREASURY,
@@ -98,11 +98,11 @@ export function isAllowedOrigin(
 
 export function configuredMarket(
   environment: ProductEnvironment,
-  baseCoinMint: string
+  baseMint: string
 ): MarketConfig | null {
   return (
     getEnvironmentConfig(environment).markets.find(
-      (market) => market.baseCoinMint === baseCoinMint
+      (market) => market.baseMint === baseMint
     ) ?? null
   );
 }

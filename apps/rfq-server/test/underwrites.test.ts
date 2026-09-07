@@ -20,8 +20,8 @@ const underwrite: QueuedUnderwrite = {
   strike: "6000000000000",
   quantity: "1000000000000000000",
   premium: "25000000000000000000",
-  baseCoinMint: "base-mint",
-  quoteCoinMint: "quote-mint",
+  baseMint: "base-mint",
+  quoteMint: "quote-mint",
   feeRecipient: "fee-recipient",
   operationalFeeBps: 50,
   createdAtMs: 1_735_600_000_000,
@@ -145,8 +145,8 @@ describe("underwrite repository", () => {
       isPut: false,
       expiryMs: 1_735_689_600_000,
       strike: "6000000000000",
-      baseCoinMint: "base-mint",
-      quoteCoinMint: "quote-mint",
+      baseMint: "base-mint",
+      quoteMint: "quote-mint",
       confirmedAtMs: 1_735_600_002_000,
     });
   });
@@ -296,8 +296,8 @@ async function resetDatabase(): Promise<void> {
       strike TEXT NOT NULL,
       quantity TEXT NOT NULL,
       premium TEXT NOT NULL,
-      base_coin_mint TEXT NOT NULL,
-      quote_coin_mint TEXT NOT NULL,
+      base_mint TEXT NOT NULL,
+      quote_mint TEXT NOT NULL,
       fee_recipient TEXT NOT NULL,
       operational_fee_bps INTEGER NOT NULL,
       created_at_ms INTEGER NOT NULL,
@@ -322,8 +322,8 @@ async function resetDatabase(): Promise<void> {
       is_put INTEGER NOT NULL,
       expiry_ms INTEGER NOT NULL,
       strike TEXT NOT NULL,
-      base_coin_mint TEXT NOT NULL,
-      quote_coin_mint TEXT NOT NULL,
+      base_mint TEXT NOT NULL,
+      quote_mint TEXT NOT NULL,
       confirmed_at_ms INTEGER NOT NULL
     )`,
   ];

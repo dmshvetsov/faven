@@ -16,8 +16,8 @@ const TEN_OPTIONS_E18 = "10000000000000000000";
 const PREMIUM_25_E18 = "25000000000000000000";
 const PREMIUM_30_E18 = "30000000000000000000";
 const OVER_MARKET_MAX_E18 = "101000000000000000000";
-const BASE_COIN_MINT = "wSoLCzXHe214cjx7CFjP1axzXyqLkEwq5Xf873hy1JP";
-const QUOTE_COIN_MINT = "usdcHvyN6fvECJ1poPYkt1vztze1pQ6psC8i4cji2Ly";
+const BASE_MINT = "wSoLCzXHe214cjx7CFjP1axzXyqLkEwq5Xf873hy1JP";
+const QUOTE_MINT = "usdcHvyN6fvECJ1poPYkt1vztze1pQ6psC8i4cji2Ly";
 
 beforeEach(() => {
   vi.stubGlobal(
@@ -196,13 +196,13 @@ describe("RFQ server", () => {
   });
 
   it("fans out a canonical RFQ request without seller details", async () => {
-    const baseCoinMint = BASE_COIN_MINT;
+    const baseMint = BASE_MINT;
     const seller = acceptSocket(
       await SELF.fetch("https://example.com/taker", webSocketHeaders())
     );
     const buyer = acceptSocket(
       await SELF.fetch(
-        `https://example.com/rfqs/${baseCoinMint}`,
+        `https://example.com/rfqs/${baseMint}`,
         webSocketHeaders()
       )
     );
@@ -238,8 +238,8 @@ describe("RFQ server", () => {
       method: "rfq.request",
       params: expect.objectContaining({
         rfqId,
-        assetAddress: baseCoinMint,
-        collateralAsset: baseCoinMint,
+        assetAddress: baseMint,
+        collateralAsset: baseMint,
       }),
     });
     seller.close();
@@ -736,15 +736,15 @@ function generationParams(
 function quoteFields(rfqId: string, maker: string): Record<string, unknown> {
   return {
     rfqId,
-    assetAddress: BASE_COIN_MINT,
+    assetAddress: BASE_MINT,
     chainId: "solana:testnet",
     expiry: 1_735_689_600,
     isPut: false,
     maker,
     quantity: TEN_OPTIONS_E18,
     strike: "6000000000000",
-    premiumAsset: QUOTE_COIN_MINT,
-    collateralAsset: BASE_COIN_MINT,
+    premiumAsset: QUOTE_MINT,
+    collateralAsset: BASE_MINT,
     validUntil: Math.floor(Date.now() / 1_000) + 30,
     premium: PREMIUM_25_E18,
   };
@@ -856,8 +856,8 @@ async function createUnderwriteTables(): Promise<void> {
       strike TEXT NOT NULL,
       quantity TEXT NOT NULL,
       premium TEXT NOT NULL,
-      base_coin_mint TEXT NOT NULL,
-      quote_coin_mint TEXT NOT NULL,
+      base_mint TEXT NOT NULL,
+      quote_mint TEXT NOT NULL,
       fee_recipient TEXT NOT NULL,
       operational_fee_bps INTEGER NOT NULL,
       created_at_ms INTEGER NOT NULL,

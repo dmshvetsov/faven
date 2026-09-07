@@ -86,8 +86,8 @@ export async function buildUnderwriteTransaction(
 async function deriveAccounts(input: UnderwriteTransactionInput) {
   const programAddress = address(input.market.optionsProgramId);
   const market = address(input.market.marketAddress);
-  const baseCoinMint = address(input.market.baseCoinMint);
-  const quoteCoinMint = address(input.market.quoteCoinMint);
+  const baseMint = address(input.market.baseMint);
+  const quoteMint = address(input.market.quoteMint);
   const seller = address(input.seller);
   const buyer = address(input.maker);
   const buyerQuoteSource = address(input.buyerQuoteSource);
@@ -106,16 +106,16 @@ async function deriveAccounts(input: UnderwriteTransactionInput) {
     quoteCollateralVault,
   ] = await Promise.all([
     deriveAta(buyer, longMint),
-    deriveAta(seller, quoteCoinMint),
-    deriveAta(feeRecipient, quoteCoinMint),
-    deriveAta(series, baseCoinMint),
-    deriveAta(series, quoteCoinMint),
+    deriveAta(seller, quoteMint),
+    deriveAta(feeRecipient, quoteMint),
+    deriveAta(series, baseMint),
+    deriveAta(series, quoteMint),
   ]);
   return {
     programAddress,
     market,
-    baseCoinMint,
-    quoteCoinMint,
+    baseMint,
+    quoteMint,
     seller,
     buyer,
     buyerQuoteSource,
@@ -150,8 +150,8 @@ function createSeriesInstruction(
     accounts: [
       writableSigner(accounts.seller),
       readonly(accounts.market),
-      readonly(accounts.baseCoinMint),
-      readonly(accounts.quoteCoinMint),
+      readonly(accounts.baseMint),
+      readonly(accounts.quoteMint),
       writable(accounts.series),
       writable(accounts.longMint),
       writable(accounts.baseCollateralVault),
@@ -174,8 +174,8 @@ function underwriteInstruction(
       readonlySigner(accounts.buyer),
       writableSigner(accounts.seller),
       readonly(accounts.market),
-      readonly(accounts.baseCoinMint),
-      readonly(accounts.quoteCoinMint),
+      readonly(accounts.baseMint),
+      readonly(accounts.quoteMint),
       writable(accounts.series),
       writable(accounts.longMint),
       writable(accounts.buyerLongAta),
