@@ -62,7 +62,7 @@ export const DEVNET_FUNDING: readonly DevnetFunding[] = [
     mint: "usdcHvyN6fvECJ1poPYkt1vztze1pQ6psC8i4cji2Ly",
     tokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     decimals: 6,
-    mintAmount: 250_000_000n,
+    mintAmount: 250_000_000_000n,
   },
   { kind: "sol", lamports: 5_000_000n },
 ];
