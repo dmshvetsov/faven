@@ -86,7 +86,7 @@ export const createMarketCommand: CliCommand = {
     });
     if (baseMintInput === null) return { outcome: "cancelled" };
     const minimumFeeInput = await promptText({
-      message: "Minimum fee (QuoteCoin amount)",
+      message: "Minimum fee (quote token amount)",
       placeholder: "For example: 0.50",
       validate: validateHumanAmount,
     });
@@ -151,7 +151,7 @@ export const createMarketCommand: CliCommand = {
         `Oracle feed ID: ${preparedMarket.feedIdHex}`,
         `Quote mint: ${quoteMint}`,
         `Base mint: ${baseMint}`,
-        `Minimum fee: ${formatQuoteAmount(minFee, quoteMintDetails.decimals)} QuoteCoin (${minFee} raw units)`,
+        `Minimum fee: ${formatQuoteAmount(minFee, quoteMintDetails.decimals)} quote token (${minFee} raw units)`,
         `Minimum operational fee: ${minOperationalFeeBps} bps (${formatBps(minOperationalFeeBps)}%)`,
         `Maximum operational fee: ${maxOperationalFeeBps} bps (${formatBps(maxOperationalFeeBps)}%)`,
         `Predicted market address: ${market}`,
@@ -288,7 +288,7 @@ export function parseQuoteAmount(value: string, decimals: number): bigint {
   const [whole, fraction = ""] = amount.split(".");
   if (fraction.length > decimals) {
     throw new Error(
-      `Minimum fee supports at most ${decimals} decimal places for this QuoteCoin mint.`
+      `Minimum fee supports at most ${decimals} decimal places for this quote token mint.`
     );
   }
   const raw =
