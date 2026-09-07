@@ -9,9 +9,9 @@ Before deploying a remote target, replace its placeholder D1 database ID in
 secrets:
 
 ```sh
-corepack pnpm --dir apps/rfq-server exec wrangler secret put SOLANA_RPC_URL --env development
-corepack pnpm --dir apps/rfq-server exec wrangler secret put SOLANA_WEBSOCKET_URL --env development
-corepack pnpm --dir apps/rfq-server exec wrangler secret put TREASURY_PRIVATE_KEY --env development
+pnpm --dir apps/rfq-server exec wrangler secret put SOLANA_RPC_URL --env <cf env>
+pnpm --dir apps/rfq-server exec wrangler secret put SOLANA_WEBSOCKET_URL --env <cf env>
+pnpm --dir apps/rfq-server exec wrangler secret put FAUCET_PRIVATE_KEY --env <cf env>
 ```
 
 Repeat for staging and production. Local development includes a testnet SOL
@@ -31,7 +31,7 @@ The options program expose instructions for e18 quantity and premium scales.
 The same e8 strike scale used both in the RFQ server and the option program.
 
 On devnet, `POST /wallet-fundings` funds an on-curve wallet once every 24
-hours. Set `TREASURY_PRIVATE_KEY` to the JSON byte array from a dedicated
+hours. Set `FAUCET_PRIVATE_KEY` to the JSON byte array from a dedicated
 Solana CLI keypair that holds the configured mint authority and enough SOL.
 If an interrupted request leaves a `pending` row, first check the transaction
 signature on Solana; if none was submitted, an operator can change that row to

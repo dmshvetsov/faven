@@ -4,9 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev --env localdevelopment",
+    "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "deploy:localdevelopment": "wrangler deploy --env localdevelopment",
     "deploy:development": "wrangler deploy --env development",
     "deploy:staging": "wrangler deploy --env staging",
     "deploy:production": "wrangler deploy --env production",

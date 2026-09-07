@@ -40,8 +40,8 @@
   },
 
   "vars": {
-    "PRODUCT_ENVIRONMENT": "development:testnet",
-    "SOLANA_CLUSTER": "testnet",
+    "PRODUCT_ENVIRONMENT": "localdevelopment:devnet",
+    "SOLANA_CLUSTER": "devnet",
   },
 
   "env": {
@@ -70,6 +70,7 @@
         "SOLANA_CLUSTER": "devnet",
       },
     },
+
     "staging": {
       "name": "faven-rfq-server-staging",
       "observability": {
@@ -99,6 +100,7 @@
         "SOLANA_CLUSTER": "devnet",
       },
     },
+
     "production": {
       "name": "faven-rfq-server-production",
       "observability": {

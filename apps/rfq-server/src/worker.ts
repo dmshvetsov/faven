@@ -36,7 +36,7 @@ export interface Env {
   readonly SOLANA_CLUSTER: SolanaCluster;
   readonly SOLANA_RPC_URL: string;
   readonly SOLANA_WEBSOCKET_URL: string;
-  readonly TREASURY_PRIVATE_KEY?: string;
+  readonly FAUCET_PRIVATE_KEY?: string;
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -64,6 +64,9 @@ app.get("/health", (context) =>
 
 app.post("/wallet-fundings", async (context) => {
   if (context.env.SOLANA_CLUSTER !== "devnet") {
+    console.warn(
+      `wallet-funding is called not in devnet, SOLANA_CLUSTER=${context.env.SOLANA_CLUSTER}`
+    );
     return context.json({ error: "Not found." }, 404);
   }
   const walletAddress = await walletAddressFromRequest(context.req.raw);
@@ -73,7 +76,7 @@ app.post("/wallet-fundings", async (context) => {
   const result = await fundWallet({
     database: context.env.DB,
     rpcUrl: context.env.SOLANA_RPC_URL,
-    treasuryPrivateKey: context.env.TREASURY_PRIVATE_KEY,
+    treasuryPrivateKey: context.env.FAUCET_PRIVATE_KEY,
     walletAddress,
   });
   switch (result.status) {

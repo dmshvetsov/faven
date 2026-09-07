@@ -30,3 +30,7 @@ lerna-debug.log*
 
 # TypeScript incremental build cache
 *.tsbuildinfo
+
+# env vars
+.env
+.dev.vars

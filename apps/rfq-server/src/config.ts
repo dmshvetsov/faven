@@ -1,7 +1,7 @@
 import { baseUnits } from "./math";
 
 export type ProductEnvironment =
-  | "development:testnet"
+  | "localdevelopment:devnet"
   | "development:devnet"
   | "staging:devnet"
   | "production:mainnet";
@@ -34,13 +34,22 @@ export interface EnvironmentConfig {
   readonly markets: readonly MarketConfig[];
 }
 
-export const DEVNET_FUNDING = {
-  mint: "4CzuKBggjWZ6SMxQgrrtJbQhJ3Vz4nXPvb7dKfvzqVQX",
+export const DEVNET_FUNDING = [{
+  mint: "wSoLCzXHe214cjx7CFjP1axzXyqLkEwq5Xf873hy1JP",
   tokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
   decimals: 9,
-  mintAmount: 100_000_000_000_000n,
-  solLamports: 5_000_000n,
-} as const;
+  mintAmount: 1_000_000_000_000n,
+}, {
+  mint: "usdcHvyN6fvECJ1poPYkt1vztze1pQ6psC8i4cji2Ly",
+  tokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  decimals: 6,
+  mintAmount: 250_000_000n,
+}, {
+  mint: "SOL",
+  tokenProgram: "11111111111111111111111111111111",
+  decimals: 9,
+  mintAmount: 5_000_000n,
+}] as const;
 
 export const WALLET_FUNDING_COOLDOWN_MS = 24 * 60 * 60 * 1_000;
 
@@ -66,12 +75,16 @@ const TESTNET_WSOL_MARKET: MarketConfig = {
 };
 
 const environmentConfig: Record<ProductEnvironment, EnvironmentConfig> = {
-  "development:testnet": {
-    cluster: "testnet",
+  "localdevelopment:devnet": {
+    cluster: "devnet",
     allowedOrigins: [LOCAL_ORIGIN],
     markets: [TESTNET_WSOL_MARKET],
   },
-  "development:devnet": { cluster: "devnet", allowedOrigins: [], markets: [] },
+  "development:devnet": {
+    cluster: "devnet",
+    allowedOrigins: [LOCAL_ORIGIN],
+    markets: [TESTNET_WSOL_MARKET],
+  },
   "staging:devnet": { cluster: "devnet", allowedOrigins: [], markets: [] },
   "production:mainnet": {
     cluster: "mainnet-beta",
