@@ -53,22 +53,22 @@ pub mod options {
         instructions::create_series(ctx, option_type, strike_price, expiry_ms)
     }
 
-    pub fn underwrite_call(
+    pub fn underwrite_call_e18(
         ctx: Context<Underwrite>,
-        quantity: u64,
-        premium_per_contract: u64,
+        quantity_e18: u128,
+        premium_e18: u128,
         operational_fee_bps: u16,
     ) -> Result<()> {
-        instructions::underwrite_call(ctx, quantity, premium_per_contract, operational_fee_bps)
+        instructions::underwrite_call_e18(ctx, quantity_e18, premium_e18, operational_fee_bps)
     }
 
-    pub fn underwrite_put(
+    pub fn underwrite_put_e18(
         ctx: Context<Underwrite>,
-        quantity: u64,
-        premium_per_contract: u64,
+        quantity_e18: u128,
+        premium_e18: u128,
         operational_fee_bps: u16,
     ) -> Result<()> {
-        instructions::underwrite_put(ctx, quantity, premium_per_contract, operational_fee_bps)
+        instructions::underwrite_put_e18(ctx, quantity_e18, premium_e18, operational_fee_bps)
     }
 
     pub fn exercise(ctx: Context<Exercise>, quantity: u64) -> Result<()> {

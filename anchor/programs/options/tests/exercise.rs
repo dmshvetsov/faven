@@ -20,7 +20,7 @@ use solana_sdk::{
 use spl_token::state::{Account as SplTokenAccount, AccountState, Mint};
 
 const EXPIRY_MS: u64 = 2_000_000_000_000;
-const STRIKE: u64 = 3_500_000;
+const STRIKE: u64 = 350_000_000;
 const QUANTITY: u64 = 1_000_000_000;
 const EXERCISE_QUANTITY: u64 = 400_000_000;
 

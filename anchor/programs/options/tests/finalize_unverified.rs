@@ -130,7 +130,7 @@ fn add_series(svm: &mut LiteSVM, key: Pubkey, market: Pubkey, expiry_ms: u64) {
             state: SeriesState::Open,
             market,
             option_type: options::OptionType::Call,
-            strike_price: 1_000_000,
+            strike_price: 100_000_000,
             expiry_ms,
             exercise_window_end_ms: expiry_ms + 3_600_000,
             expiry_price: None,
@@ -208,7 +208,7 @@ fn finalizing_a_zero_issued_series_makes_it_ready_for_closure() {
     let account = svm.get_account(&series).unwrap();
     let finalized = Series::try_deserialize(&mut account.data.as_slice()).unwrap();
     assert_eq!(finalized.state, SeriesState::Closed);
-    assert_eq!(finalized.expiry_price, Some(1_234_568));
+    assert_eq!(finalized.expiry_price, Some(123_456_780));
     assert_eq!(finalized.total_quote_amount, 2_100_000);
 }
 

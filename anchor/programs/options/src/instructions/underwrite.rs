@@ -14,40 +14,40 @@ use crate::{
     },
 };
 
-pub fn underwrite_call(
+pub fn underwrite_call_e18(
     ctx: Context<Underwrite>,
-    quantity: u64,
-    premium_per_contract: u64,
+    quantity_e18: u128,
+    premium_e18: u128,
     operational_fee_bps: u16,
 ) -> Result<()> {
-    underwrite(
+    underwrite_e18(
         ctx,
-        quantity,
-        premium_per_contract,
+        quantity_e18,
+        premium_e18,
         operational_fee_bps,
         OptionType::Call,
     )
 }
 
-pub fn underwrite_put(
+pub fn underwrite_put_e18(
     ctx: Context<Underwrite>,
-    quantity: u64,
-    premium_per_contract: u64,
+    quantity_e18: u128,
+    premium_e18: u128,
     operational_fee_bps: u16,
 ) -> Result<()> {
-    underwrite(
+    underwrite_e18(
         ctx,
-        quantity,
-        premium_per_contract,
+        quantity_e18,
+        premium_e18,
         operational_fee_bps,
         OptionType::Put,
     )
 }
 
-fn underwrite(
+fn underwrite_e18(
     ctx: Context<Underwrite>,
-    quantity: u64,
-    premium_per_contract: u64,
+    quantity_e18: u128,
+    premium_e18: u128,
     operational_fee_bps: u16,
     expected_option_type: OptionType,
 ) -> Result<()> {
@@ -62,7 +62,7 @@ fn underwrite(
         series.option_type == expected_option_type,
         OptionsError::InvalidOptionType
     );
-    require!(quantity > 0, OptionsError::ZeroQuantity);
+    require!(quantity_e18 > 0, OptionsError::ZeroQuantity);
     require!(
         ctx.accounts.buyer.key() != ctx.accounts.seller.key(),
         OptionsError::BuyerAndSellerMustDiffer
@@ -103,6 +103,8 @@ fn underwrite(
         OptionsError::InvalidFundingAccount
     );
 
+    let quantity = math::e18_to_token_decimals(quantity_e18, market.base_coin_scale)?;
+    let premium_per_contract = math::e18_to_token_decimals(premium_e18, market.quote_coin_scale)?;
     let premium = math::premium_total(quantity, premium_per_contract, market.base_coin_scale)?;
     let fee = math::operational_fee(premium, operational_fee_bps, market.min_fee)?;
     require!(fee <= premium, OptionsError::FeeExceedsPremium);

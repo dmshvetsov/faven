@@ -20,7 +20,9 @@ use spl_token::state::{Account as SplTokenAccount, AccountState, Mint};
 
 const LAMPORTS_PER_SOL: u64 = 1_000_000_000;
 const EXPIRY_MS: u64 = 2_000_000_000_000;
-const STRIKE: u64 = 3_500_000;
+const STRIKE: u64 = 350_000_000;
+const ONE_OPTION_E18: u128 = 1_000_000_000_000_000_000;
+const ONE_QUOTE_E18: u128 = 1_000_000_000_000_000_000;
 
 fn add_mint(svm: &mut LiteSVM, key: Pubkey, decimals: u8) {
     let mint = Mint {
@@ -224,8 +226,8 @@ fn underwrite_instruction(
     base_mint: Pubkey,
     option_type: OptionType,
     participants: Participants,
-    quantity: u64,
-    premium_per_contract: u64,
+    quantity_e18: u128,
+    premium_e18: u128,
     fee_bps: u16,
 ) -> Instruction {
     let series = series_address(market, option_type);
@@ -258,16 +260,16 @@ fn underwrite_instruction(
         program_id: PROGRAM_ID,
         accounts: accounts.to_account_metas(None),
         data: if is_call {
-            instruction::UnderwriteCall {
-                quantity,
-                premium_per_contract,
+            instruction::UnderwriteCallE18 {
+                quantity_e18,
+                premium_e18,
                 operational_fee_bps: fee_bps,
             }
             .data()
         } else {
-            instruction::UnderwritePut {
-                quantity,
-                premium_per_contract,
+            instruction::UnderwritePutE18 {
+                quantity_e18,
+                premium_e18,
                 operational_fee_bps: fee_bps,
             }
             .data()
@@ -446,7 +448,7 @@ fn underwrite_rejects_missing_seller_signature_and_wrong_instruction_type() {
         env.base_mint,
         OptionType::Call,
         participants,
-        1_000_000_000,
+        ONE_OPTION_E18,
         0,
         0,
     );
@@ -477,7 +479,7 @@ fn underwrite_rejects_missing_seller_signature_and_wrong_instruction_type() {
         env.base_mint,
         OptionType::Put,
         participants,
-        1_000_000_000,
+        ONE_OPTION_E18,
         0,
         0,
     );
@@ -499,7 +501,7 @@ fn underwrite_rejects_missing_seller_signature_and_wrong_instruction_type() {
         env.base_mint,
         OptionType::Call,
         participants,
-        1_000_000_000,
+        ONE_OPTION_E18,
         0,
         0,
     );
@@ -526,7 +528,7 @@ fn underwrite_rejects_paused_market_non_open_series_and_same_party() {
             env.base_mint,
             OptionType::Call,
             participants,
-            1_000_000_000,
+            ONE_OPTION_E18,
             0,
             0,
         )
@@ -555,7 +557,7 @@ fn underwrite_rejects_paused_market_non_open_series_and_same_party() {
                 env.base_mint,
                 OptionType::Call,
                 participants,
-                1_000_000_000,
+                ONE_OPTION_E18,
                 0,
                 0,
             )],
@@ -601,7 +603,7 @@ fn underwrite_rejects_paused_market_non_open_series_and_same_party() {
                 env.base_mint,
                 OptionType::Call,
                 same_party,
-                1,
+                ONE_OPTION_E18,
                 0,
                 0,
             )],
@@ -625,8 +627,8 @@ fn underwrite_enforces_fee_bounds_and_minimum_fee() {
                 env.base_mint,
                 OptionType::Call,
                 participants,
-                1_000_000_000,
-                1_000_000,
+                ONE_OPTION_E18,
+                ONE_QUOTE_E18,
                 fee_bps,
             )],
             Some(&env.buyer.pubkey()),
@@ -645,8 +647,8 @@ fn underwrite_enforces_fee_bounds_and_minimum_fee() {
                 env.base_mint,
                 OptionType::Call,
                 participants,
-                1_000_000_000,
-                1_000_000,
+                ONE_OPTION_E18,
+                ONE_QUOTE_E18,
                 fee_bps,
             )],
             Some(&env.buyer.pubkey()),
@@ -669,7 +671,7 @@ fn underwrite_enforces_fee_bounds_and_minimum_fee() {
                 env.base_mint,
                 OptionType::Call,
                 participants,
-                1_000_000_000,
+                ONE_OPTION_E18,
                 0,
                 0,
             )],
@@ -742,7 +744,7 @@ fn underwrite_rejects_invalid_funding_accounts_and_collateral_vault() {
                 env.base_mint,
                 OptionType::Call,
                 participants,
-                1,
+                ONE_OPTION_E18,
                 0,
                 0,
             )],
@@ -771,7 +773,7 @@ fn underwrite_rejects_invalid_funding_accounts_and_collateral_vault() {
             env.base_mint,
             OptionType::Call,
             valid,
-            1,
+            ONE_OPTION_E18,
             0,
             0,
         )],
@@ -794,7 +796,7 @@ fn put_underwriting_rounds_fractional_collateral_up_with_mismatched_decimals() {
             env.base_mint,
             OptionType::Put,
             participants,
-            1,
+            1_000_000_000,
             0,
             0,
         )],
@@ -808,4 +810,62 @@ fn put_underwriting_rounds_fractional_collateral_up_with_mismatched_decimals() {
         &env.quote_mint,
     );
     assert_eq!(token_amount(&env.svm, vault), 1);
+}
+
+#[test]
+fn underwrite_rejects_terms_whose_total_premium_is_a_fractional_quote() {
+    let mut env = new_env(OptionType::Call, 0, 0, 1_000);
+    let participants = valid_participants(&mut env);
+    let transaction = Transaction::new_signed_with_payer(
+        &[underwrite_instruction(
+            true,
+            env.market,
+            env.quote_mint,
+            env.base_mint,
+            OptionType::Call,
+            participants,
+            500_000_000_000_000_000,
+            1_000_000_000_000,
+            0,
+        )],
+        Some(&env.buyer.pubkey()),
+        &[&env.buyer, &env.seller],
+        env.svm.latest_blockhash(),
+    );
+
+    assert!(env.svm.send_transaction(transaction).is_err());
+}
+
+#[test]
+fn underwrite_rejects_e18_terms_with_unsupported_precision_or_base_unit_overflow() {
+    let mut env = new_env(OptionType::Call, 0, 0, 1_000);
+    let participants = valid_participants(&mut env);
+    let overflowing_quantity_e18 = (u128::from(u64::MAX) + 1) * 1_000_000_000;
+    let overflowing_premium_e18 = (u128::from(u64::MAX) + 1) * 1_000_000_000_000;
+
+    for (quantity_e18, premium_e18) in [
+        (1, 0),
+        (ONE_OPTION_E18, 1),
+        (overflowing_quantity_e18, 0),
+        (ONE_OPTION_E18, overflowing_premium_e18),
+    ] {
+        let transaction = Transaction::new_signed_with_payer(
+            &[underwrite_instruction(
+                true,
+                env.market,
+                env.quote_mint,
+                env.base_mint,
+                OptionType::Call,
+                participants,
+                quantity_e18,
+                premium_e18,
+                0,
+            )],
+            Some(&env.buyer.pubkey()),
+            &[&env.buyer, &env.seller],
+            env.svm.latest_blockhash(),
+        );
+        assert!(env.svm.send_transaction(transaction).is_err());
+        env.svm.expire_blockhash();
+    }
 }

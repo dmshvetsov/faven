@@ -18,6 +18,8 @@ use spl_token::state::{Account as SplTokenAccount, AccountState, Mint};
 
 const LAMPORTS_PER_SOL: u64 = 1_000_000_000;
 const EXPIRY_MS: u64 = 2_000_000_000_000;
+const ONE_OPTION_E18: u128 = 1_000_000_000_000_000_000;
+const ONE_QUOTE_E18: u128 = 1_000_000_000_000_000_000;
 
 fn add_mint(svm: &mut LiteSVM, mint_key: Pubkey, decimals: u8) {
     let mint = Mint {
@@ -235,8 +237,8 @@ fn underwrite_instruction(
     is_call: bool,
     terms: (Pubkey, Pubkey, Pubkey, u8, u64, u64),
     participants: UnderwriteAccounts,
-    quantity: u64,
-    premium_per_contract: u64,
+    quantity_e18: u128,
+    premium_e18: u128,
     fee_bps: u16,
 ) -> Instruction {
     let (market, quote_mint, base_mint, marker, strike, expiry) = terms;
@@ -270,16 +272,16 @@ fn underwrite_instruction(
         program_id: PROGRAM_ID,
         accounts: accounts.to_account_metas(None),
         data: if is_call {
-            instruction::UnderwriteCall {
-                quantity,
-                premium_per_contract,
+            instruction::UnderwriteCallE18 {
+                quantity_e18,
+                premium_e18,
                 operational_fee_bps: fee_bps,
             }
             .data()
         } else {
-            instruction::UnderwritePut {
-                quantity,
-                premium_per_contract,
+            instruction::UnderwritePutE18 {
+                quantity_e18,
+                premium_e18,
                 operational_fee_bps: fee_bps,
             }
             .data()
@@ -304,7 +306,7 @@ fn user_can_create_a_series_with_long_mint_and_collateral_vaults() {
         quote_mint,
         base_mint,
         OptionType::Call,
-        3_500_000,
+        350_000_000,
         EXPIRY_MS,
     );
 
@@ -316,7 +318,7 @@ fn user_can_create_a_series_with_long_mint_and_collateral_vaults() {
     );
     assert!(svm.send_transaction(transaction).is_ok());
 
-    let series_key = series_address(&market, 1, 3_500_000, EXPIRY_MS);
+    let series_key = series_address(&market, 1, 350_000_000, EXPIRY_MS);
     let series_account = svm.get_account(&series_key).unwrap();
     let series = Series::try_deserialize(&mut series_account.data.as_slice()).unwrap();
     assert_eq!(series.state, SeriesState::Open);
@@ -326,7 +328,7 @@ fn user_can_create_a_series_with_long_mint_and_collateral_vaults() {
     assert_eq!(series.total_settled_quantity, 0);
 
     let long_mint = svm
-        .get_account(&long_mint_address(&market, 1, 3_500_000, EXPIRY_MS))
+        .get_account(&long_mint_address(&market, 1, 350_000_000, EXPIRY_MS))
         .unwrap();
     let long_mint = Mint::unpack(&long_mint.data).unwrap();
     assert_eq!(long_mint.decimals, 9);
@@ -399,7 +401,7 @@ fn user_cannot_create_a_series_with_a_subsecond_expiry() {
             quote_mint,
             base_mint,
             OptionType::Call,
-            3_500_000,
+            350_000_000,
             EXPIRY_MS + 1,
         )],
         Some(&payer.pubkey()),
@@ -427,7 +429,7 @@ fn user_cannot_create_a_duplicate_series() {
         quote_mint,
         base_mint,
         OptionType::Call,
-        3_500_000,
+        350_000_000,
         EXPIRY_MS,
     );
 
@@ -466,7 +468,7 @@ fn user_cannot_create_a_series_with_shuffled_accounts() {
         quote_mint,
         base_mint,
         OptionType::Call,
-        3_500_000,
+        350_000_000,
         EXPIRY_MS,
     );
     instruction.accounts.swap(2, 3);
@@ -497,7 +499,7 @@ fn user_cannot_create_a_series_with_an_incorrect_pda() {
         quote_mint,
         base_mint,
         OptionType::Call,
-        3_500_000,
+        350_000_000,
         EXPIRY_MS,
     );
     instruction.accounts[4].pubkey = Pubkey::new_unique();
@@ -528,7 +530,7 @@ fn buyer_and_seller_can_underwrite_a_call_and_reuse_the_seller_vault() {
     add_mint(&mut svm, quote_mint, 6);
     add_mint(&mut svm, base_mint, 9);
     let market = create_market(&mut svm, &payer, &operator, quote_mint, base_mint);
-    let strike = 3_500_000;
+    let strike = 350_000_000;
     let create_series = create_series_instruction(
         payer.pubkey(),
         market,
@@ -576,8 +578,8 @@ fn buyer_and_seller_can_underwrite_a_call_and_reuse_the_seller_vault() {
                 true,
                 terms,
                 UnderwriteAccounts { ..participants },
-                1_000_000_000,
-                1_000_000,
+                ONE_OPTION_E18,
+                ONE_QUOTE_E18,
                 500,
             )],
             Some(&buyer.pubkey()),
@@ -650,7 +652,7 @@ fn underwriting_rejects_a_seller_vault_with_invalid_owner_or_series() {
     add_mint(&mut svm, quote_mint, 6);
     add_mint(&mut svm, base_mint, 9);
     let market = create_market(&mut svm, &payer, &operator, quote_mint, base_mint);
-    let strike = 3_500_000;
+    let strike = 350_000_000;
     let create_series = Transaction::new_signed_with_payer(
         &[create_series_instruction(
             payer.pubkey(),
@@ -717,7 +719,7 @@ fn underwriting_rejects_a_seller_vault_with_invalid_owner_or_series() {
                 seller_collateral_source: seller_base_source,
                 fee_recipient,
             },
-            1_000_000_000,
+            ONE_OPTION_E18,
             0,
             0,
         )],
@@ -745,7 +747,7 @@ fn buyer_and_seller_can_underwrite_a_put_with_rounded_up_collateral() {
     add_mint(&mut svm, quote_mint, 6);
     add_mint(&mut svm, base_mint, 9);
     let market = create_market(&mut svm, &payer, &operator, quote_mint, base_mint);
-    let strike = 3_500_000;
+    let strike = 350_000_000;
     let create_series_tx = Transaction::new_signed_with_payer(
         &[create_series_instruction(
             payer.pubkey(),
@@ -788,8 +790,8 @@ fn buyer_and_seller_can_underwrite_a_put_with_rounded_up_collateral() {
                 seller_collateral_source: seller_quote_source,
                 fee_recipient,
             },
-            1_000_000_000,
-            1_000_000,
+            ONE_OPTION_E18,
+            ONE_QUOTE_E18,
             0,
         )],
         Some(&buyer.pubkey()),
@@ -829,7 +831,7 @@ fn underwriting_rejects_invalid_inputs_and_allows_zero_premium_without_a_fee() {
     add_mint(&mut svm, quote_mint, 6);
     add_mint(&mut svm, base_mint, 9);
     let market = create_market(&mut svm, &payer, &operator, quote_mint, base_mint);
-    let strike = 3_500_000;
+    let strike = 350_000_000;
     let create_series_tx = Transaction::new_signed_with_payer(
         &[create_series_instruction(
             payer.pubkey(),
@@ -871,8 +873,8 @@ fn underwriting_rejects_invalid_inputs_and_allows_zero_premium_without_a_fee() {
     };
     for (quantity, fee_bps, source) in [
         (0, 0, seller_base_source),
-        (1_000_000_000, 1_001, seller_base_source),
-        (1_000_000_000, 0, buyer_quote_source),
+        (ONE_OPTION_E18, 1_001, seller_base_source),
+        (ONE_OPTION_E18, 0, buyer_quote_source),
     ] {
         let transaction = Transaction::new_signed_with_payer(
             &[underwrite_instruction(
@@ -898,7 +900,7 @@ fn underwriting_rejects_invalid_inputs_and_allows_zero_premium_without_a_fee() {
             true,
             terms,
             participants,
-            1_000_000_000,
+            ONE_OPTION_E18,
             0,
             0,
         )],
@@ -913,7 +915,7 @@ fn underwriting_rejects_invalid_inputs_and_allows_zero_premium_without_a_fee() {
             true,
             terms,
             participants,
-            1_000_000_000,
+            ONE_OPTION_E18,
             0,
             0,
         )],
@@ -942,7 +944,14 @@ fn underwriting_rejects_invalid_inputs_and_allows_zero_premium_without_a_fee() {
     clock.unix_timestamp = i64::try_from(EXPIRY_MS / 1_000 - 8 * 60 * 60).unwrap();
     svm.set_sysvar(&clock);
     let expiry_boundary = Transaction::new_signed_with_payer(
-        &[underwrite_instruction(true, terms, participants, 1, 0, 0)],
+        &[underwrite_instruction(
+            true,
+            terms,
+            participants,
+            ONE_OPTION_E18,
+            0,
+            0,
+        )],
         Some(&buyer.pubkey()),
         &[&buyer, &seller],
         svm.latest_blockhash(),

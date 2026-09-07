@@ -2,10 +2,33 @@ use anchor_lang::prelude::*;
 
 use crate::{errors::OptionsError, options_rules::STRIKE_SCALE};
 
+const E18_SCALE: u128 = 1_000_000_000_000_000_000;
+
 pub fn token_scale(decimals: u8) -> Result<u64> {
     10_u64
         .checked_pow(u32::from(decimals))
         .ok_or(error!(OptionsError::MintDecimalsTooLarge))
+}
+
+pub fn e18_to_token_decimals(value_e18: u128, token_scale: u64) -> Result<u64> {
+    let common_factor = greatest_common_divisor(u128::from(token_scale), E18_SCALE);
+    let multiplier = u128::from(token_scale) / common_factor;
+    let divisor = E18_SCALE / common_factor;
+    require!(
+        value_e18.is_multiple_of(divisor),
+        OptionsError::UnsupportedTokenPrecision
+    );
+    let dec = (value_e18 / divisor)
+        .checked_mul(multiplier)
+        .ok_or(error!(OptionsError::ArithmeticOverflow))?;
+    u64::try_from(dec).map_err(|_| error!(OptionsError::ArithmeticOverflow))
+}
+
+fn greatest_common_divisor(mut left: u128, mut right: u128) -> u128 {
+    while right != 0 {
+        (left, right) = (right, left % right);
+    }
+    left
 }
 
 pub fn rescale_fixed_point_round_half_up(
@@ -55,12 +78,16 @@ pub fn rescale_fixed_point_round_half_up(
 }
 
 pub fn premium_total(quantity: u64, premium_per_contract: u64, base_scale: u64) -> Result<u64> {
-    ceil_div(
-        u128::from(quantity)
-            .checked_mul(u128::from(premium_per_contract))
-            .ok_or(error!(OptionsError::ArithmeticOverflow))?,
-        u128::from(base_scale),
-    )
+    let numerator = u128::from(quantity)
+        .checked_mul(u128::from(premium_per_contract))
+        .ok_or(error!(OptionsError::ArithmeticOverflow))?;
+    let denominator = u128::from(base_scale);
+    require!(denominator != 0, OptionsError::ZeroDivision);
+    require!(
+        numerator.is_multiple_of(denominator),
+        OptionsError::UnsupportedTokenPrecision
+    );
+    u64::try_from(numerator / denominator).map_err(|_| error!(OptionsError::ArithmeticOverflow))
 }
 
 pub fn put_collateral(
@@ -142,14 +169,14 @@ mod tests {
     };
 
     #[test]
-    fn premium_rounds_up_in_sellers_favor() {
-        assert_eq!(premium_total(3, 5, 2).unwrap(), 8);
+    fn premium_rejects_fractional_quote_base_units() {
+        assert!(premium_total(3, 5, 2).is_err());
     }
 
     #[test]
     fn put_collateral_rounds_up_to_preserve_solvency() {
         assert_eq!(
-            put_collateral(1_000_000_000, 3_500_000, 1_000_000, 1_000_000_000).unwrap(),
+            put_collateral(1_000_000_000, 350_000_000, 1_000_000, 1_000_000_000).unwrap(),
             3_500_000
         );
     }

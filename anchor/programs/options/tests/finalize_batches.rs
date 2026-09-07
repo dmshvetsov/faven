@@ -138,7 +138,7 @@ fn batch_fixture(series_count: usize) -> BatchFixture {
                     state: SeriesState::Open,
                     market,
                     option_type: OptionType::Call,
-                    strike_price: 1_000_000,
+                    strike_price: 100_000_000,
                     expiry_ms: EXPIRY_MS,
                     exercise_window_end_ms: EXPIRY_MS + 3_600_000,
                     expiry_price: None,
@@ -228,7 +228,7 @@ fn assert_finalized(fixture: &BatchFixture) {
         let account = fixture.svm.get_account(key).unwrap();
         let series = Series::try_deserialize(&mut account.data.as_slice()).unwrap();
         assert_eq!(series.state, SeriesState::ExpirationPriceFinalized);
-        assert_eq!(series.expiry_price, Some(1_234_568));
+        assert_eq!(series.expiry_price, Some(123_456_780));
         assert_eq!(series.total_quote_amount, 1);
     }
 }

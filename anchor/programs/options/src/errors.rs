@@ -28,6 +28,8 @@ pub enum OptionsError {
     BuyerAndSellerMustDiffer,
     #[msg("Quantity must be greater than zero")]
     ZeroQuantity,
+    #[msg("Signed terms use precision unsupported by the token mint")]
+    UnsupportedTokenPrecision,
     #[msg("Funding token account has an invalid owner or mint")]
     InvalidFundingAccount,
     #[msg("Series does not belong to the provided market")]

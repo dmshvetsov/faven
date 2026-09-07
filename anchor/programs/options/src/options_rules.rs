@@ -5,8 +5,8 @@ use crate::{
 };
 use anchor_lang::prelude::*;
 
-pub const STRIKE_DECIMALS: i32 = 6;
-pub const STRIKE_SCALE: u64 = 1_000_000;
+pub const STRIKE_DECIMALS: i32 = 8;
+pub const STRIKE_SCALE: u64 = 100_000_000;
 
 pub fn price_to_strike_scale(price: i64, exponent: i32) -> Result<u64> {
     require!(price > 0, OptionsError::InvalidPythPrice);
@@ -35,8 +35,14 @@ mod tests {
 
     #[test]
     fn prices_normalize_to_the_strike_scale() {
-        assert_eq!(price_to_strike_scale(5, 0).unwrap(), 5_000_000);
-        assert_eq!(price_to_strike_scale(12_345_678, -6).unwrap(), 12_345_678);
+        assert_eq!(price_to_strike_scale(190_000_051, -8).unwrap(), 190_000_051);
+        assert_eq!(price_to_strike_scale(5, 0).unwrap(), 500_000_000);
+        assert_eq!(price_to_strike_scale(17520, -3).unwrap(), 17_5200_0000);
+        assert_eq!(price_to_strike_scale(16, 4).unwrap(), 16_0000_0000_0000);
+        assert_eq!(
+            price_to_strike_scale(12_345_678, -6).unwrap(),
+            1_234_567_800
+        );
     }
 
     #[test]
