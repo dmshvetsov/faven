@@ -73,9 +73,11 @@ const LOCAL_ORIGIN = "http://localhost:5173";
 
 const FAVEN_TREASURY = "FvNtr5ZWQxcJPkknFNTSWLBtg3UhP431CxtapqSodVXe";
 
+const OPTIONS_PROGRAM_ID = "FAVENgBXzD9K9qYHKRF5RFRJeT4Qa2EV4EoTycki5gGT";
+
 const TESTNET_WSOL_MARKET: MarketConfig = {
-  optionsProgramId: "11111111111111111111111111111111", // TBD
-  marketAddress: "11111111111111111111111111111111", // TBD
+  optionsProgramId: OPTIONS_PROGRAM_ID,
+  marketAddress: "CY7qdovcTnpA6qo3Mp1J9Zws2ZnSnM7uXLyEXWGY3EUo",
   oracleBase: "SOL", // Pyth SOLUSD
   baseMint: "wSoLCzXHe214cjx7CFjP1axzXyqLkEwq5Xf873hy1JP",
   quoteMint: "usdcHvyN6fvECJ1poPYkt1vztze1pQ6psC8i4cji2Ly",
