@@ -93,13 +93,13 @@ export const createMarketCommand: CliCommand = {
     if (minimumFeeInput === null) return { outcome: "cancelled" };
     const minOperationalFeeInput = await promptText({
       message: "Minimum operational fee (bps)",
-      placeholder: "For example: 50",
+      placeholder: "For example: 50 (0.5%)",
       validate: validateBps,
     });
     if (minOperationalFeeInput === null) return { outcome: "cancelled" };
     const maxOperationalFeeInput = await promptText({
       message: "Maximum operational fee (bps)",
-      placeholder: "For example: 100",
+      placeholder: "For example: 200 (2%)",
       validate: validateBps,
     });
     if (maxOperationalFeeInput === null) return { outcome: "cancelled" };
@@ -154,7 +154,7 @@ export const createMarketCommand: CliCommand = {
         `Minimum fee: ${formatQuoteAmount(minFee, quoteMintDetails.decimals)} quote token (${minFee} raw units)`,
         `Minimum operational fee: ${minOperationalFeeBps} bps (${formatBps(minOperationalFeeBps)}%)`,
         `Maximum operational fee: ${maxOperationalFeeBps} bps (${formatBps(maxOperationalFeeBps)}%)`,
-        `Predicted market address: ${market}`,
+        `Expected Market PDA: ${market}`,
       ].join("\n"),
       "Confirm market creation"
     );
