@@ -1,6 +1,6 @@
 import { log } from "@clack/prompts";
 
-import type { CliCommand } from "./types.js";
+import type { CliCommand } from "./command-types.js";
 
 export function unavailableCommand(description: string): CliCommand {
   return {

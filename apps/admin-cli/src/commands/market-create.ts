@@ -34,8 +34,7 @@ import {
   type SolanaMint,
   type SolanaRpcClient,
 } from "../solana.js";
-import { unavailableCommand } from "./unavailable-command.js";
-import type { CliCommand, CommandGroup } from "./types.js";
+import type { CliCommand } from "../command-types.js";
 
 const OPTIONS_PROGRAM = address("Hvfbh72e5Vw1Gq8RFsKLj9BLq1m5y9WFzBYn2fZR8UYX");
 const SYSTEM_PROGRAM = address("11111111111111111111111111111111");
@@ -63,7 +62,7 @@ interface LatestBlockhash {
   readonly lastValidBlockHeight: bigint;
 }
 
-const createMarketCommand: CliCommand = {
+export const createMarketCommand: CliCommand = {
   description: "Create a market.",
   async run(args) {
     if (args.length > 0) {
@@ -190,14 +189,6 @@ const createMarketCommand: CliCommand = {
     log.success(`Market created: ${market}`);
     log.success(`Transaction signature: ${signature}`);
     return { outcome: "completed" };
-  },
-};
-
-export const marketCommands: CommandGroup = {
-  description: "Manage deployed markets.",
-  commands: {
-    create: createMarketCommand,
-    backfill: unavailableCommand("Backfill market data."),
   },
 };
 
