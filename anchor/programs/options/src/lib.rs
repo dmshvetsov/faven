@@ -22,7 +22,7 @@ pub use instructions::{
 };
 pub use state::{OptionType, OracleConfig};
 
-declare_id!("Hvfbh72e5Vw1Gq8RFsKLj9BLq1m5y9WFzBYn2fZR8UYX");
+declare_id!("FAVENgBXzD9K9qYHKRF5RFRJeT4Qa2EV4EoTycki5gGT");
 
 #[program]
 pub mod options {

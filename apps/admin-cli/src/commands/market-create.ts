@@ -36,7 +36,7 @@ import {
 } from "../solana.js";
 import type { CliCommand } from "../command-types.js";
 
-const OPTIONS_PROGRAM = address("Hvfbh72e5Vw1Gq8RFsKLj9BLq1m5y9WFzBYn2fZR8UYX");
+const OPTIONS_PROGRAM = address("FAVENgBXzD9K9qYHKRF5RFRJeT4Qa2EV4EoTycki5gGT");
 const SYSTEM_PROGRAM = address("11111111111111111111111111111111");
 const CREATE_MARKET_DISCRIMINATOR = new Uint8Array([
   103, 226, 97, 235, 200, 188, 251, 254,
