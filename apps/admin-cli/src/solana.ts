@@ -14,7 +14,7 @@ const SOLANA_CLI_CONFIG_PATH = join(
   ".config",
   "solana",
   "cli",
-  "config.yaml"
+  "config.yml"
 );
 
 const KEYPAIR_ERROR =

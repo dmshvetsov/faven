@@ -14,8 +14,16 @@ import {
   signTransaction,
   type Address,
 } from "@solana/kit";
-import { confirm, isCancel, log, note, text } from "@clack/prompts";
+import {
+  autocomplete,
+  confirm,
+  isCancel,
+  log,
+  note,
+  text,
+} from "@clack/prompts";
 
+import { PYTH_SOLANA_FEEDS } from "../pyth-feeds.js";
 import {
   fetchMint,
   LEGACY_TOKEN_PROGRAM,
@@ -66,11 +74,7 @@ const createMarketCommand: CliCommand = {
     const rpc = loadSolanaRpcClient(solanaConfig);
     const admin = await loadSolanaKeypair(solanaConfig);
 
-    const feedIdInput = await promptText({
-      message: "Pyth TWAP feed ID",
-      placeholder: "64-character hexadecimal value",
-      validate: validateFeedId,
-    });
+    const feedIdInput = await promptPythFeedId();
     if (feedIdInput === null) return { outcome: "cancelled" };
     const quoteMintInput = await promptText({
       message: "Quote mint public address",
@@ -207,6 +211,37 @@ async function promptText(options: {
     validate: (input) => options.validate(input ?? ""),
   });
   return isCancel(value) ? null : value;
+}
+
+async function promptPythFeedId(): Promise<string | null> {
+  const customValue = "custom";
+  const value = await autocomplete({
+    message: "Pyth TWAP feed ID",
+    placeholder: "Search Solana feed symbols or IDs",
+    maxItems: 10,
+    options: [
+      ...PYTH_SOLANA_FEEDS.map((feed) => ({
+        value: feed.id,
+        label: feed.symbol,
+        hint: feed.id,
+      })),
+      {
+        value: customValue,
+        label: "Enter a custom feed ID",
+        hint: "For a feed not in the Solana catalog",
+      },
+    ],
+    filter: (search, option) =>
+      (option.label ?? "").toLowerCase().includes(search.toLowerCase()) ||
+      option.value.toLowerCase().includes(search.toLowerCase()),
+  });
+  if (isCancel(value)) return null;
+  if (value !== customValue) return value;
+  return promptText({
+    message: "Custom Pyth TWAP feed ID",
+    placeholder: "64-character hexadecimal value",
+    validate: validateFeedId,
+  });
 }
 
 function validateFeedId(value: string): string | undefined {
