@@ -20,7 +20,7 @@ Coin and token is used interchangeably. Always prefer token term.
 
 The market program manages markets available for option series. Each market supports exactly one `OracleBase / QuoteCoin / BaseCoin` option class, one configured operator, and oracle configuration. Different operators MAY create independent markets for the same option class. Market creation MUST reject a duplicate with the same operator, oracle configuration, `QuoteCoin` mint address, and `BaseCoin` mint address.
 
-Market must be PDA `["market", oracle_constant_id, price_source_id, quote_coin_mint, base_coin_mint, operator_address]`. `oracle_constant_id` is the enum variant name `"PythTwap"`string.
+Market must be PDA `["market", oracle_kind_seed, oracle_feed_id, quote_mint, base_mint, operator_address]`. `oracle_kind_seed` is the enum variant name `"PythTwap"` string.
 
 `Market` and hence the protocol supports only SPL tokens. Other types of tokens like native SOL and Token-2022 is out of support. `QuoteCoin` and `BaseCoin` MUST be SPL tokens, native SOL is out of support, wrapped SOL tokens can be used instead.
 
@@ -48,17 +48,17 @@ OracleConfig::PythTwap { feed_id: [u8; 32] }
 
 The market MUST only store:
 - `oracle_config`,
-- base coin scale,
-- quote coin scale,
+- `base_mint_decimals`,
+- `quote_mint_decimals`,
 - operator address,
 - pause flag,
-- `QuoteCoin` mint address,
-- `BaseCoin` mint address,
+- `quote_mint`,
+- `base_mint`,
 - `min_fee`,
 - `min_operational_fee_bps`,
 - `max_operational_fee_bps`.
 
-`QuoteCoin` and `BaseCoin` MUST be distinct mints owned by the canonical SPL Token Program. Native SOL and Token-2022 are unsupported; wrapped SOL MAY be used. The program MUST derive on-chain each stored coin scale as `10 ^ mint.decimals`, and MUST reject a mint with more than 19 decimals because its scale cannot fit in `u64`.
+`QuoteCoin` and `BaseCoin` MUST be distinct mints owned by the SPL Token Program `TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA`. Native SOL and Token-2022 are unsupported; wrapped SOL MAY be used. The program MUST store each mint's `decimals` value in the corresponding market field and MUST reject a mint with more than 18 decimals.
 
 Market creation is permissionless. The transaction payer and supplied operator MUST both sign. The payer funds account creation; the supplied operator is stored immutably as the market operator. A newly created market MUST be unpaused and usable immediately.
 
@@ -90,8 +90,8 @@ The smart-contract MUST emit `MarketCreated` with:
 - operator address,
 - oracle kind,
 - oracle feed id,
-- quote coin mint address,
-- base coin mint address.
+- quote token mint address
+- base token mint address
 
 ## 2. Option Series
 
@@ -139,12 +139,12 @@ For ITM series, after `exercise_window_end_ms`, unexercised long tokens MUST NOT
 `Series` PDA is the authority for `BaseCoin` and `QuoteCoin` collateral vault token accounts.
 
 BaseCoin Series token account:
-- mint = Series.base_coin_mint
+- mint = Market.base_mint
 - token authority = Series PDA
 - token program = SPL Token Program
 
 QuoteCoin Series token account:
-- mint = Series.quote_coin_mint
+- mint = Market.quote_mint
 - token authority = Series PDA
 - token program = SPL Token Program
 
@@ -223,7 +223,7 @@ For a cash-secured put underwrite transaction:
 Seller collateral MUST be deposited in full 1:1, all underwrites are fully collateralize.
 
 Premium and fee handling:
-- total premium calculation `premium_total = ceil_div(quantity * premium_per_contract, base_coin_scale)` with checked arithmetic, this rounding favors the seller, where `contracts_quantity = (contracts_in_base_units / contract_decimal_scale)` with checked `u64` overflow and abort on overflow, and `premium_per_contract` how much buyer pays in `QuoteCoin` to buy one `Long` whole option token (one token in integer units).
+- total premium calculation `premium_total = ceil_div(quantity * premium_per_contract, base_mint_scale)` with checked arithmetic, this rounding favors the seller, where `contracts_quantity = (contracts_in_base_units / base_mint_scale)` with checked `u64` overflow and abort on overflow, and `premium_per_contract` how much buyer pays in `QuoteCoin` to buy one `Long` whole option token (one token in integer units).
 - buyer pays `premium_total` in `QuoteCoin`,
 - `operational_fee` is deducted from `premium_total` and calculated on-chain, resulted fee MUST NOT be less than minimal fee set in the market `operational_fee = MAX((premium_total * operational_fee_bps) / 10_000, min_fee)`,
 - `operational_fee` is transferred to `fee_recipient`,
@@ -255,17 +255,17 @@ The contract MUST provide deterministic conversion between `BaseCoin` quantity a
 
 For a BaseCoin quantity `q` (where q is number of contracts which is the same as number of BaseCoins):
 - `call_collateral(q) = q`
-- `call_payment(q) = ceil_div(q * strike_price * quote_scale, base_scale * strike_scale)`
-- `put_collateral(q) = ceil_div(q * strike_price * quote_scale, base_scale * strike_scale)`
-- `put_payout(q) = floor_div(q * strike_price * quote_scale, base_scale * strike_scale)`
+- `call_payment(q) = ceil_div(q * strike_price * quote_mint_scale, base_mint_scale * strike_scale)`
+- `put_collateral(q) = ceil_div(q * strike_price * quote_mint_scale, base_mint_scale * strike_scale)`
+- `put_payout(q) = floor_div(q * strike_price * quote_mint_scale, base_mint_scale * strike_scale)`
 
 Use round down for put payouts and round up for put collateral, leaving any difference as dust.
 
 Example: call option for 1 SUI, strike $3.50, quote is USDC:
 - 1 Sui has 1_000_000_000 base units because SUI has 9 decimals, 1e9 scale
 - $3.5 strike_price = 3_500_000 because strike scale is 1e6
-- quote_scale = 1_000_000 because USDC has 6 decimals, 1e6 scale
-- base_scale = 1_000_000_000
+- quote_mint_scale = 1_000_000 because USDC has 6 decimals, 1e6 scale
+- base_mint_scale = 1_000_000_000
 - strike_scale = 1_000_000
 - `ceil_div(1_000_000_000 * 3_500_000 * 1_000_000, 1_000_000_000 * 1_000_000) = 3_500_000`
 - holder pays 3_500_000 USDC base units which is 3.5 USDC.
