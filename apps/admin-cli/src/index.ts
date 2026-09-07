@@ -42,8 +42,8 @@ async function main(args: readonly string[]): Promise<void> {
   }
 
   intro(`faven ${groupName} ${commandName}`);
-  await command.run(commandArgs);
-  outro("Done.");
+  const result = await command.run(commandArgs);
+  outro(result.outcome === "cancelled" ? "No changes were made." : "Done.");
 }
 
 function isHelp(value: string): boolean {

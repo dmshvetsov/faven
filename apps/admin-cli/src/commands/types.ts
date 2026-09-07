@@ -1,6 +1,10 @@
 export interface CliCommand {
   readonly description: string;
-  readonly run: (args: readonly string[]) => Promise<void>;
+  readonly run: (args: readonly string[]) => Promise<CliCommandResult>;
+}
+
+export interface CliCommandResult {
+  readonly outcome: "completed" | "cancelled";
 }
 
 export interface CommandGroup {
