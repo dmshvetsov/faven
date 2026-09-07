@@ -23,22 +23,27 @@ const CREATE_SERIES_DISCRIMINATOR = [
   0xb5, 0x09, 0x34, 0x78, 0xc5, 0xdd, 0x2a, 0x8e,
 ];
 const UNDERWRITE_CALL_DISCRIMINATOR = [
-  0xe3, 0x33, 0x07, 0x44, 0xf3, 0xe8, 0x20, 0xf6,
+  0x7e, 0xf6, 0x59, 0xa5, 0x6a, 0xaa, 0x78, 0x93,
 ];
 const UNDERWRITE_PUT_DISCRIMINATOR = [
-  0xf1, 0x89, 0xeb, 0x03, 0x9c, 0x4c, 0xe3, 0x02,
+  0xac, 0x0e, 0xf6, 0x1b, 0x1c, 0x27, 0xe5, 0xe1,
 ];
+const U64_MAX = (1n << 64n) - 1n;
+const U128_MAX = (1n << 128n) - 1n;
 
 export interface UnderwriteTransactionInput {
   readonly market: MarketConfig;
   readonly expiry: number;
   readonly isPut: boolean;
+  /** option contract quantity using 18 decimals. */
   readonly quantity: string;
+  /** USD strike using 8 decimals. */
   readonly strike: string;
   readonly seller: string;
   readonly sellerCollateralSource: string;
   readonly maker: string;
   readonly buyerQuoteSource: string;
+  /** QuoteCoin premium per whole option contract token using 18 decimals. */
   readonly premium: string;
   readonly blockhash: string;
   readonly lastValidBlockHeight: number;
@@ -199,13 +204,13 @@ function createSeriesData(input: UnderwriteTransactionInput): Uint8Array {
 }
 
 function underwriteData(input: UnderwriteTransactionInput): Uint8Array {
-  const data = new Uint8Array(26);
+  const data = new Uint8Array(42);
   data.set(
     input.isPut ? UNDERWRITE_PUT_DISCRIMINATOR : UNDERWRITE_CALL_DISCRIMINATOR
   );
-  writeU64(data, 8, BigInt(input.quantity));
-  writeU64(data, 16, BigInt(input.premium));
-  new DataView(data.buffer).setUint16(24, input.market.operationalFeeBps, true);
+  writeU128(data, 8, BigInt(input.quantity));
+  writeU128(data, 24, BigInt(input.premium));
+  writeU16(data, 40, input.market.operationalFeeBps);
   return data;
 }
 
@@ -280,7 +285,29 @@ function readonly(account: ReturnType<typeof address>) {
 }
 
 function writeU64(data: Uint8Array, offset: number, value: bigint): void {
-  new DataView(data.buffer).setBigUint64(offset, value, true);
+  if (value < 0n || value > U64_MAX) throw new Error("u64-out-of-range");
+  new DataView(data.buffer, data.byteOffset, data.byteLength).setBigUint64(
+    offset,
+    value,
+    true
+  );
+}
+
+function writeU128(data: Uint8Array, offset: number, value: bigint): void {
+  if (value < 0n || value > U128_MAX) throw new Error("u128-out-of-range");
+  writeU64(data, offset, value & U64_MAX);
+  writeU64(data, offset + 8, value >> 64n);
+}
+
+function writeU16(data: Uint8Array, offset: number, value: number): void {
+  if (!Number.isInteger(value) || value < 0 || value > 0xffff) {
+    throw new Error("u16-out-of-range");
+  }
+  new DataView(data.buffer, data.byteOffset, data.byteLength).setUint16(
+    offset,
+    value,
+    true
+  );
 }
 
 function u64Bytes(value: bigint): Uint8Array {

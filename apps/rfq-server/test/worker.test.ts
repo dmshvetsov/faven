@@ -12,6 +12,13 @@ import { isRecord } from "../src/rfq-rpc";
 
 Object.defineProperty(globalThis, "isSecureContext", { value: true });
 
+const TEN_OPTIONS_E18 = "10000000000000000000";
+const PREMIUM_25_E18 = "25000000000000000000";
+const PREMIUM_30_E18 = "30000000000000000000";
+const OVER_MARKET_MAX_E18 = "101000000000000000000";
+const BASE_COIN_MINT = "wSoLCzXHe214cjx7CFjP1axzXyqLkEwq5Xf873hy1JP";
+const QUOTE_COIN_MINT = "usdcHvyN6fvECJ1poPYkt1vztze1pQ6psC8i4cji2Ly";
+
 beforeEach(() => {
   vi.stubGlobal(
     "fetch",
@@ -80,7 +87,7 @@ describe("RFQ server", () => {
         method: "rfq.create",
         params: {
           ...canonicalRfq("0193c3c5-1967-7000-8000-000000000069"),
-          quantity: "1001",
+          quantity: OVER_MARKET_MAX_E18,
         },
       })
     );
@@ -189,7 +196,7 @@ describe("RFQ server", () => {
   });
 
   it("fans out a canonical RFQ request without seller details", async () => {
-    const baseCoinMint = "So11111111111111111111111111111111111111112";
+    const baseCoinMint = BASE_COIN_MINT;
     const seller = acceptSocket(
       await SELF.fetch("https://example.com/taker", webSocketHeaders())
     );
@@ -214,7 +221,7 @@ describe("RFQ server", () => {
           market: "11111111111111111111111111111111",
           expiry: 1_735_689_600,
           isPut: false,
-          quantity: "10",
+          quantity: TEN_OPTIONS_E18,
           strike: "6000000000000",
           seller: "11111111111111111111111111111111",
           sellerCollateralSource: "11111111111111111111111111111111",
@@ -358,7 +365,7 @@ describe("RFQ server", () => {
           rfqId,
           maker: "So11111111111111111111111111111111111111112",
           buyerQuoteSource: "So11111111111111111111111111111111111111112",
-          premium: "25",
+          premium: PREMIUM_25_E18,
         },
       })
     );
@@ -446,12 +453,12 @@ describe("RFQ server", () => {
 
     await expect(quoteResult).resolves.toMatchObject({
       id: "0193c3c5-1967-7000-8000-000000000055",
-      result: { rfqId, bestQuote: "25", providedStatus: "best" },
+      result: { rfqId, bestQuote: PREMIUM_25_E18, providedStatus: "best" },
     });
     const selected = nextSocketMessage(seller);
     await expect(selected).resolves.toMatchObject({
       method: "quote.best",
-      params: { rfqId, quote: { premium: "25" } },
+      params: { rfqId, quote: { premium: PREMIUM_25_E18 } },
     });
     const fullySignedTransaction = getBase64EncodedWireTransaction(
       await partiallySignTransaction([sellerSigner.keyPair], signedTransaction)
@@ -611,7 +618,7 @@ describe("RFQ server", () => {
         maker,
         rfqId,
         makerSigner,
-        "25",
+        PREMIUM_25_E18,
         "0193c3c5-1967-7000-8000-000000000085",
         "0193c3c5-1967-7000-8000-000000000086",
         { validUntil: Math.floor(Date.now() / 1_000) - 1 }
@@ -653,7 +660,7 @@ describe("RFQ server", () => {
       firstMaker,
       rfqId,
       firstMakerSigner,
-      "25",
+      PREMIUM_25_E18,
       "0193c3c5-1967-7000-8000-000000000059",
       "0193c3c5-1967-7000-8000-000000000060"
     );
@@ -662,7 +669,7 @@ describe("RFQ server", () => {
       secondMaker,
       rfqId,
       secondMakerSigner,
-      "30",
+      PREMIUM_30_E18,
       "0193c3c5-1967-7000-8000-000000000061",
       "0193c3c5-1967-7000-8000-000000000062"
     );
@@ -671,8 +678,8 @@ describe("RFQ server", () => {
       method: "quote.outbid",
       params: {
         rfqId,
-        bestQuote: "30",
-        providedQuote: "25",
+        bestQuote: PREMIUM_30_E18,
+        providedQuote: PREMIUM_25_E18,
         providedStatus: "outbid",
       },
     });
@@ -711,7 +718,7 @@ function canonicalRfq(
     market: "11111111111111111111111111111111",
     expiry: 1_735_689_600,
     isPut: false,
-    quantity: "10",
+    quantity: TEN_OPTIONS_E18,
     strike: "6000000000000",
     seller,
     sellerCollateralSource: seller,
@@ -723,23 +730,23 @@ function generationParams(
   maker: string,
   buyerQuoteSource = maker
 ): Record<string, unknown> {
-  return { rfqId, maker, buyerQuoteSource, premium: "25" };
+  return { rfqId, maker, buyerQuoteSource, premium: PREMIUM_25_E18 };
 }
 
 function quoteFields(rfqId: string, maker: string): Record<string, unknown> {
   return {
     rfqId,
-    assetAddress: "So11111111111111111111111111111111111111112",
+    assetAddress: BASE_COIN_MINT,
     chainId: "solana:testnet",
     expiry: 1_735_689_600,
     isPut: false,
     maker,
-    quantity: "10",
+    quantity: TEN_OPTIONS_E18,
     strike: "6000000000000",
-    premiumAsset: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
-    collateralAsset: "So11111111111111111111111111111111111111112",
+    premiumAsset: QUOTE_COIN_MINT,
+    collateralAsset: BASE_COIN_MINT,
     validUntil: Math.floor(Date.now() / 1_000) + 30,
-    premium: "25",
+    premium: PREMIUM_25_E18,
   };
 }
 

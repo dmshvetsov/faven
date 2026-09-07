@@ -23,8 +23,11 @@ export const underwrites = sqliteTable(
     ticker: text("ticker").notNull(),
     isPut: integer("is_put", { mode: "boolean" }).notNull(),
     expiryMs: integer("expiry_ms").notNull(),
+    // strike is e8 decimals base unit.
     strike: text("strike").notNull(),
+    // quantity is e18 decimals base unit.
     quantity: text("quantity").notNull(),
+    // premium is e18 decimals base unit.
     premium: text("premium").notNull(),
     baseCoinMint: text("base_coin_mint").notNull(),
     quoteCoinMint: text("quote_coin_mint").notNull(),
@@ -74,6 +77,7 @@ export const optionSeries = sqliteTable("option_series", {
   ticker: text("ticker").notNull(),
   isPut: integer("is_put", { mode: "boolean" }).notNull(),
   expiryMs: integer("expiry_ms").notNull(),
+  // USD strike using 8 decimals (e8).
   strike: text("strike").notNull(),
   baseCoinMint: text("base_coin_mint").notNull(),
   quoteCoinMint: text("quote_coin_mint").notNull(),

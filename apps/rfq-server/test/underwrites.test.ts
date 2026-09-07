@@ -19,7 +19,7 @@ const underwrite: QueuedUnderwrite = {
   expiryMs: 1_735_689_600_000,
   strike: "6000000000000",
   quantity: "1000000000000000000",
-  premium: "25000000",
+  premium: "25000000000000000000",
   baseCoinMint: "base-mint",
   quoteCoinMint: "quote-mint",
   feeRecipient: "fee-recipient",

@@ -18,6 +18,18 @@ Repeat for staging and production. Local development includes a testnet SOL
 test market for WebSocket integration checks. Browser origins are closed
 outside local development, and unsupported markets fail closed.
 
+## Canonical term units
+
+The API and D1 database store fixed-point integers as decimal strings:
+
+- `quantity`: whole-option quantity with 18 decimals (e18)
+- `premium`: QuoteCoin premium per whole option with 18 decimals (e18)
+- `strike`: USD strike with 8 decimals (e8)
+
+The RFQ server and its clients operates strictly these scales.
+The options program expose instructions for e18 quantity and premium scales.
+The same e8 strike scale used both in the RFQ server and the option program.
+
 On devnet, `POST /wallet-fundings` funds an on-curve wallet once every 24
 hours. Set `TREASURY_PRIVATE_KEY` to the JSON byte array from a dedicated
 Solana CLI keypair that holds the configured mint authority and enough SOL.

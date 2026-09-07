@@ -21,8 +21,11 @@ export interface QueuedUnderwrite {
   readonly ticker: string;
   readonly isPut: boolean;
   readonly expiryMs: number;
+  /** USD strike using 8 decimals. */
   readonly strike: string;
+  /** option contract quantity using 18 decimals. */
   readonly quantity: string;
+  /** QuoteCoin premium per whole option contract using 18 decimals. */
   readonly premium: string;
   readonly baseCoinMint: string;
   readonly quoteCoinMint: string;

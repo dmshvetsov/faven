@@ -19,8 +19,11 @@ export interface MarketConfig {
   readonly feeRecipient: string;
   readonly operationalFeeBps: number;
   readonly quantity: {
+    /** minimum underwrite quantity, 18 decimals. */
     readonly minimum: bigint;
+    /** 18 decimals. */
     readonly step: bigint;
+    /** maximum underwrite quantity, 18 decimals. */
     readonly maximum: bigint;
   };
 }
@@ -55,7 +58,11 @@ const TESTNET_WSOL_MARKET: MarketConfig = {
   quoteCoinSymbol: "tUSDC",
   feeRecipient: FAVEN_TREASURY,
   operationalFeeBps: 50,
-  quantity: { minimum: baseUnits(1n, 9), step: baseUnits(1n, 9), maximum: baseUnits(100n, 9) },
+  quantity: {
+    minimum: baseUnits(1n, 18),
+    step: baseUnits(1n, 18),
+    maximum: baseUnits(100n, 18),
+  },
 };
 
 const environmentConfig: Record<ProductEnvironment, EnvironmentConfig> = {

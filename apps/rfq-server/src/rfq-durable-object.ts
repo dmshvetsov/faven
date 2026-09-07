@@ -40,7 +40,9 @@ interface RfqState {
   readonly chainId: string;
   readonly expiry: number;
   readonly isPut: boolean;
+  /** option contract quantity using 18 decimals. */
   readonly quantity: string;
+  /** USD strike using 8 decimals. */
   readonly strike: string;
   readonly seller: string;
   readonly sellerCollateralSource: string;
@@ -48,12 +50,12 @@ interface RfqState {
   readonly premiumAsset: string;
   readonly requestDeadline: number;
   /**
-    * aggregating - collecting quotes from buyers
-    * selected - a best quote selected from received quotes
-    * queued - RFQ underwrite transaction was queued to be broadcasted on-chain
-    * no_quote - no quotes provided, e.g. no buyers, buyer did not provide quotes
-    * cancelled - RFQ was canceled by seller or seller related reasons
-    */
+   * aggregating - collecting quotes from buyers
+   * selected - aggregation ended, a best quote selected from received quotes
+   * no_quote - aggregation ended, no quotes provided, e.g. no buyers, buyer did not provide quotes
+   * queued - RFQ underwrite transaction from the best quote was queued to be broadcasted on-chain
+   * cancelled - RFQ was canceled by seller or seller related reasons
+   */
   readonly status:
     "aggregating" | "selected" | "queued" | "no_quote" | "cancelled";
   readonly blockhash: string;
@@ -69,6 +71,7 @@ interface RfqState {
 interface GeneratedMessage {
   readonly maker: string;
   readonly buyerQuoteSource: string;
+  /** QuoteCoin premium per whole option contract using 18 decimals. */
   readonly premium: string;
   readonly messageHash: string;
   readonly message: string;
@@ -86,11 +89,14 @@ interface Quote {
   readonly expiry: number;
   readonly isPut: boolean;
   readonly maker: string;
+  /** option contract quantity using 18 decimals. */
   readonly quantity: string;
+  /** USD strike using 8 decimals. */
   readonly strike: string;
   readonly premiumAsset: string;
   readonly collateralAsset: string;
   readonly validUntil: number;
+  /** QuoteCoin premium per whole option contract using 18 decimals. */
   readonly premium: string;
   readonly underwriteTx: string;
 }
@@ -125,8 +131,8 @@ export class RfqDurableObject implements DurableObject {
   }
 
   /**
-    * logic at the end of aggregating window undefined in requestDeadline
-    */
+   * logic at the end of aggregating window undefined in requestDeadline
+   */
   private async runAlarm(): Promise<void> {
     const rfq = await this.state.storage.get<RfqState>("rfq");
     if (rfq === undefined) return;
@@ -189,8 +195,8 @@ export class RfqDurableObject implements DurableObject {
   }
 
   /**
-    * Generate solana transaction for give RFQ
-    */
+   * Generate solana transaction for give RFQ
+   */
   private async generate(request: Request): Promise<Response> {
     const body: unknown = await request.json();
     if (!isRecord(body) || typeof body.requestId !== "string") {
@@ -278,8 +284,8 @@ export class RfqDurableObject implements DurableObject {
   }
 
   /**
-    * Provide a quote for given RFQ
-    */
+   * Provide a quote for given RFQ
+   */
   private async quote(request: Request): Promise<Response> {
     const body: unknown = await request.json();
     if (
@@ -577,8 +583,8 @@ export class RfqDurableObject implements DurableObject {
   }
 
   /**
-    * Create a new RFQ for given undewrite terms
-    */
+   * Create a new RFQ for given undewrite terms
+   */
   private async create(request: Request): Promise<Response> {
     let requestId: string | null = null;
     let rfqId: string | undefined;
