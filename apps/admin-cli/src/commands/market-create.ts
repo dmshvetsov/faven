@@ -389,9 +389,35 @@ async function simulateMarketCreation(
   }
   if (result.value.err !== null) {
     throw new Error(
-      "Market creation simulation failed. No transaction was signed or sent."
+      [
+        "Market creation simulation failed.",
+        `Reason: ${formatSimulationError(result.value.err)}`,
+        formatSimulationLogs(result.value.logs),
+        "No transaction was signed or sent.",
+      ]
+        .filter((line) => line !== undefined)
+        .join("\n")
     );
   }
+}
+
+function formatSimulationError(error: unknown): string {
+  if (typeof error === "string") return error;
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return "The RPC returned an unreadable simulation error.";
+  }
+}
+
+function formatSimulationLogs(logs: unknown): string | undefined {
+  if (
+    !Array.isArray(logs) ||
+    !logs.every((logEntry) => typeof logEntry === "string")
+  ) {
+    return undefined;
+  }
+  return `Simulation logs:\n${logs.join("\n")}`;
 }
 
 function createMarketTransaction(
