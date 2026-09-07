@@ -48,15 +48,15 @@ pub fn close_series<'info>(ctx: Context<'info, CloseSeries<'info>>) -> Result<()
         ensure_closer_ata(
             &ctx,
             base_destination,
-            ctx.accounts.base_coin_mint.to_account_info(),
+            ctx.accounts.base_mint.to_account_info(),
         )?;
         transfer_dust(
             &ctx,
             ctx.accounts.base_collateral_vault.to_account_info(),
-            ctx.accounts.base_coin_mint.to_account_info(),
+            ctx.accounts.base_mint.to_account_info(),
             base_destination.clone(),
             base_dust_amount,
-            ctx.accounts.base_coin_mint.decimals,
+            ctx.accounts.base_mint.decimals,
             signer_seeds,
         )?;
     }
@@ -67,15 +67,15 @@ pub fn close_series<'info>(ctx: Context<'info, CloseSeries<'info>>) -> Result<()
         ensure_closer_ata(
             &ctx,
             quote_destination,
-            ctx.accounts.quote_coin_mint.to_account_info(),
+            ctx.accounts.quote_mint.to_account_info(),
         )?;
         transfer_dust(
             &ctx,
             ctx.accounts.quote_collateral_vault.to_account_info(),
-            ctx.accounts.quote_coin_mint.to_account_info(),
+            ctx.accounts.quote_mint.to_account_info(),
             quote_destination.clone(),
             quote_dust_amount,
-            ctx.accounts.quote_coin_mint.decimals,
+            ctx.accounts.quote_mint.decimals,
             signer_seeds,
         )?;
     }
@@ -195,10 +195,10 @@ pub struct CloseSeries<'info> {
     /// CHECK: receives SOL rent only after its key is checked against the Market.
     #[account(mut, address = market.operator)]
     pub market_operator: UncheckedAccount<'info>,
-    #[account(address = market.base_coin_mint)]
-    pub base_coin_mint: Box<Account<'info, Mint>>,
-    #[account(address = market.quote_coin_mint)]
-    pub quote_coin_mint: Box<Account<'info, Mint>>,
+    #[account(address = market.base_mint)]
+    pub base_mint: Box<Account<'info, Mint>>,
+    #[account(address = market.quote_mint)]
+    pub quote_mint: Box<Account<'info, Mint>>,
     #[account(
         mut,
         close = market_operator,
@@ -215,13 +215,13 @@ pub struct CloseSeries<'info> {
     pub series: Box<Account<'info, Series>>,
     #[account(
         mut,
-        associated_token::mint = base_coin_mint,
+        associated_token::mint = base_mint,
         associated_token::authority = series,
     )]
     pub base_collateral_vault: Box<Account<'info, TokenAccount>>,
     #[account(
         mut,
-        associated_token::mint = quote_coin_mint,
+        associated_token::mint = quote_mint,
         associated_token::authority = series,
     )]
     pub quote_collateral_vault: Box<Account<'info, TokenAccount>>,

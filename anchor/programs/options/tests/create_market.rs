@@ -66,8 +66,8 @@ fn create_market_instruction(
     let accounts = accounts::CreateMarket {
         payer,
         operator,
-        quote_coin_mint: quote_mint,
-        base_coin_mint: base_mint,
+        quote_mint: quote_mint,
+        base_mint: base_mint,
         market: market_address(&operator, &quote_mint, &base_mint, &oracle_config.feed_id()),
         token_program: TOKEN_PROGRAM_ID,
         system_program: anchor_lang::system_program::ID,
@@ -140,10 +140,10 @@ fn user_can_create_a_market_with_spl_mints() {
     let stored = Market::try_deserialize(&mut account.data.as_slice()).unwrap();
     assert_eq!(stored.oracle_config, oracle_config);
     assert_eq!(stored.operator, operator.pubkey());
-    assert_eq!(stored.quote_coin_mint, quote_mint);
-    assert_eq!(stored.base_coin_mint, base_mint);
-    assert_eq!(stored.quote_coin_scale, 1_000_000);
-    assert_eq!(stored.base_coin_scale, 1_000_000_000);
+    assert_eq!(stored.quote_mint, quote_mint);
+    assert_eq!(stored.base_mint, base_mint);
+    assert_eq!(stored.quote_mint_decimals, 6);
+    assert_eq!(stored.base_mint_decimals, 9);
     assert_eq!(stored.min_fee, 500);
     assert_eq!(stored.min_operational_fee_bps, 10);
     assert_eq!(stored.max_operational_fee_bps, 100);

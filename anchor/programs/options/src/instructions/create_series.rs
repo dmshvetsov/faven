@@ -55,10 +55,10 @@ pub struct CreateSeries<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
     pub market: Account<'info, Market>,
-    #[account(address = market.base_coin_mint)]
-    pub base_coin_mint: Account<'info, Mint>,
-    #[account(address = market.quote_coin_mint)]
-    pub quote_coin_mint: Account<'info, Mint>,
+    #[account(address = market.base_mint)]
+    pub base_mint: Account<'info, Mint>,
+    #[account(address = market.quote_mint)]
+    pub quote_mint: Account<'info, Mint>,
     #[account(
         init,
         payer = payer,
@@ -84,21 +84,21 @@ pub struct CreateSeries<'info> {
             &strike_price.to_le_bytes(),
         ],
         bump,
-        mint::decimals = base_coin_mint.decimals,
+        mint::decimals = base_mint.decimals,
         mint::authority = series,
     )]
     pub long_mint: Account<'info, Mint>,
     #[account(
         init,
         payer = payer,
-        associated_token::mint = base_coin_mint,
+        associated_token::mint = base_mint,
         associated_token::authority = series,
     )]
     pub base_collateral_vault: Account<'info, anchor_spl::token::TokenAccount>,
     #[account(
         init,
         payer = payer,
-        associated_token::mint = quote_coin_mint,
+        associated_token::mint = quote_mint,
         associated_token::authority = series,
     )]
     pub quote_collateral_vault: Account<'info, anchor_spl::token::TokenAccount>,

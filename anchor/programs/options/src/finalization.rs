@@ -104,12 +104,12 @@ pub(crate) fn finalize_series(
         let quote_collateral_vault = &finalization.quote_collateral_vault;
         require_keys_eq!(
             quote_collateral_vault.key(),
-            get_associated_token_address(&series.key(), &market.quote_coin_mint),
+            get_associated_token_address(&series.key(), &market.quote_mint),
             OptionsError::InvalidSettlementPhase
         );
         require!(
             quote_collateral_vault.owner == series.key()
-                && quote_collateral_vault.mint == market.quote_coin_mint,
+                && quote_collateral_vault.mint == market.quote_mint,
             OptionsError::InvalidSettlementPhase
         );
         series.total_quote_amount = quote_collateral_vault.amount;

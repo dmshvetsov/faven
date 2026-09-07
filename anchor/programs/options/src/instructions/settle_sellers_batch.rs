@@ -156,7 +156,7 @@ pub fn settle_sellers_batch<'info>(ctx: Context<'info, SettleSellersBatch<'info>
                 base_ata,
                 seller,
                 seller_account,
-                ctx.accounts.base_coin_mint.to_account_info(),
+                ctx.accounts.base_mint.to_account_info(),
             )?;
             remaining_base = remaining_base
                 .checked_sub(base_paid)
@@ -164,10 +164,10 @@ pub fn settle_sellers_batch<'info>(ctx: Context<'info, SettleSellersBatch<'info>
             transfer_from_series(
                 &ctx,
                 ctx.accounts.base_collateral_vault.to_account_info(),
-                ctx.accounts.base_coin_mint.to_account_info(),
+                ctx.accounts.base_mint.to_account_info(),
                 base_ata.clone(),
                 base_paid,
-                ctx.accounts.base_coin_mint.decimals,
+                ctx.accounts.base_mint.decimals,
                 signer_seeds,
             )?;
         }
@@ -177,7 +177,7 @@ pub fn settle_sellers_batch<'info>(ctx: Context<'info, SettleSellersBatch<'info>
                 quote_ata,
                 seller,
                 seller_account,
-                ctx.accounts.quote_coin_mint.to_account_info(),
+                ctx.accounts.quote_mint.to_account_info(),
             )?;
             remaining_quote = remaining_quote
                 .checked_sub(quote_paid)
@@ -185,10 +185,10 @@ pub fn settle_sellers_batch<'info>(ctx: Context<'info, SettleSellersBatch<'info>
             transfer_from_series(
                 &ctx,
                 ctx.accounts.quote_collateral_vault.to_account_info(),
-                ctx.accounts.quote_coin_mint.to_account_info(),
+                ctx.accounts.quote_mint.to_account_info(),
                 quote_ata.clone(),
                 quote_paid,
-                ctx.accounts.quote_coin_mint.decimals,
+                ctx.accounts.quote_mint.decimals,
                 signer_seeds,
             )?;
         }
@@ -341,10 +341,10 @@ pub struct SettleSellersBatch<'info> {
     #[account(mut)]
     pub settler: Signer<'info>,
     pub market: Box<Account<'info, Market>>,
-    #[account(address = market.base_coin_mint)]
-    pub base_coin_mint: Box<Account<'info, Mint>>,
-    #[account(address = market.quote_coin_mint)]
-    pub quote_coin_mint: Box<Account<'info, Mint>>,
+    #[account(address = market.base_mint)]
+    pub base_mint: Box<Account<'info, Mint>>,
+    #[account(address = market.quote_mint)]
+    pub quote_mint: Box<Account<'info, Mint>>,
     #[account(
         mut,
         has_one = market @ OptionsError::SeriesMarketMismatch,
@@ -360,13 +360,13 @@ pub struct SettleSellersBatch<'info> {
     pub series: Box<Account<'info, Series>>,
     #[account(
         mut,
-        associated_token::mint = base_coin_mint,
+        associated_token::mint = base_mint,
         associated_token::authority = series,
     )]
     pub base_collateral_vault: Box<Account<'info, TokenAccount>>,
     #[account(
         mut,
-        associated_token::mint = quote_coin_mint,
+        associated_token::mint = quote_mint,
         associated_token::authority = series,
     )]
     pub quote_collateral_vault: Box<Account<'info, TokenAccount>>,

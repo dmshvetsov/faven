@@ -19,19 +19,19 @@ pub fn current_time_ms() -> Result<u64> {
 #[account]
 pub struct Market {
     pub oracle_config: OracleConfig,
-    pub base_coin_scale: u64,
-    pub quote_coin_scale: u64,
+    pub base_mint_decimals: u8,
+    pub quote_mint_decimals: u8,
     pub operator: Pubkey,
     pub paused: bool,
-    pub quote_coin_mint: Pubkey,
-    pub base_coin_mint: Pubkey,
+    pub quote_mint: Pubkey,
+    pub base_mint: Pubkey,
     pub min_fee: u64,
     pub min_operational_fee_bps: u16,
     pub max_operational_fee_bps: u16,
 }
 
 impl Market {
-    pub const SPACE: usize = 8 + 33 + 8 + 8 + 32 + 1 + 32 + 32 + 8 + 2 + 2;
+    pub const SPACE: usize = 8 + 33 + 1 + 1 + 32 + 1 + 32 + 32 + 8 + 2 + 2;
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Eq, PartialEq)]

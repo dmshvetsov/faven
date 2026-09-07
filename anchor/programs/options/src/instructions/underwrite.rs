@@ -85,16 +85,16 @@ fn underwrite_e18(
     let (collateral_mint, collateral_mint_account, collateral_vault, collateral_decimals) =
         match expected_option_type {
             OptionType::Call => (
-                market.base_coin_mint,
-                ctx.accounts.base_coin_mint.to_account_info(),
+                market.base_mint,
+                ctx.accounts.base_mint.to_account_info(),
                 ctx.accounts.base_collateral_vault.to_account_info(),
-                ctx.accounts.base_coin_mint.decimals,
+                ctx.accounts.base_mint.decimals,
             ),
             OptionType::Put => (
-                market.quote_coin_mint,
-                ctx.accounts.quote_coin_mint.to_account_info(),
+                market.quote_mint,
+                ctx.accounts.quote_mint.to_account_info(),
                 ctx.accounts.quote_collateral_vault.to_account_info(),
-                ctx.accounts.quote_coin_mint.decimals,
+                ctx.accounts.quote_mint.decimals,
             ),
         };
     require!(
@@ -103,9 +103,11 @@ fn underwrite_e18(
         OptionsError::InvalidFundingAccount
     );
 
-    let quantity = math::e18_to_token_decimals(quantity_e18, market.base_coin_scale)?;
-    let premium_per_contract = math::e18_to_token_decimals(premium_e18, market.quote_coin_scale)?;
-    let premium = math::premium_total(quantity, premium_per_contract, market.base_coin_scale)?;
+    let base_mint_scale = math::token_scale(market.base_mint_decimals)?;
+    let quote_mint_scale = math::token_scale(market.quote_mint_decimals)?;
+    let quantity = math::e18_to_token_decimals(quantity_e18, base_mint_scale)?;
+    let premium_per_contract = math::e18_to_token_decimals(premium_e18, quote_mint_scale)?;
+    let premium = math::premium_total(quantity, premium_per_contract, base_mint_scale)?;
     let fee = math::operational_fee(premium, operational_fee_bps, market.min_fee)?;
     require!(fee <= premium, OptionsError::FeeExceedsPremium);
     let seller_premium = premium
@@ -116,8 +118,8 @@ fn underwrite_e18(
         OptionType::Put => math::put_collateral(
             quantity,
             series.strike_price,
-            market.quote_coin_scale,
-            market.base_coin_scale,
+            quote_mint_scale,
+            base_mint_scale,
         )?,
     };
 
@@ -142,21 +144,21 @@ fn underwrite_e18(
     if seller_premium > 0 {
         transfer_tokens(
             ctx.accounts.buyer_quote_source.to_account_info(),
-            ctx.accounts.quote_coin_mint.to_account_info(),
+            ctx.accounts.quote_mint.to_account_info(),
             ctx.accounts.seller_quote_ata.to_account_info(),
             ctx.accounts.buyer.to_account_info(),
             seller_premium,
-            ctx.accounts.quote_coin_mint.decimals,
+            ctx.accounts.quote_mint.decimals,
         )?;
     }
     if fee > 0 {
         transfer_tokens(
             ctx.accounts.buyer_quote_source.to_account_info(),
-            ctx.accounts.quote_coin_mint.to_account_info(),
+            ctx.accounts.quote_mint.to_account_info(),
             ctx.accounts.fee_recipient_quote_ata.to_account_info(),
             ctx.accounts.buyer.to_account_info(),
             fee,
-            ctx.accounts.quote_coin_mint.decimals,
+            ctx.accounts.quote_mint.decimals,
         )?;
     }
 
@@ -244,10 +246,10 @@ pub struct Underwrite<'info> {
     #[account(mut)]
     pub seller: Signer<'info>,
     pub market: Box<Account<'info, Market>>,
-    #[account(address = market.base_coin_mint)]
-    pub base_coin_mint: Box<Account<'info, Mint>>,
-    #[account(address = market.quote_coin_mint)]
-    pub quote_coin_mint: Box<Account<'info, Mint>>,
+    #[account(address = market.base_mint)]
+    pub base_mint: Box<Account<'info, Mint>>,
+    #[account(address = market.quote_mint)]
+    pub quote_mint: Box<Account<'info, Mint>>,
     #[account(
         mut,
         has_one = market @ OptionsError::SeriesMarketMismatch,
@@ -283,7 +285,7 @@ pub struct Underwrite<'info> {
     #[account(
         mut,
         constraint = buyer_quote_source.owner == buyer.key() @ OptionsError::InvalidFundingAccount,
-        constraint = buyer_quote_source.mint == market.quote_coin_mint @ OptionsError::InvalidFundingAccount,
+        constraint = buyer_quote_source.mint == market.quote_mint @ OptionsError::InvalidFundingAccount,
     )]
     pub buyer_quote_source: Box<Account<'info, TokenAccount>>,
     #[account(mut)]
@@ -291,7 +293,7 @@ pub struct Underwrite<'info> {
     #[account(
         init_if_needed,
         payer = seller,
-        associated_token::mint = quote_coin_mint,
+        associated_token::mint = quote_mint,
         associated_token::authority = seller,
     )]
     pub seller_quote_ata: Box<Account<'info, TokenAccount>>,
@@ -300,7 +302,7 @@ pub struct Underwrite<'info> {
     #[account(
         init_if_needed,
         payer = seller,
-        associated_token::mint = quote_coin_mint,
+        associated_token::mint = quote_mint,
         associated_token::authority = fee_recipient,
     )]
     pub fee_recipient_quote_ata: Box<Account<'info, TokenAccount>>,
@@ -321,13 +323,13 @@ pub struct Underwrite<'info> {
     pub seller_vault: Box<Account<'info, SellerVault>>,
     #[account(
         mut,
-        associated_token::mint = base_coin_mint,
+        associated_token::mint = base_mint,
         associated_token::authority = series,
     )]
     pub base_collateral_vault: Box<Account<'info, TokenAccount>>,
     #[account(
         mut,
-        associated_token::mint = quote_coin_mint,
+        associated_token::mint = quote_mint,
         associated_token::authority = series,
     )]
     pub quote_collateral_vault: Box<Account<'info, TokenAccount>>,

@@ -39,6 +39,8 @@ pub fn exercise(ctx: Context<Exercise>, quantity: u64) -> Result<()> {
         OptionType::Put => expiry_price < series.strike_price,
     };
     require!(is_itm, OptionsError::SeriesNotInTheMoney);
+    let base_mint_scale = crate::math::token_scale(market.base_mint_decimals)?;
+    let quote_mint_scale = crate::math::token_scale(market.quote_mint_decimals)?;
     let updated_exercised = series
         .total_manual_exercised_quantity
         .checked_add(quantity)
@@ -51,27 +53,27 @@ pub fn exercise(ctx: Context<Exercise>, quantity: u64) -> Result<()> {
     let (payment_mint, receipt_mint, input_amount, output_amount, payment_vault, output_vault) =
         match series.option_type {
             OptionType::Call => (
-                market.quote_coin_mint,
-                market.base_coin_mint,
+                market.quote_mint,
+                market.base_mint,
                 call_payment(
                     quantity,
                     series.strike_price,
-                    market.quote_coin_scale,
-                    market.base_coin_scale,
+                    quote_mint_scale,
+                    base_mint_scale,
                 )?,
                 quantity,
                 &ctx.accounts.quote_collateral_vault,
                 &ctx.accounts.base_collateral_vault,
             ),
             OptionType::Put => (
-                market.base_coin_mint,
-                market.quote_coin_mint,
+                market.base_mint,
+                market.quote_mint,
                 quantity,
                 put_payout(
                     quantity,
                     series.strike_price,
-                    market.quote_coin_scale,
-                    market.base_coin_scale,
+                    quote_mint_scale,
+                    base_mint_scale,
                 )?,
                 &ctx.accounts.base_collateral_vault,
                 &ctx.accounts.quote_collateral_vault,
@@ -104,10 +106,10 @@ pub fn exercise(ctx: Context<Exercise>, quantity: u64) -> Result<()> {
                 payer: ctx.accounts.holder.to_account_info(),
                 associated_token: ctx.accounts.holder_receipt_ata.to_account_info(),
                 authority: ctx.accounts.holder.to_account_info(),
-                mint: if receipt_mint == market.base_coin_mint {
-                    ctx.accounts.base_coin_mint.to_account_info()
+                mint: if receipt_mint == market.base_mint {
+                    ctx.accounts.base_mint.to_account_info()
                 } else {
-                    ctx.accounts.quote_coin_mint.to_account_info()
+                    ctx.accounts.quote_mint.to_account_info()
                 },
                 system_program: ctx.accounts.system_program.to_account_info(),
                 token_program: ctx.accounts.token_program.to_account_info(),
@@ -131,10 +133,10 @@ pub fn exercise(ctx: Context<Exercise>, quantity: u64) -> Result<()> {
         ),
         quantity,
     )?;
-    let payment_mint_account = if payment_mint == market.base_coin_mint {
-        ctx.accounts.base_coin_mint.to_account_info()
+    let payment_mint_account = if payment_mint == market.base_mint {
+        ctx.accounts.base_mint.to_account_info()
     } else {
-        ctx.accounts.quote_coin_mint.to_account_info()
+        ctx.accounts.quote_mint.to_account_info()
     };
     transfer_checked(
         ctx.accounts.holder_payment_source.to_account_info(),
@@ -142,10 +144,10 @@ pub fn exercise(ctx: Context<Exercise>, quantity: u64) -> Result<()> {
         payment_vault.to_account_info(),
         ctx.accounts.holder.to_account_info(),
         input_amount,
-        if payment_mint == market.base_coin_mint {
-            ctx.accounts.base_coin_mint.decimals
+        if payment_mint == market.base_mint {
+            ctx.accounts.base_mint.decimals
         } else {
-            ctx.accounts.quote_coin_mint.decimals
+            ctx.accounts.quote_mint.decimals
         },
     )?;
 
@@ -162,10 +164,10 @@ pub fn exercise(ctx: Context<Exercise>, quantity: u64) -> Result<()> {
         &strike_bytes,
         &series_bump,
     ];
-    let receipt_mint_account = if receipt_mint == market.base_coin_mint {
-        ctx.accounts.base_coin_mint.to_account_info()
+    let receipt_mint_account = if receipt_mint == market.base_mint {
+        ctx.accounts.base_mint.to_account_info()
     } else {
-        ctx.accounts.quote_coin_mint.to_account_info()
+        ctx.accounts.quote_mint.to_account_info()
     };
     token::transfer_checked(
         CpiContext::new_with_signer(
@@ -179,10 +181,10 @@ pub fn exercise(ctx: Context<Exercise>, quantity: u64) -> Result<()> {
             &[signer_seeds],
         ),
         output_amount,
-        if receipt_mint == market.base_coin_mint {
-            ctx.accounts.base_coin_mint.decimals
+        if receipt_mint == market.base_mint {
+            ctx.accounts.base_mint.decimals
         } else {
-            ctx.accounts.quote_coin_mint.decimals
+            ctx.accounts.quote_mint.decimals
         },
     )?;
 
@@ -257,10 +259,10 @@ pub struct Exercise<'info> {
     #[account(mut)]
     pub holder: Signer<'info>,
     pub market: Box<Account<'info, Market>>,
-    #[account(address = market.base_coin_mint)]
-    pub base_coin_mint: Box<Account<'info, Mint>>,
-    #[account(address = market.quote_coin_mint)]
-    pub quote_coin_mint: Box<Account<'info, Mint>>,
+    #[account(address = market.base_mint)]
+    pub base_mint: Box<Account<'info, Mint>>,
+    #[account(address = market.quote_mint)]
+    pub quote_mint: Box<Account<'info, Mint>>,
     #[account(
         mut,
         has_one = market @ OptionsError::SeriesMarketMismatch,
@@ -299,13 +301,13 @@ pub struct Exercise<'info> {
     pub holder_receipt_ata: UncheckedAccount<'info>,
     #[account(
         mut,
-        associated_token::mint = base_coin_mint,
+        associated_token::mint = base_mint,
         associated_token::authority = series,
     )]
     pub base_collateral_vault: Box<Account<'info, TokenAccount>>,
     #[account(
         mut,
-        associated_token::mint = quote_coin_mint,
+        associated_token::mint = quote_mint,
         associated_token::authority = series,
     )]
     pub quote_collateral_vault: Box<Account<'info, TokenAccount>>,
