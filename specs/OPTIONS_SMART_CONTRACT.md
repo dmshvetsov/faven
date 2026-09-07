@@ -1,7 +1,5 @@
 # Options Smart-Contract Specification
 
-Coin and token used interchangeably.
-
 ## Scope
 
 This document specifies MVP version of the on-chain smart-contract design for European, physically settled options on Solana.
@@ -14,15 +12,15 @@ The key words `MUST`, `MUST NOT`, `REQUIRED`, `SHOULD`, `SHOULD NOT`, `RECOMMEND
 
 This document uses `./DOMAIN-LANGUAGE.md` as the language for product and implementation, the document must be read.
 
-Coin and token is used interchangeably. Always prefer token term.
+Coin MAY be used interchangeably with token terms. Always prefer token term and migrate to token term if possible.
 
 ## 1. Market
 
-The market program manages markets available for option series. Each market supports exactly one `OracleBase / QuoteCoin / BaseCoin` option class, one configured operator, and oracle configuration. Different operators MAY create independent markets for the same option class. Market creation MUST reject a duplicate with the same operator, oracle configuration, `QuoteCoin` mint address, and `BaseCoin` mint address.
+The market program manages markets available for option series. Each market supports exactly one `OracleBase / Quote Token / Base Token` option class, one configured operator, and oracle configuration. Different operators MAY create independent markets for the same option class. Market creation MUST reject a duplicate with the same operator, oracle configuration, `Quote Token` mint address, and `Base Token` mint address.
 
 Market must be PDA `["market", oracle_kind_seed, oracle_feed_id, quote_mint, base_mint, operator_address]`. `oracle_kind_seed` is the enum variant name `"PythTwap"` string.
 
-`Market` and hence the protocol supports only SPL tokens. Other types of tokens like native SOL and Token-2022 is out of support. `QuoteCoin` and `BaseCoin` MUST be SPL tokens, native SOL is out of support, wrapped SOL tokens can be used instead.
+`Market` and hence the protocol supports only SPL tokens. Other types of tokens like native SOL and Token-2022 is out of support. `Quote Token` and `Base Token` MUST be SPL tokens, native SOL is out of support, wrapped SOL tokens can be used instead.
 
 Examples:
 - `SOL / USDC / SOL`
@@ -42,7 +40,7 @@ Different wrapped versions of the same oracle asset MUST be different markets. A
 OracleConfig::PythTwap { feed_id: [u8; 32] }
 ```
 
-`feed_id` is the 32-byte Pyth price-feed ID for the `OracleBase / QuoteCoin` pair.
+`feed_id` is the 32-byte Pyth price-feed ID for the `OracleBase / Quote Token` pair.
 
 `PythUnverified` is not a market configuration; it is an always-deployed, operator-only fallback finalization method for a `PythTwap` market. Future oracle integrations MAY add configuration variants.
 
@@ -58,17 +56,17 @@ The market MUST only store:
 - `min_operational_fee_bps`,
 - `max_operational_fee_bps`.
 
-`QuoteCoin` and `BaseCoin` MUST be distinct mints owned by the SPL Token Program `TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA`. Native SOL and Token-2022 are unsupported; wrapped SOL MAY be used. The program MUST store each mint's `decimals` value in the corresponding market field and MUST reject a mint with more than 18 decimals.
+`Quote Token` and `Base Token` MUST be distinct mints owned by the SPL Token Program `TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA`. Native SOL and Token-2022 are unsupported; wrapped SOL MAY be used. The program MUST store each mint's `decimals` value in the corresponding market field and MUST reject a mint with more than 18 decimals.
 
 Market creation is permissionless. The transaction payer and supplied operator MUST both sign. The payer funds account creation; the supplied operator is stored immutably as the market operator. A newly created market MUST be unpaused and usable immediately.
 
-`min_fee` is a `QuoteCoin` amount in base units and MAY be zero, `min_fee` is required. `min_operational_fee_bps` and `max_operational_fee_bps` are required values in `0..=10_000`; the program MUST enforce `min_operational_fee_bps <= max_operational_fee_bps`. Zero values support a zero-fee market.
+`min_fee` is a `Quote Token` amount in base units and MAY be zero, `min_fee` is required. `min_operational_fee_bps` and `max_operational_fee_bps` are required values in `0..=10_000`; the program MUST enforce `min_operational_fee_bps <= max_operational_fee_bps`. Zero values support a zero-fee market.
 
 ### 1.1 Market Creation
 
 `create_market` MUST accept:
 - the operator signer,
-- the BaseCoin and QuoteCoin SPL mint accounts,
+- the Base Token and Quote Token SPL mint accounts,
 - `OracleConfig::PythTwap { feed_id }`,
 - `min_fee: u64`,
 - `min_operational_fee_bps: u16`, and
@@ -77,8 +75,8 @@ Market creation is permissionless. The transaction payer and supplied operator M
 The payer signer creates and funds the market PDA. The instruction MUST reject:
 - a missing payer signature,
 - a missing operator signature if operator different from payer,
-- a BaseCoin or QuoteCoin mint not owned by the canonical SPL Token Program,
-- if BaseCoin mint is the same QuoteCoin mint,
+- a Base Token or Quote Token mint not owned by the canonical SPL Token Program,
+- if Base Token mint is the same Quote Token mint,
 - a mint with more than 19 decimals,
 - an invalid fee-bps range, and
 - an existing market PDA.
@@ -107,7 +105,7 @@ A series MUST only store:
 - `expiry_ms`,
 - `exercise_window_end_ms = expiry_ms + 1 hour`,
 - finalized oracle `expiry_price`,
-- `total_contracts_quantity` total contracts underwritten for this series, can be used as value of sellers' `BaseCoin` collateral for call options,
+- `total_contracts_quantity` total contracts underwritten for this series, can be used as value of sellers' `Base Token` collateral for call options,
 - `total_manual_exercised_quantity`,
 - `total_quote_amount` captured at expiry and adjusted during exercise,
 - `total_settled_quantity`
@@ -136,14 +134,14 @@ ATM and OTM options MUST NOT be exercisable, `Long` tokens expire worthless when
 
 For ITM series, after `exercise_window_end_ms`, unexercised long tokens MUST NOT be used for exercise, all unexercised tokens MUST be considered worthless.
 
-`Series` PDA is the authority for `BaseCoin` and `QuoteCoin` collateral vault token accounts.
+`Series` PDA is the authority for `Base Token` and `Quote Token` collateral vault token accounts.
 
-BaseCoin Series token account:
+Base Token Series token account:
 - mint = Market.base_mint
 - token authority = Series PDA
 - token program = SPL Token Program
 
-QuoteCoin Series token account:
+Quote Token Series token account:
 - mint = Market.quote_mint
 - token authority = Series PDA
 - token program = SPL Token Program
@@ -163,7 +161,7 @@ The contract MUST enforce:
 - option type is valid,
 - no duplicate series exists for the same market, option type, strike, and expiry.
 
-On success option series creation, the contract MUST create the deterministic `Long` mint with `BaseCoin` decimals, Series PDA mint authority, and no freeze authority. It MUST also create the Series PDA's `BaseCoin` and `QuoteCoin` associated token accounts.
+On success option series creation, the contract MUST create the deterministic `Long` mint with `Base Token` decimals, Series PDA mint authority, and no freeze authority. It MUST also create the Series PDA's `Base Token` and `Quote Token` associated token accounts.
 
 The contract MUST emit `SeriesCreated` with:
 - series id,
@@ -178,7 +176,7 @@ PDA `["option_series_seller_vault", market_address, call_put_marker, expiry, str
 
 `Series` and `SellerVault` accounting determines seller payout shares.
 
-`SellerVault` acts as store of short option positions, how many contracts of base coin sellers sold. Short amount MUST have same decimal scale as base coin. It records how much the seller wrote and determines what the seller receives after expiry.
+`SellerVault` acts as store of short option positions, how many contracts of base token sellers sold. Short amount MUST have same decimal scale as base token. It records how much the seller wrote and determines what the seller receives after expiry.
 
 Seller vault MUST NOT support a withdrawal or self-settlement path. Vault settlement MUST be permissionless for best user experience (avoid waiting for both seller and buyer to sign to settle an option serries).
 
@@ -192,9 +190,9 @@ Each `SellerVault` MUST store:
 
 Each `Long` token MUST be SPL fungible token with deterministic PDA mint address `["option_series_mint", market_address, call_put_marker, expiry, strike_price]`. This PDA is mint authority for `Long` SPL token. `Long` freeze authority is none.
 
-`Long` quantity represents a claim amount. `Long` (option contract) quantity use the same decimal precision as the underlying `BaseCoin`; therefore, one whole contract represents 1 whole `BaseCoin` if `BaseCoin` has 9 decimals (1e9 scale) then one whole option contract is 1_000_000_000 `BaseCoin` base units. Actual `BaseCoin` and `QuoteCoin` collateral MUST remain in the `Series` PDA token accounts
+`Long` quantity represents a claim amount. `Long` (option contract) quantity use the same decimal precision as the underlying `Base Token`; therefore, one whole contract represents 1 whole `Base Token` if `Base Token` has 9 decimals (1e9 scale) then one whole option contract is 1_000_000_000 `Base Token` base units. Actual `Base Token` and `Quote Token` collateral MUST remain in the `Series` PDA token accounts
 
-`Long` tokens MUST have the same decimal scale as Base Coin.
+`Long` tokens MUST have the same decimal scale as Base token.
 
 ## Underwriting
 
@@ -204,18 +202,18 @@ Underwriting MUST be rejected when the series expiry is less than or equal to th
 
 The contract MUST verify buyer and seller signatures and MUST reject an underwrite where buyer and seller are the same wallet. Contracts `quantity` MUST be greater than zero.
 
-Buyer and seller funding accounts MAY be any SPL Token accounts owned by the respective signer with the required mint. The contract MUST create a missing buyer `Long` ATA, seller `QuoteCoin` ATA, or fee-recipient `QuoteCoin` ATA. The seller MUST fund all such ATA creation in the underwriting transaction.
+Buyer and seller funding accounts MAY be any SPL Token accounts owned by the respective signer with the required mint. The contract MUST create a missing buyer `Long` ATA, seller `Quote Token` ATA, or fee-recipient `Quote Token` ATA. The seller MUST fund all such ATA creation in the underwriting transaction.
 
 For a covered call underwrite transaction:
-- seller deposits from his account `BaseCoin` collateral equal to the option quantity into `Series` PDA token account,
-- buyer pays premium in `QuoteCoin` from his account,
+- seller deposits from his account `Base Token` collateral equal to the option quantity into `Series` PDA token account,
+- buyer pays premium in `Quote Token` from his account,
 - contract mints and transfers `Long` token to buyer's account,
 - if the seller's vault PDA does not exist, the contract creates it,
 - seller vault short accounting increases in `SellerVault` PDA.
 
 For a cash-secured put underwrite transaction:
-- seller deposits from his account `QuoteCoin` collateral equal to `strike_payment(quantity)` into `Series` PDA token account,
-- buyer pays premium from his account in `QuoteCoin`,
+- seller deposits from his account `Quote Token` collateral equal to `strike_payment(quantity)` into `Series` PDA token account,
+- buyer pays premium from his account in `Quote Token`,
 - contract mints and transfers `Long` token to buyer's account,
 - if the seller's vault PDA does not exist, the contract creates it,
 - seller vault short accounting increases in `SellerVault` PDA.
@@ -223,8 +221,8 @@ For a cash-secured put underwrite transaction:
 Seller collateral MUST be deposited in full 1:1, all underwrites are fully collateralize.
 
 Premium and fee handling:
-- total premium calculation `premium_total = ceil_div(quantity * premium_per_contract, base_mint_scale)` with checked arithmetic, this rounding favors the seller, where `contracts_quantity = (contracts_in_base_units / base_mint_scale)` with checked `u64` overflow and abort on overflow, and `premium_per_contract` how much buyer pays in `QuoteCoin` to buy one `Long` whole option token (one token in integer units).
-- buyer pays `premium_total` in `QuoteCoin`,
+- total premium calculation `premium_total = ceil_div(quantity * premium_per_contract, base_mint_scale)` with checked arithmetic, this rounding favors the seller, where `contracts_quantity = (contracts_in_base_units / base_mint_scale)` with checked `u64` overflow and abort on overflow, and `premium_per_contract` how much buyer pays in `Quote Token` to buy one `Long` whole option token (one token in integer units).
+- buyer pays `premium_total` in `Quote Token`,
 - `operational_fee` is deducted from `premium_total` and calculated on-chain, resulted fee MUST NOT be less than minimal fee set in the market `operational_fee = MAX((premium_total * operational_fee_bps) / 10_000, min_fee)`,
 - `operational_fee` is transferred to `fee_recipient`,
 - seller receives `premium_total - operational_fee`,
@@ -251,9 +249,9 @@ The contract MUST emit `Underwritten` with:
 
 All strike prices have 6 decimal scale `strike_scale = 1_000_000`.
 
-The contract MUST provide deterministic conversion between `BaseCoin` quantity and `QuoteCoin` strike payment.
+The contract MUST provide deterministic conversion between `Base Token` quantity and `Quote Token` strike payment.
 
-For a BaseCoin quantity `q` (where q is number of contracts which is the same as number of BaseCoins):
+For a Base Token quantity `q` (where q is number of contracts which is the same as number of Base Token):
 - `call_collateral(q) = q`
 - `call_payment(q) = ceil_div(q * strike_price * quote_mint_scale, base_mint_scale * strike_scale)`
 - `put_collateral(q) = ceil_div(q * strike_price * quote_mint_scale, base_mint_scale * strike_scale)`
@@ -365,16 +363,16 @@ Exercise MUST accept an explicit `quantity` and burn exactly that quantity of `L
 
 For an ITM call:
 - holder transfers `Long` tokens to burn inside the contract,
-- holder transfers `QuoteCoin` strike cash to `Series` PDA token account,
-- the `Series` PDA  transfers `BaseCoin` to the holder,
+- holder transfers `Quote Token` strike cash to `Series` PDA token account,
+- the `Series` PDA  transfers `Base Token` to the holder,
 - `Series` records exercised quantity,
 
 ### Cash-Secured Put Exercise
 
 For an ITM put:
 - holder transfers `Long` tokens to burn inside the contract,
-- holder transfers `BaseCoin` equal to `Long` token amount to `Series` PDA token account,
-- the `Series` PDA  transfers `QuoteCoin` amount to the holder,
+- holder transfers `Base Token` equal to `Long` token amount to `Series` PDA token account,
+- the `Series` PDA  transfers `Quote Token` amount to the holder,
 - `Series` records exercised quantity,
 
 Exercise MUST abort if:
@@ -405,15 +403,15 @@ Seller settlement MUST be allowed when the series is settle-ready:
 - immediately after price finalization for ATM or OTM series,
 - after `exercise_window_end_ms`
 
-Seller settlement MUST close seller vault account and transfer proceeds directly to the seller addresses stored in those records. Rent rebate for closed seelr vault account goes to transaction signer of a settlement transactions. If ATA account for non-zero payout of `BaseCoin` or/and `QuoteCoin` token does not exists it MUST be created, signer of a settlement transaction must fund ATA creation.
+Seller settlement MUST close seller vault account and transfer proceeds directly to the seller addresses stored in those records. Rent rebate for closed seelr vault account goes to transaction signer of a settlement transactions. If ATA account for non-zero payout of `Base Token` or/and `Quote Token` token does not exists it MUST be created, signer of a settlement transaction must fund ATA creation.
 
 When `total_settled_quantity == total_contracts_quantity`, the series MUST move to `Closed`. Each settled seller vault MUST increase `total_settled_quantity` by its short contracts quantity exactly once.
 
 For ATM or OTM series, sellers receive original collateral back.
 
-For ITM calls where all short quantity was manually exercised completed, sellers receive `QuoteCoin` proceeds for the seller's full short quantity.
+For ITM calls where all short quantity was manually exercised completed, sellers receive `Quote Token` proceeds for the seller's full short quantity.
 
-For ITM puts where all short quantity was manually exercised completed, sellers receive `BaseCoin` proceeds for the seller's full short quantity.
+For ITM puts where all short quantity was manually exercised completed, sellers receive `Base Token` proceeds for the seller's full short quantity.
 
 For ITM settled series where remaining unexercised quantity exists sellers receive mixed settlement:
 - exercised portion as exercise proceeds,
