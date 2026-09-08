@@ -29,9 +29,15 @@ export interface BroadcastRepository {
 }
 
 export interface SolanaBroadcastRpc {
-  simulate(transaction: string): Promise<{ readonly error: string | null }>;
+  simulate(transaction: string): Promise<SimulationResult>;
   send(transaction: string): Promise<void>;
   confirm(signature: string): Promise<SolanaConfirmation>;
+}
+
+export interface SimulationResult {
+  readonly error: string | null;
+  /** Full `simulateTransaction` RPC response for diagnostics. */
+  readonly result: unknown;
 }
 
 export type SolanaConfirmation =
@@ -62,11 +68,12 @@ export class BroadcastProcessor {
       await this.confirm(task, nowMs);
       return;
     }
-    let simulation: { readonly error: string | null };
+    let simulation: SimulationResult;
     try {
       simulation = await this.rpc.simulate(task.signedTransaction);
     } catch (error) {
       const message = errorMessage(error);
+      logBroadcastFailure("simulation-rpc", task, { error: message });
       await this.repository.markFailed(
         task.txSignature,
         task.ixIndex,
@@ -76,6 +83,9 @@ export class BroadcastProcessor {
       return;
     }
     if (simulation.error !== null) {
+      logBroadcastFailure("simulation", task, {
+        simulationResult: simulation.result,
+      });
       await this.repository.markFailed(
         task.txSignature,
         task.ixIndex,
@@ -88,6 +98,7 @@ export class BroadcastProcessor {
       await this.rpc.send(task.signedTransaction);
     } catch (error) {
       const message = errorMessage(error);
+      logBroadcastFailure("submission", task, { error: message });
       await this.repository.markFailed(
         task.txSignature,
         task.ixIndex,
@@ -106,6 +117,7 @@ export class BroadcastProcessor {
       confirmation = await this.rpc.confirm(task.txSignature);
     } catch (error) {
       const message = errorMessage(error);
+      logBroadcastFailure("confirmation-rpc", task, { error: message });
       await this.repository.markFailed(
         task.txSignature,
         task.ixIndex,
@@ -118,6 +130,10 @@ export class BroadcastProcessor {
       throw new PendingConfirmationError("Solana confirmation is pending.");
     }
     if (confirmation.status === "failed") {
+      logBroadcastFailure("confirmation", task, {
+        error: confirmation.error,
+        receipt: confirmation.receipt,
+      });
       await this.repository.markFailed(
         task.txSignature,
         task.ixIndex,
@@ -133,6 +149,24 @@ export class BroadcastProcessor {
       confirmation.receipt
     );
   }
+}
+
+function logBroadcastFailure(
+  stage:
+    | "simulation-rpc"
+    | "simulation"
+    | "submission"
+    | "confirmation-rpc"
+    | "confirmation",
+  task: BroadcastTask,
+  details: Record<string, unknown>
+): void {
+  console.error("Underwrite broadcast failed.", {
+    stage,
+    txSignature: task.txSignature,
+    ixIndex: task.ixIndex,
+    ...details,
+  });
 }
 
 function errorMessage(error: unknown): string {

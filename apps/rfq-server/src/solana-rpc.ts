@@ -35,13 +35,16 @@ export class JsonSolanaRpc implements SolanaBroadcastRpc {
 
   async simulate(
     transaction: string
-  ): Promise<{ readonly error: string | null }> {
+  ): Promise<{ readonly error: string | null; readonly result: unknown }> {
     const result = await this.call("simulateTransaction", [
       transaction,
       { encoding: "base64", sigVerify: true, commitment: "confirmed" },
     ]);
     const value = resultValue(result);
-    return { error: value.err === null ? null : JSON.stringify(value.err) };
+    return {
+      error: value.err === null ? null : JSON.stringify(value.err),
+      result,
+    };
   }
 
   async send(transaction: string): Promise<void> {
