@@ -17,7 +17,6 @@ const PREMIUM_25_E18 = "25000000000000000000";
 const PREMIUM_30_E18 = "30000000000000000000";
 const OVER_MARKET_MAX_E18 = "101000000000000000000";
 const BASE_MINT = "wSoLCzXHe214cjx7CFjP1axzXyqLkEwq5Xf873hy1JP";
-const QUOTE_MINT = "usdcHvyN6fvECJ1poPYkt1vztze1pQ6psC8i4cji2Ly";
 
 beforeEach(() => {
   vi.stubGlobal(
@@ -445,7 +444,7 @@ describe("RFQ server", () => {
         id: "0193c3c5-1967-7000-8000-000000000055",
         method: "quote.submit",
         params: {
-          ...quoteFields(rfqId, makerSigner.address),
+          ...quoteFields(rfqId),
           underwriteTx: getBase64EncodedWireTransaction(signedTransaction),
         },
       })
@@ -554,7 +553,7 @@ describe("RFQ server", () => {
     const firstResponse = nextSocketMessage(firstMaker);
     const secondResponse = nextSocketMessage(secondMaker);
     const quote = {
-      ...quoteFields(rfqId, makerSigner.address),
+      ...quoteFields(rfqId),
       underwriteTx: signedTransaction,
     };
     firstMaker.send(
@@ -733,20 +732,11 @@ function generationParams(
   return { rfqId, maker, buyerQuoteSource, premium: PREMIUM_25_E18 };
 }
 
-function quoteFields(rfqId: string, maker: string): Record<string, unknown> {
+function quoteFields(rfqId: string): Record<string, unknown> {
   return {
     rfqId,
-    assetAddress: BASE_MINT,
     chainId: "solana:testnet",
-    expiry: 1_735_689_600,
-    isPut: false,
-    maker,
-    quantity: TEN_OPTIONS_E18,
-    strike: "6000000000000",
-    premiumAsset: QUOTE_MINT,
-    collateralAsset: BASE_MINT,
     validUntil: Math.floor(Date.now() / 1_000) + 30,
-    premium: PREMIUM_25_E18,
   };
 }
 
@@ -781,8 +771,7 @@ async function signedQuote(
       id: quoteRequestId,
       method: "quote.submit",
       params: {
-        ...quoteFields(rfqId, makerSigner.address),
-        premium,
+        ...quoteFields(rfqId),
         ...quoteOverrides,
         underwriteTx: getBase64EncodedWireTransaction(
           await partiallySignTransaction(

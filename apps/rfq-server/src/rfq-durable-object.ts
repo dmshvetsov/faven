@@ -101,6 +101,13 @@ interface Quote {
   readonly underwriteTx: string;
 }
 
+interface QuoteSubmission {
+  readonly rfqId: string;
+  readonly chainId: string;
+  readonly validUntil: number;
+  readonly underwriteTx: string;
+}
+
 export class RfqDurableObject implements DurableObject {
   constructor(
     readonly state: DurableObjectState,
@@ -148,6 +155,13 @@ export class RfqDurableObject implements DurableObject {
     await this.state.storage.put("rfq", {
       ...rfq,
       status: selected === undefined ? "no_quote" : "selected",
+    });
+    console.debug("RFQ aggregation completed.", {
+      rfqId: rfq.rfqId,
+      quoteCount: rfq.quotes.length,
+      status: selected === undefined ? "no_quote" : "selected",
+      selectedQuote:
+        selected === undefined ? undefined : quoteLogParams(selected),
     });
     await this.state.storage.setAlarm(Date.now() + TOMBSTONE_MS);
     try {
@@ -299,8 +313,7 @@ export class RfqDurableObject implements DurableObject {
     }
     let quote: Quote | undefined;
     try {
-      const parsedQuote = parseQuote(body.params);
-      quote = parsedQuote;
+      const submission = parseQuoteSubmission(body.params);
       const rfq = await this.state.storage.get<RfqState>("rfq");
       if (rfq === undefined || rfq.status === "cancelled") {
         throw new RfqRequestError(1001, "unknown-or-inactive-rfq");
@@ -308,40 +321,58 @@ export class RfqDurableObject implements DurableObject {
       if (rfq.status !== "aggregating" || Date.now() >= rfq.requestDeadline) {
         throw new RfqRequestError(1005, "aggregation-closed");
       }
-      validateQuoteTerms(parsedQuote, rfq);
       const nowMs = Date.now();
       if (
-        parsedQuote.validUntil * 1_000 <= rfq.requestDeadline ||
-        parsedQuote.validUntil * 1_000 <= nowMs ||
-        parsedQuote.validUntil * 1_000 > nowMs + 40_000
+        submission.chainId !== rfq.chainId ||
+        submission.validUntil * 1_000 <= rfq.requestDeadline ||
+        submission.validUntil * 1_000 <= nowMs ||
+        submission.validUntil * 1_000 > nowMs + 40_000
       ) {
-        throw new RfqRequestError(1003, "invalid-quote-validity");
+        throw new RfqRequestError(
+          submission.chainId !== rfq.chainId ? 1002 : 1003,
+          submission.chainId !== rfq.chainId
+            ? "quote-chain-does-not-match-rfq"
+            : "invalid-quote-validity"
+        );
       }
-      if (rfq.quotes.some((stored) => stored.maker === parsedQuote.maker)) {
-        throw new RfqRequestError(1004, "maker-already-quoted");
-      }
-      const message = transactionMessage(parsedQuote.underwriteTx);
+      const message = transactionMessage(submission.underwriteTx);
       const messageHash = await generatedMessageHash(message);
-      if (
-        !rfq.generatedMessages.some(
-          (generated) =>
-            generated.maker === parsedQuote.maker &&
-            generated.premium === parsedQuote.premium &&
-            generated.messageHash === messageHash &&
-            generated.message === message
-        )
-      ) {
+      const generated = rfq.generatedMessages.find(
+        (candidate) =>
+          candidate.messageHash === messageHash && candidate.message === message
+      );
+      if (generated === undefined) {
         throw new RfqRequestError(1004, "transaction-was-not-generated");
       }
+      if (rfq.quotes.some((stored) => stored.maker === generated.maker)) {
+        throw new RfqRequestError(1004, "maker-already-quoted");
+      }
       await verifyTransactionSignature(
-        parsedQuote.underwriteTx,
-        parsedQuote.maker
+        submission.underwriteTx,
+        generated.maker
       );
       const stored: StoredQuote = {
-        ...parsedQuote,
+        rfqId: rfq.rfqId,
+        assetAddress: rfq.assetAddress,
+        chainId: rfq.chainId,
+        expiry: rfq.expiry,
+        isPut: rfq.isPut,
+        maker: generated.maker,
+        quantity: rfq.quantity,
+        strike: rfq.strike,
+        premiumAsset: rfq.premiumAsset,
+        collateralAsset: rfq.collateralAsset,
+        validUntil: submission.validUntil,
+        premium: generated.premium,
+        underwriteTx: submission.underwriteTx,
         receivedAtMs: nowMs,
         makerConnectionId: body.connectionId,
       };
+      quote = stored;
+      console.debug("Buyer quote received.", {
+        rfqId: stored.rfqId,
+        quote: quoteLogParams(stored),
+      });
       const displacedQuote = rfq.bestQuote;
       const bestQuote = isBetterQuote(stored, rfq.bestQuote)
         ? stored
@@ -603,6 +634,10 @@ export class RfqDurableObject implements DurableObject {
       );
       if (market === null) throw new Error("unknown-market");
       validateRfqForMarket(parsed, market);
+      console.debug("RFQ request received.", {
+        rfqId: parsed.rfqId,
+        underwriteTerms: rfqUnderwriteTerms(parsed),
+      });
       const rpc = new JsonSolanaRpc(this.env.SOLANA_RPC_URL);
       const [latestBlockhash, seriesAddress] = await Promise.all([
         rpc.getLatestBlockhash(),
@@ -771,6 +806,44 @@ function rfqRequest(rfq: RfqState): Record<string, unknown> {
   };
 }
 
+function rfqUnderwriteTerms(rfq: {
+  readonly market: string;
+  readonly expiry: number;
+  readonly isPut: boolean;
+  readonly quantity: string;
+  readonly strike: string;
+  readonly seller: string;
+  readonly sellerCollateralSource: string;
+}): Record<string, string | number | boolean> {
+  return {
+    market: rfq.market,
+    expiry: rfq.expiry,
+    isPut: rfq.isPut,
+    quantity: rfq.quantity,
+    strike: rfq.strike,
+    seller: rfq.seller,
+    sellerCollateralSource: rfq.sellerCollateralSource,
+  };
+}
+
+function quoteLogParams(
+  quote: Quote
+): Record<string, string | number | boolean> {
+  return {
+    assetAddress: quote.assetAddress,
+    chainId: quote.chainId,
+    expiry: quote.expiry,
+    isPut: quote.isPut,
+    maker: quote.maker,
+    quantity: quote.quantity,
+    strike: quote.strike,
+    premiumAsset: quote.premiumAsset,
+    collateralAsset: quote.collateralAsset,
+    validUntil: quote.validUntil,
+    premium: quote.premium,
+  };
+}
+
 function response(message: string): Response {
   return Response.json({ message });
 }
@@ -818,23 +891,12 @@ function parseGeneration(value: unknown): {
   };
 }
 
-function parseQuote(value: unknown): Quote {
+function parseQuoteSubmission(value: unknown): QuoteSubmission {
   if (!isRecord(value)) throw new Error("invalid-quote");
-  const premium = stringField(value, "premium");
-  if (!/^\d+$/.test(premium)) throw new Error("invalid-quote-premium");
   return {
     rfqId: stringField(value, "rfqId"),
-    assetAddress: stringField(value, "assetAddress"),
     chainId: stringField(value, "chainId"),
-    expiry: numberField(value, "expiry"),
-    isPut: booleanField(value, "isPut"),
-    maker: stringField(value, "maker"),
-    quantity: stringField(value, "quantity"),
-    strike: stringField(value, "strike"),
-    premiumAsset: stringField(value, "premiumAsset"),
-    collateralAsset: stringField(value, "collateralAsset"),
     validUntil: numberField(value, "validUntil"),
-    premium,
     underwriteTx: stringField(value, "underwriteTx"),
   };
 }
@@ -848,22 +910,6 @@ function parseUnderwriteSubmission(value: unknown): {
     rfqId: stringField(value, "rfqId"),
     underwriteTx: stringField(value, "underwriteTx"),
   };
-}
-
-function validateQuoteTerms(quote: Quote, rfq: RfqState): void {
-  if (
-    quote.rfqId !== rfq.rfqId ||
-    quote.assetAddress !== rfq.assetAddress ||
-    quote.chainId !== rfq.chainId ||
-    quote.expiry !== rfq.expiry ||
-    quote.isPut !== rfq.isPut ||
-    quote.quantity !== rfq.quantity ||
-    quote.strike !== rfq.strike ||
-    quote.premiumAsset !== rfq.premiumAsset ||
-    quote.collateralAsset !== rfq.collateralAsset
-  ) {
-    throw new RfqRequestError(1002, "quote-terms-do-not-match-rfq");
-  }
 }
 
 function isBetterQuote(

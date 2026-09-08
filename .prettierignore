@@ -6,3 +6,4 @@ src/generated
 agent
 pnpm-workspace.yaml
 *.md
+apps/rfq-server/worker-configuration.d.ts

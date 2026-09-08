@@ -26,7 +26,7 @@ const UNDERWRITE_PUT_E18_DISCRIMINATOR = new Uint8Array([
 describe("final underwrite transaction validation", () => {
   it("encodes the exact canonical e18 and e8 instruction values", async () => {
     const market = configuredMarketByAddress(
-      "development:testnet",
+      "development:devnet",
       "11111111111111111111111111111111"
     );
     if (market === null) throw new Error("test market is missing");
@@ -79,7 +79,7 @@ describe("final underwrite transaction validation", () => {
 
   it("rejects instruction integers outside their declared widths", async () => {
     const market = configuredMarketByAddress(
-      "development:testnet",
+      "development:devnet",
       "11111111111111111111111111111111"
     );
     if (market === null) throw new Error("test market is missing");
@@ -125,7 +125,7 @@ describe("final underwrite transaction validation", () => {
 
   it("rejects changes to canonical payer, account flags, program, accounts, and data", async () => {
     const market = configuredMarketByAddress(
-      "development:testnet",
+      "development:devnet",
       "11111111111111111111111111111111"
     );
     if (market === null) throw new Error("test market is missing");
