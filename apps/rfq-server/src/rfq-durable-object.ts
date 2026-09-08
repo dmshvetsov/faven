@@ -249,6 +249,7 @@ export class RfqDurableObject implements DurableObject {
         rfq.market
       );
       if (market === null) throw new Error("unknown-market");
+      validatePremiumPrecision(maker.premium, market.quoteMintDecimals);
       const underwriteTx = await buildUnderwriteTransaction({
         market,
         expiry: rfq.expiry,
@@ -780,6 +781,23 @@ function validateRfqForMarket(
   if (rfq.expiry <= 0) throw new Error("invalid-rfq-expiry");
   validateAddress(rfq.seller, "seller");
   validateAddress(rfq.sellerCollateralSource, "sellerCollateralSource");
+}
+
+function validatePremiumPrecision(
+  premium: string,
+  quoteMintDecimals: number
+): void {
+  if (
+    !Number.isInteger(quoteMintDecimals) ||
+    quoteMintDecimals < 0 ||
+    quoteMintDecimals > 18
+  ) {
+    throw new Error("invalid-market-quote-mint-decimals");
+  }
+  const requiredE18Divisor = 10n ** BigInt(18 - quoteMintDecimals);
+  if (BigInt(premium) % requiredE18Divisor !== 0n) {
+    throw new Error("premium-exceeds-quote-mint-precision");
+  }
 }
 
 function validateAddress(value: string, field: string): void {

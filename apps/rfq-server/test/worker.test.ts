@@ -389,6 +389,51 @@ describe("RFQ server", () => {
     maker.close();
   });
 
+  it("rejects a premium that cannot be represented by the QuoteCoin mint", async () => {
+    const seller = acceptSocket(
+      await SELF.fetch("https://example.com/taker", webSocketHeaders())
+    );
+    const maker = acceptSocket(
+      await SELF.fetch("https://example.com/maker", webSocketHeaders())
+    );
+    const rfqId = "0193c3c5-1967-7000-8000-000000000069";
+    const created = nextSocketMessage(seller);
+    seller.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: "0193c3c5-1967-7000-8000-000000000070",
+        method: "rfq.create",
+        params: canonicalRfq(rfqId),
+      })
+    );
+    await created;
+
+    const generated = nextSocketMessage(maker);
+    maker.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: "0193c3c5-1967-7000-8000-000000000071",
+        method: "underwriteTx.generate",
+        params: {
+          rfqId,
+          maker: "So11111111111111111111111111111111111111112",
+          buyerQuoteSource: "So11111111111111111111111111111111111111112",
+          premium: "6004508297767003500",
+        },
+      })
+    );
+
+    await expect(generated).resolves.toMatchObject({
+      id: "0193c3c5-1967-7000-8000-000000000071",
+      error: {
+        code: 1002,
+        data: { reason: "premium-exceeds-quote-mint-precision" },
+      },
+    });
+    seller.close();
+    maker.close();
+  });
+
   it("accepts a maker signature for its persisted generated transaction", async () => {
     await createUnderwriteTables();
     const sellerSigner = await generateKeyPairSigner();

@@ -13,7 +13,10 @@ export interface MarketConfig {
   readonly marketAddress: string;
   readonly oracleBase: string;
   readonly baseMint: string;
+  readonly baseMintDecimals: number;
   readonly quoteMint: string;
+  /** QuoteCoin token decimals used to validate signed premium terms. */
+  readonly quoteMintDecimals: number;
   readonly baseCoinSymbol: string;
   readonly quoteCoinSymbol: string;
   readonly feeRecipient: string;
@@ -80,11 +83,13 @@ const TESTNET_WSOL_MARKET: MarketConfig = {
   marketAddress: "CY7qdovcTnpA6qo3Mp1J9Zws2ZnSnM7uXLyEXWGY3EUo",
   oracleBase: "SOL", // Pyth SOLUSD
   baseMint: "wSoLCzXHe214cjx7CFjP1axzXyqLkEwq5Xf873hy1JP",
+  baseMintDecimals: 9,
   quoteMint: "usdcHvyN6fvECJ1poPYkt1vztze1pQ6psC8i4cji2Ly",
+  quoteMintDecimals: 6,
   baseCoinSymbol: "twSOL",
   quoteCoinSymbol: "tUSDC",
   feeRecipient: FAVEN_TREASURY,
-  operationalFeeBps: 50,
+  operationalFeeBps: 523,
   quantity: {
     minimum: baseUnits(1n, 18),
     step: baseUnits(1n, 18),
