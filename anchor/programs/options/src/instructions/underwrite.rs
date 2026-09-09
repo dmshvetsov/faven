@@ -23,22 +23,13 @@ pub fn underwrite_call_e18(
     premium_e18: u128,
     operational_fee_bps: u16,
 ) -> Result<()> {
-    let created = ensure_series(
+    ensure_series(
         ctx.accounts.series.as_mut(),
         ctx.accounts.market.key(),
         OptionType::Call,
         expiry_ms,
         strike_price_e8,
     )?;
-    if created {
-        emit!(SeriesCreated {
-            series: ctx.accounts.series.key(),
-            market: ctx.accounts.market.key(),
-            option_type: OptionType::Call,
-            strike_price: strike_price_e8,
-            expiry_ms,
-        });
-    }
     underwrite_e18(
         UnderwriteExecutionContext {
             buyer: &ctx.accounts.buyer,
@@ -75,22 +66,13 @@ pub fn underwrite_put_e18(
     premium_e18: u128,
     operational_fee_bps: u16,
 ) -> Result<()> {
-    let created = ensure_series(
+    ensure_series(
         ctx.accounts.series.as_mut(),
         ctx.accounts.market.key(),
         OptionType::Put,
         expiry_ms,
         strike_price_e8,
     )?;
-    if created {
-        emit!(SeriesCreated {
-            series: ctx.accounts.series.key(),
-            market: ctx.accounts.market.key(),
-            option_type: OptionType::Put,
-            strike_price: strike_price_e8,
-            expiry_ms,
-        });
-    }
     underwrite_e18(
         UnderwriteExecutionContext {
             buyer: &ctx.accounts.buyer,
@@ -119,13 +101,19 @@ pub fn underwrite_put_e18(
     )
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SeriesInitialization {
+    Created,
+    Existing,
+}
+
 fn ensure_series(
     series: &mut Account<'_, Series>,
     market: Pubkey,
     option_type: OptionType,
     expiry_ms: u64,
     strike_price_e8: u64,
-) -> Result<bool> {
+) -> Result<SeriesInitialization> {
     require!(strike_price_e8 > 0, OptionsError::InvalidStrikePrice);
     ensure_min_expiry(expiry_ms)?;
     let exercise_window_end_ms = expiry_ms
@@ -149,7 +137,14 @@ fn ensure_series(
         series.total_manual_exercised_quantity = 0;
         series.total_settled_quantity = 0;
         series.total_quote_amount = 0;
-        return Ok(true);
+        emit!(SeriesCreated {
+            series: series.key(),
+            market,
+            option_type,
+            strike_price: strike_price_e8,
+            expiry_ms,
+        });
+        return Ok(SeriesInitialization::Created);
     }
 
     require!(series.market == market, OptionsError::SeriesMarketMismatch);
@@ -180,7 +175,7 @@ fn ensure_series(
             && series.total_quote_amount == 0,
         OptionsError::InvalidOpenSeriesAccounting
     );
-    Ok(false)
+    Ok(SeriesInitialization::Existing)
 }
 
 struct UnderwriteExecutionContext<'a, 'info> {
