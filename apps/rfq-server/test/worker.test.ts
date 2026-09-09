@@ -224,6 +224,7 @@ describe("RFQ server", () => {
           strike: "6000000000000",
           seller: "11111111111111111111111111111111",
           sellerCollateralSource: "11111111111111111111111111111111",
+          sellerQuoteDestination: "11111111111111111111111111111111",
         },
       })
     );
@@ -766,6 +767,7 @@ function canonicalRfq(
     strike: "6000000000000",
     seller,
     sellerCollateralSource: seller,
+    sellerQuoteDestination: seller,
   };
 }
 

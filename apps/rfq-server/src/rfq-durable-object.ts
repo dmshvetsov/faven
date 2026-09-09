@@ -46,6 +46,8 @@ interface RfqState {
   readonly strike: string;
   readonly seller: string;
   readonly sellerCollateralSource: string;
+  /** QuoteCoin premium destination for calls. Puts reuse sellerCollateralSource. */
+  readonly sellerQuoteDestination: string | undefined;
   readonly collateralAsset: string;
   readonly premiumAsset: string;
   readonly requestDeadline: number;
@@ -258,6 +260,7 @@ export class RfqDurableObject implements DurableObject {
         strike: rfq.strike,
         seller: rfq.seller,
         sellerCollateralSource: rfq.sellerCollateralSource,
+        sellerQuoteDestination: rfq.sellerQuoteDestination,
         maker: maker.maker,
         buyerQuoteSource: maker.buyerQuoteSource,
         premium: maker.premium,
@@ -514,6 +517,7 @@ export class RfqDurableObject implements DurableObject {
         strike: rfq.strike,
         seller: rfq.seller,
         sellerCollateralSource: rfq.sellerCollateralSource,
+        sellerQuoteDestination: rfq.sellerQuoteDestination,
         maker: rfq.bestQuote.maker,
         buyerQuoteSource: generated.buyerQuoteSource,
         premium: rfq.bestQuote.premium,
@@ -747,15 +751,24 @@ function parseRfq(
   if (!/^\d+$/.test(quantity) || !/^\d+$/.test(strike) || strike === "0") {
     throw new Error("invalid-rfq-amount");
   }
+  const isPut = booleanField(value, "isPut");
+  const sellerQuoteDestination = optionalStringField(
+    value,
+    "sellerQuoteDestination"
+  );
+  if (!isPut && sellerQuoteDestination === undefined) {
+    throw new Error("missing-seller-quote-destination");
+  }
   return {
     rfqId,
     market: stringField(value, "market"),
     expiry: numberField(value, "expiry"),
-    isPut: booleanField(value, "isPut"),
+    isPut,
     quantity,
     strike,
     seller: stringField(value, "seller"),
     sellerCollateralSource: stringField(value, "sellerCollateralSource"),
+    sellerQuoteDestination,
   };
 }
 
@@ -765,6 +778,8 @@ function validateRfqForMarket(
     readonly expiry: number;
     readonly seller: string;
     readonly sellerCollateralSource: string;
+    readonly sellerQuoteDestination: string | undefined;
+    readonly isPut: boolean;
   },
   market: MarketConfig
 ): void {
@@ -781,6 +796,9 @@ function validateRfqForMarket(
   if (rfq.expiry <= 0) throw new Error("invalid-rfq-expiry");
   validateAddress(rfq.seller, "seller");
   validateAddress(rfq.sellerCollateralSource, "sellerCollateralSource");
+  if (rfq.sellerQuoteDestination !== undefined) {
+    validateAddress(rfq.sellerQuoteDestination, "sellerQuoteDestination");
+  }
 }
 
 function validatePremiumPrecision(
@@ -832,6 +850,7 @@ function rfqUnderwriteTerms(rfq: {
   readonly strike: string;
   readonly seller: string;
   readonly sellerCollateralSource: string;
+  readonly sellerQuoteDestination: string | undefined;
 }): Record<string, string | number | boolean> {
   return {
     market: rfq.market,
@@ -841,6 +860,9 @@ function rfqUnderwriteTerms(rfq: {
     strike: rfq.strike,
     seller: rfq.seller,
     sellerCollateralSource: rfq.sellerCollateralSource,
+    ...(rfq.sellerQuoteDestination === undefined
+      ? {}
+      : { sellerQuoteDestination: rfq.sellerQuoteDestination }),
   };
 }
 
@@ -869,6 +891,16 @@ function response(message: string): Response {
 function stringField(value: Record<string, unknown>, name: string): string {
   if (typeof value[name] !== "string") throw new Error(`invalid-rfq-${name}`);
   return value[name];
+}
+
+function optionalStringField(
+  value: Record<string, unknown>,
+  name: string
+): string | undefined {
+  const field = value[name];
+  if (field === undefined) return undefined;
+  if (typeof field !== "string") throw new Error(`invalid-rfq-${name}`);
+  return field;
 }
 
 function numberField(value: Record<string, unknown>, name: string): number {

@@ -48,6 +48,8 @@ describe("final underwrite transaction validation", () => {
             seller: seller.address,
             sellerCollateralSource:
               "So11111111111111111111111111111111111111112",
+            sellerQuoteDestination:
+              "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
             maker: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
             buyerQuoteSource: "So11111111111111111111111111111111111111112",
             premium: PREMIUM_E18.toString(),
@@ -74,6 +76,9 @@ describe("final underwrite transaction validation", () => {
       expect(underwrite.slice(0, 8)).toEqual(discriminator);
       expect(readU128(underwrite, 8)).toBe(QUANTITY_E18);
       expect(readU128(underwrite, 24)).toBe(PREMIUM_E18);
+      expect(message.instructions[1]?.accountIndices).toHaveLength(
+        isPut ? 18 : 19
+      );
     }
   });
 
@@ -92,6 +97,7 @@ describe("final underwrite transaction validation", () => {
       strike: STRIKE_E8.toString(),
       seller: seller.address,
       sellerCollateralSource: "So11111111111111111111111111111111111111112",
+      sellerQuoteDestination: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
       maker: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
       buyerQuoteSource: "So11111111111111111111111111111111111111112",
       premium: PREMIUM_E18.toString(),
@@ -138,6 +144,7 @@ describe("final underwrite transaction validation", () => {
       strike: STRIKE_E8.toString(),
       seller: seller.address,
       sellerCollateralSource: "So11111111111111111111111111111111111111112",
+      sellerQuoteDestination: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
       maker: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
       buyerQuoteSource: "So11111111111111111111111111111111111111112",
       premium: PREMIUM_E18.toString(),

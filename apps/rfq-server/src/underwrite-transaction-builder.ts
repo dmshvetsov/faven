@@ -40,7 +40,10 @@ export interface UnderwriteTransactionInput {
   /** USD strike using 8 decimals. */
   readonly strike: string;
   readonly seller: string;
+  /** BaseCoin collateral source for calls and QuoteCoin collateral source for puts. */
   readonly sellerCollateralSource: string;
+  /** QuoteCoin premium destination for calls. Puts reuse sellerCollateralSource. */
+  readonly sellerQuoteDestination?: string;
   readonly maker: string;
   readonly buyerQuoteSource: string;
   /** QuoteCoin premium per whole option contract token using 18 decimals. */
@@ -92,6 +95,9 @@ async function deriveAccounts(input: UnderwriteTransactionInput) {
   const buyer = address(input.maker);
   const buyerQuoteSource = address(input.buyerQuoteSource);
   const sellerCollateralSource = address(input.sellerCollateralSource);
+  const sellerQuoteDestination = input.isPut
+    ? sellerCollateralSource
+    : address(requiredSellerQuoteDestination(input));
   const feeRecipient = address(input.market.feeRecipient);
   const [series, longMint, sellerVault] = await Promise.all([
     deriveOptionSeriesAddress(input),
@@ -100,13 +106,11 @@ async function deriveAccounts(input: UnderwriteTransactionInput) {
   ]);
   const [
     buyerLongAta,
-    sellerQuoteAta,
     feeRecipientQuoteAta,
     baseCollateralVault,
     quoteCollateralVault,
   ] = await Promise.all([
     deriveAta(buyer, longMint),
-    deriveAta(seller, quoteMint),
     deriveAta(feeRecipient, quoteMint),
     deriveAta(series, baseMint),
     deriveAta(series, quoteMint),
@@ -120,11 +124,11 @@ async function deriveAccounts(input: UnderwriteTransactionInput) {
     buyer,
     buyerQuoteSource,
     sellerCollateralSource,
+    sellerQuoteDestination,
     feeRecipient,
     series,
     longMint,
     buyerLongAta,
-    sellerQuoteAta,
     feeRecipientQuoteAta,
     sellerVault,
     baseCollateralVault,
@@ -180,8 +184,12 @@ function underwriteInstruction(
       writable(accounts.longMint),
       writable(accounts.buyerLongAta),
       writable(accounts.buyerQuoteSource),
-      writable(accounts.sellerCollateralSource),
-      writable(accounts.sellerQuoteAta),
+      ...(input.isPut
+        ? [writable(accounts.sellerCollateralSource)]
+        : [
+            writable(accounts.sellerCollateralSource),
+            writable(accounts.sellerQuoteDestination),
+          ]),
       readonly(accounts.feeRecipient),
       writable(accounts.feeRecipientQuoteAta),
       writable(accounts.sellerVault),
@@ -192,6 +200,15 @@ function underwriteInstruction(
       readonly(SYSTEM_PROGRAM),
     ],
   };
+}
+
+function requiredSellerQuoteDestination(
+  input: UnderwriteTransactionInput
+): string {
+  if (input.sellerQuoteDestination === undefined) {
+    throw new Error("missing-seller-quote-destination");
+  }
+  return input.sellerQuoteDestination;
 }
 
 function createSeriesData(input: UnderwriteTransactionInput): Uint8Array {
