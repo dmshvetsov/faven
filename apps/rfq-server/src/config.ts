@@ -21,12 +21,14 @@ export interface MarketConfig {
   readonly quoteCoinSymbol: string;
   readonly feeRecipient: string;
   readonly operationalFeeBps: number;
+  /** QuoteCoin minimal required fee to pay for underwrite, base units, 18 decimals as premium */
+  readonly minFee: bigint;
   readonly quantity: {
-    /** minimum underwrite quantity, 18 decimals. */
+    /** minimum underwrite quantity, base units, 18 decimals. */
     readonly minimum: bigint;
     /** 18 decimals. */
     readonly step: bigint;
-    /** maximum underwrite quantity, 18 decimals. */
+    /** maximum underwrite quantity, base units, 18 decimals. */
     readonly maximum: bigint;
   };
 }
@@ -90,6 +92,7 @@ const TESTNET_WSOL_MARKET: MarketConfig = {
   quoteCoinSymbol: "tUSDC",
   feeRecipient: FAVEN_TREASURY,
   operationalFeeBps: 523,
+  minFee: 250_000_000_000_000_000n, // 0.25 usdc e18
   quantity: {
     minimum: baseUnits(1n, 18),
     step: baseUnits(1n, 18),
