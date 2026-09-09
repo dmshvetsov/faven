@@ -1,6 +1,6 @@
 # Buyer API documentation
 
-Faven API for buyers.
+Faven API for buyers. Faven implements European options, physical settlement, fully collateralised, with Pyth oracle.
 
 Maker and buyer is used interchangeably in this document.
 
@@ -13,7 +13,11 @@ Raw bytes, such as transaction bytes, are encoded using base64. Unless otherwise
 ## WebSocket endpoints
 
 - `wss://<faven base api url>/rfqs/<asset>` Receive RFQs for `<asset>` - base token mint address
-- `wss://<faven base api url>/maker` Generate underwrite transactions, submit quotes, and request positions for one BaseCoin market
+- `wss://<faven base api url>/maker` One global socket for every market: generate underwrite transactions, submit quotes, list positions, exercise Long options tokens.
+
+Open one `/maker` socket per buyer application. This version
+has no WebSocket authentication, API key, or wallet-binding handshake.
+The `maker` public key and its signature are checked for each transaction; 
 
 ## Common JSON-RPC envelopes
 
@@ -69,7 +73,7 @@ type RfqRequest = {
 
 type Rfq = {
   rfqId: string             // will be UUIDv7
-  assetAddress: string      // underlying (base) token mint address
+  assetAddress: string      // underlying (base) token mint address, this token mint will be physically delivered
   assetName: string         // asset name from oracle "SOL", "BTC", "ETH", "JUP" etc
   chainId: string           // solana:mainnet, solana:devnet, solana:testnet
   expiry: number            // Unix seconds
@@ -95,13 +99,15 @@ type UnderwriteTxGenerateRequest = {
   params: {
     rfqId: string             // must match Rfq.rfqId (RfqRequest.params.rfqId)
     maker: string             // buyer EOA / public key of a key-pair used to sign underwriteTx and pay premium
-    buyerQuoteSource: string  // QuoteCoin token account owned by maker to pay premium from, recommended to use associated token account (ATA)
+    buyerQuoteSource: string  // Quote token account owned by maker to pay premium from, recommended to use associated token account (ATA)
     premium: string           // 1e18 offered Rfq.premiumAsset token premium per one whole Rfq.assetAddress option token
   }
 }
 ```
 
 `premium` field is a amount of premiumAsset base units paid for one whole underlying token unit option contract. For example an `underwriteTx` for 0.05 wBTC will have `Rfq.quantity` = 0.05 * 10 ** 18 (despite the fact that BTC has 8 decimals) with a maker's premium $764 whole USDC `UnderwriteTxGenerateRequest.params.premium` must be = 764 * 10 ** 18 (despite that USDC premiumAsset has 6 decimals). Maker with given `underwriteTx` will pay on-chain $764 * 0.05 quantity * (10 ** 6 USDC decimals) = 38_200_000 USDC base units or $38.2 whole units. The protocol handles decimal scaling from RFQ scales to corresponding underlying token mint decimal scales, RFQ always use 1e18 scale for premium and quantity and 1e8 for strike price, on-chain settlement always happens in underlying token mint decimals. 
+
+Faven takes a fee from total premium `faven fee = premium * Rfq.quantity whole tokens * faven fee bps` and shows sellers `seller premium = premium - faven fee`.
 
 One whole option contract token represents one whole underlying token.
 
@@ -124,8 +130,17 @@ assetAddress, premiumAsset, expiry, isPut flag, strike.
 The buyer MUST NOT change any transaction parameters,
 including instructions or recent blockhash.
 
+The buyer needs a funded `buyerQuoteSource` SPL token account owned by `maker`.
+It may be the buyer's Quote Token ATA, but any owned Quote Token token account is
+valid. Its balance must cover the total premium.
+
 The buyer signs the transaction and includes the resulting base64
 encoded transaction in `Quote.underwriteTx`.
+
+The buyer does not pay transaction fees, or account rents. The buyer signs first,
+seller second and RFQ server submits transactions after both signatures are collected.
+The buyer does not spend SOL in underwrite transactions. Missing ATA are created if
+needed inside underwriteTx, the buyer does not need to create any accounts in advance.
 
 ## 3. Submit a quote for RFQ — `/maker` endpoint
 
@@ -145,12 +160,17 @@ type QuoteRequest = {
 type Quote = {
   rfqId: string              // must equal to RfqRequest.params.rfqId
   chainId: string            // must equal RfqRequest.params.chainId
-  validUntil: number         // Unix seconds, no more than 40 seconds in the future (max time for solana blockhash TTL) until this quote is valid
+  validUntil: number         // Unix seconds; see the exact bounds below
   underwriteTx: string       // signed by maker underwriteTx, from UnderwriteTxGenerateResponse.result.underwriteTx, generated underwriteTx must not be changed or modified
 }
 ```
 
-`validUntil` (counted in seconds) must be bigger than `RfqRequest.params.requestDeadline` (counted in milliseconds), but validity must not exceed Solana max block height validity thus `validUntil` max value is 40 seconds - `RfqRequest.params.requestDeadline + 40_000 milliseconds`.
+`validUntil` is in Unix seconds. It must be strictly after the RFQ deadline and
+no more than 40 seconds after it. Convert the millisecond deadline before
+comparing. For example, with `requestDeadline = 1770000000123`, the allowed
+integer range is `1770000001` through `1770000040` inclusive. Use the earliest
+value that still gives the seller enough time to sign and submit. The server
+also rejects a quote whose transaction blockhash has expired.
 
 
 ```ts
@@ -194,7 +214,7 @@ type QuoteOutbidNotification = {
 
 ## 4. Get positions — `/maker` endpoint
 
-> Not yet implemented WIP
+> Not available yet. Do not rely on this API for position tracking.
 
 ```ts
 {
@@ -209,7 +229,31 @@ type QuoteOutbidNotification = {
 
 ## 5. Exercise - `/maker` endpoint
 
-> Not yet implemented TBD
+> Not available yet. Do not rely on this API for exercise or settlement.
+
+### Fill notification and failed fills
+
+There is currently no buyer `fill` WebSocket notification, no buyer fill
+status endpoint, and therefore no notification method name, `txSig`, or series
+ID to integrate with yet. `quote.submit` only says whether a quote is best; it
+does not mean the trade filled. A selected transaction can still fail before it
+lands, including from blockhash expiry, missing/invalid token accounts,
+insufficient token balance, rent, or compute failure. The protocol simulates
+before sending and broadcasts once; it does not refresh or retry the signed
+transaction. Treat the quote as unfilled unless on-chain state confirms it.
+
+When a fill notification is added, its premium amounts will need to state both
+the RFQ 1e18 premium-per-contract and the actual Quote Token base-unit total.
+
+### Exercise and settlement status
+
+The on-chain program supports physical settlement after expiry, but the buyer
+API for it is not released. It finalizes an expiry price from the configured
+Pyth TWAP, permits manual exercise only while the one-hour exercise window is
+open, then settles sellers. Calls require the holder to pay Quote Token at the
+strike and receive BaseCoin; puts require BaseCoin payment and deliver
+Quote Token. Until the positions and exercise APIs are released with their
+operational flow, buyers should not run production size.
 
 ## Errors codes
 
