@@ -6,7 +6,7 @@ import {
 } from "@solana/kit";
 import { describe, expect, it } from "vitest";
 
-import { configuredMarketByAddress } from "../src/config";
+import { configuredMarket } from "../src/config";
 import { validateFinalUnderwriteTransaction } from "../src/transaction-validation";
 import { buildUnderwriteTransaction } from "../src/underwrite-transaction-builder";
 
@@ -22,14 +22,15 @@ const UNDERWRITE_CALL_E18_DISCRIMINATOR = new Uint8Array([
 const UNDERWRITE_PUT_E18_DISCRIMINATOR = new Uint8Array([
   172, 14, 246, 27, 28, 39, 229, 225,
 ]);
+const MARKET = configuredMarket(
+  "development:devnet",
+  "wSoLCzXHe214cjx7CFjP1axzXyqLkEwq5Xf873hy1JP"
+);
+
+if (MARKET === null) throw new Error("test market is missing");
 
 describe("final underwrite transaction validation", () => {
   it("encodes the exact canonical e18 and e8 instruction values", async () => {
-    const market = configuredMarketByAddress(
-      "development:devnet",
-      "11111111111111111111111111111111"
-    );
-    if (market === null) throw new Error("test market is missing");
     const seller = await generateKeyPairSigner();
     const variants: readonly [boolean, Uint8Array][] = [
       [false, UNDERWRITE_CALL_E18_DISCRIMINATOR],
@@ -40,7 +41,7 @@ describe("final underwrite transaction validation", () => {
       const transaction = getTransactionDecoder().decode(
         base64Bytes(
           await buildUnderwriteTransaction({
-            market,
+            market: MARKET,
             expiry: EXPIRY_SECONDS,
             isPut,
             quantity: QUANTITY_E18.toString(),
@@ -83,14 +84,9 @@ describe("final underwrite transaction validation", () => {
   });
 
   it("rejects instruction integers outside their declared widths", async () => {
-    const market = configuredMarketByAddress(
-      "development:devnet",
-      "11111111111111111111111111111111"
-    );
-    if (market === null) throw new Error("test market is missing");
     const seller = await generateKeyPairSigner();
     const valid = {
-      market,
+      market: MARKET,
       expiry: EXPIRY_SECONDS,
       isPut: false,
       quantity: QUANTITY_E18.toString(),
@@ -130,14 +126,9 @@ describe("final underwrite transaction validation", () => {
   });
 
   it("rejects changes to canonical payer, account flags, program, accounts, and data", async () => {
-    const market = configuredMarketByAddress(
-      "development:devnet",
-      "11111111111111111111111111111111"
-    );
-    if (market === null) throw new Error("test market is missing");
     const seller = await generateKeyPairSigner();
     const canonicalTransaction = await buildUnderwriteTransaction({
-      market,
+      market: MARKET,
       expiry: 1_735_689_600,
       isPut: false,
       quantity: QUANTITY_E18.toString(),

@@ -45,7 +45,7 @@ describe("wallet funding", () => {
       signature: "signature",
       funded: {
         wSoLCzXHe214cjx7CFjP1axzXyqLkEwq5Xf873hy1JP: "1000000000000",
-        usdcHvyN6fvECJ1poPYkt1vztze1pQ6psC8i4cji2Ly: "250000000",
+        usdcHvyN6fvECJ1poPYkt1vztze1pQ6psC8i4cji2Ly: "250000000000",
         solLamport: "5000000",
       },
     });

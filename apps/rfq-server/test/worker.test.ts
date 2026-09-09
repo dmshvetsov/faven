@@ -8,6 +8,7 @@ import {
 } from "@solana/kit";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { configuredMarket } from "../src/config";
 import { isRecord } from "../src/rfq-rpc";
 
 Object.defineProperty(globalThis, "isSecureContext", { value: true });
@@ -17,6 +18,13 @@ const PREMIUM_25_E18 = "25000000000000000000";
 const PREMIUM_30_E18 = "30000000000000000000";
 const OVER_MARKET_MAX_E18 = "101000000000000000000";
 const BASE_MINT = "wSoLCzXHe214cjx7CFjP1axzXyqLkEwq5Xf873hy1JP";
+const MARKET_ADDRESS = configuredMarketAddress();
+
+function configuredMarketAddress(): string {
+  const market = configuredMarket("development:devnet", BASE_MINT);
+  if (market === null) throw new Error("test market is missing");
+  return market.marketAddress;
+}
 
 beforeEach(() => {
   vi.stubGlobal(
@@ -217,7 +225,7 @@ describe("RFQ server", () => {
         method: "rfq.create",
         params: {
           rfqId,
-          market: "11111111111111111111111111111111",
+          market: MARKET_ADDRESS,
           expiry: 1_735_689_600,
           isPut: false,
           quantity: TEN_OPTIONS_E18,
@@ -760,7 +768,7 @@ function canonicalRfq(
 ): Record<string, unknown> {
   return {
     rfqId,
-    market: "11111111111111111111111111111111",
+    market: MARKET_ADDRESS,
     expiry: 1_735_689_600,
     isPut: false,
     quantity: TEN_OPTIONS_E18,
@@ -782,7 +790,7 @@ function generationParams(
 function quoteFields(rfqId: string): Record<string, unknown> {
   return {
     rfqId,
-    chainId: "solana:testnet",
+    chainId: "solana:devnet",
     validUntil: Math.floor(Date.now() / 1_000) + 30,
   };
 }
