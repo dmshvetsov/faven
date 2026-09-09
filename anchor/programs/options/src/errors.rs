@@ -53,7 +53,7 @@ pub enum OptionsError {
     #[msg("Expiry price cannot be finalized for an unexpired option series")]
     FinalizationTooEarly,
     #[msg("All finalized series must have the same expiry")]
-    SeriesExpiryMismatch,
+    PriceFinalizationSeriesExpiryMismatch,
     #[msg("Pyth TWAP feed does not match the market")]
     PythTwapFeedMismatch,
     #[msg("Pyth TWAP window does not match the series expiry")]
@@ -104,4 +104,14 @@ pub enum OptionsError {
     MalformedClosureAccounts,
     #[msg("Series closer token account has an invalid owner or mint")]
     InvalidSeriesCloserPayoutAccount,
+    #[msg("Series option type does not match the underwriting terms")]
+    SeriesOptionTypeMismatch,
+    #[msg("Series expiry does not match the underwriting terms")]
+    SeriesExpiryMismatch,
+    #[msg("Series strike price does not match the underwriting terms")]
+    SeriesStrikePriceMismatch,
+    #[msg("Series exercise window does not match window derived from provided expiry_ms")]
+    SeriesExerciseWindowMismatch,
+    #[msg("Series open-state accounting is invalid")]
+    InvalidOpenSeriesAccounting,
 }

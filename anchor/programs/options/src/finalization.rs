@@ -76,7 +76,7 @@ pub(crate) fn finalize_series(
 
     let expiry_ms = series_accounts
         .first()
-        .ok_or(error!(OptionsError::SeriesExpiryMismatch))?
+        .ok_or(error!(OptionsError::PriceFinalizationSeriesExpiryMismatch))?
         .series
         .expiry_ms;
     require!(
@@ -95,7 +95,7 @@ pub(crate) fn finalize_series(
         );
         require!(
             series.series.expiry_ms == expiry_ms,
-            OptionsError::SeriesExpiryMismatch
+            OptionsError::PriceFinalizationSeriesExpiryMismatch
         );
     }
 

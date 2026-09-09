@@ -6,20 +6,39 @@ use anchor_spl::{
 
 use crate::{
     errors::OptionsError,
-    events::Underwritten,
+    events::{SeriesCreated, Underwritten},
     math,
+    options_rules::ensure_min_expiry,
     state::{
-        current_time_ms, Market, OptionType, SellerVault, Series, SeriesState, LONG_MINT_SEED,
-        MIN_UNDERWRITING_LEAD_TIME_MS, SELLER_VAULT_SEED, SERIES_SEED,
+        Market, OptionType, SellerVault, Series, SeriesState, EXERCISE_WINDOW_MS, LONG_MINT_SEED,
+        SELLER_VAULT_SEED, SERIES_SEED,
     },
 };
 
 pub fn underwrite_call_e18(
     ctx: Context<UnderwriteCall>,
+    expiry_ms: u64,
+    strike_price_e8: u64,
     quantity_e18: u128,
     premium_e18: u128,
     operational_fee_bps: u16,
 ) -> Result<()> {
+    let created = ensure_series(
+        ctx.accounts.series.as_mut(),
+        ctx.accounts.market.key(),
+        OptionType::Call,
+        expiry_ms,
+        strike_price_e8,
+    )?;
+    if created {
+        emit!(SeriesCreated {
+            series: ctx.accounts.series.key(),
+            market: ctx.accounts.market.key(),
+            option_type: OptionType::Call,
+            strike_price: strike_price_e8,
+            expiry_ms,
+        });
+    }
     underwrite_e18(
         UnderwriteExecutionContext {
             buyer: &ctx.accounts.buyer,
@@ -50,10 +69,28 @@ pub fn underwrite_call_e18(
 
 pub fn underwrite_put_e18(
     ctx: Context<UnderwritePut>,
+    expiry_ms: u64,
+    strike_price_e8: u64,
     quantity_e18: u128,
     premium_e18: u128,
     operational_fee_bps: u16,
 ) -> Result<()> {
+    let created = ensure_series(
+        ctx.accounts.series.as_mut(),
+        ctx.accounts.market.key(),
+        OptionType::Put,
+        expiry_ms,
+        strike_price_e8,
+    )?;
+    if created {
+        emit!(SeriesCreated {
+            series: ctx.accounts.series.key(),
+            market: ctx.accounts.market.key(),
+            option_type: OptionType::Put,
+            strike_price: strike_price_e8,
+            expiry_ms,
+        });
+    }
     underwrite_e18(
         UnderwriteExecutionContext {
             buyer: &ctx.accounts.buyer,
@@ -80,6 +117,70 @@ pub fn underwrite_put_e18(
         operational_fee_bps,
         OptionType::Put,
     )
+}
+
+fn ensure_series(
+    series: &mut Account<'_, Series>,
+    market: Pubkey,
+    option_type: OptionType,
+    expiry_ms: u64,
+    strike_price_e8: u64,
+) -> Result<bool> {
+    require!(strike_price_e8 > 0, OptionsError::InvalidStrikePrice);
+    ensure_min_expiry(expiry_ms)?;
+    let exercise_window_end_ms = expiry_ms
+        .checked_add(EXERCISE_WINDOW_MS)
+        .ok_or(error!(OptionsError::ArithmeticOverflow))?;
+
+    let is_fresh = {
+        let account_info = series.to_account_info();
+        let data = account_info.try_borrow_data()?;
+        !data.starts_with(Series::DISCRIMINATOR)
+    };
+    if is_fresh {
+        series.state = SeriesState::Open;
+        series.market = market;
+        series.option_type = option_type;
+        series.strike_price = strike_price_e8;
+        series.expiry_ms = expiry_ms;
+        series.exercise_window_end_ms = exercise_window_end_ms;
+        series.expiry_price = None;
+        series.total_contracts_quantity = 0;
+        series.total_manual_exercised_quantity = 0;
+        series.total_settled_quantity = 0;
+        series.total_quote_amount = 0;
+        return Ok(true);
+    }
+
+    require!(series.market == market, OptionsError::SeriesMarketMismatch);
+    require!(
+        series.option_type == option_type,
+        OptionsError::SeriesOptionTypeMismatch
+    );
+    require!(
+        series.strike_price == strike_price_e8,
+        OptionsError::SeriesStrikePriceMismatch
+    );
+    require!(
+        series.expiry_ms == expiry_ms,
+        OptionsError::SeriesExpiryMismatch
+    );
+    require!(
+        series.exercise_window_end_ms == exercise_window_end_ms,
+        OptionsError::SeriesExerciseWindowMismatch
+    );
+    require!(
+        series.state == SeriesState::Open,
+        OptionsError::SeriesNotOpen
+    );
+    require!(
+        series.expiry_price.is_none()
+            && series.total_manual_exercised_quantity == 0
+            && series.total_settled_quantity == 0
+            && series.total_quote_amount == 0,
+        OptionsError::InvalidOpenSeriesAccounting
+    );
+    Ok(false)
 }
 
 struct UnderwriteExecutionContext<'a, 'info> {
@@ -130,15 +231,6 @@ fn underwrite_e18(
         operational_fee_bps >= market.min_operational_fee_bps
             && operational_fee_bps <= market.max_operational_fee_bps,
         OptionsError::OperationalFeeBpsOutOfRange
-    );
-
-    let now_ms = current_time_ms()?;
-    let minimum_expiry = now_ms
-        .checked_add(MIN_UNDERWRITING_LEAD_TIME_MS)
-        .ok_or(error!(OptionsError::ArithmeticOverflow))?;
-    require!(
-        series.expiry_ms > minimum_expiry,
-        OptionsError::ExpiryTooSoon
     );
 
     let base_mint_scale = math::token_scale(market.base_mint_decimals)?;
@@ -280,6 +372,7 @@ fn transfer_tokens<'info>(
 }
 
 #[derive(Accounts)]
+#[instruction(expiry_ms: u64, strike_price_e8: u64)]
 pub struct UnderwriteCall<'info> {
     pub buyer: Signer<'info>,
     #[account(mut)]
@@ -290,28 +383,32 @@ pub struct UnderwriteCall<'info> {
     #[account(address = market.quote_mint)]
     pub quote_mint: Box<Account<'info, Mint>>,
     #[account(
-        mut,
-        has_one = market @ OptionsError::SeriesMarketMismatch,
+        init_if_needed,
+        payer = seller,
+        space = Series::SPACE,
         seeds = [
             SERIES_SEED,
             market.key().as_ref(),
-            &[series.option_type.marker()],
-            &series.expiry_ms.to_le_bytes(),
-            &series.strike_price.to_le_bytes(),
+            &[OptionType::Call.marker()],
+            &expiry_ms.to_le_bytes(),
+            &strike_price_e8.to_le_bytes(),
         ],
         bump,
     )]
     pub series: Box<Account<'info, Series>>,
     #[account(
-        mut,
+        init_if_needed,
+        payer = seller,
         seeds = [
             LONG_MINT_SEED,
             market.key().as_ref(),
-            &[series.option_type.marker()],
-            &series.expiry_ms.to_le_bytes(),
-            &series.strike_price.to_le_bytes(),
+            &[OptionType::Call.marker()],
+            &expiry_ms.to_le_bytes(),
+            &strike_price_e8.to_le_bytes(),
         ],
         bump,
+        mint::decimals = base_mint.decimals,
+        mint::authority = series,
     )]
     pub long_mint: Box<Account<'info, Mint>>,
     #[account(
@@ -355,32 +452,28 @@ pub struct UnderwriteCall<'info> {
         seeds = [
             SELLER_VAULT_SEED,
             market.key().as_ref(),
-            &[series.option_type.marker()],
-            &series.expiry_ms.to_le_bytes(),
-            &series.strike_price.to_le_bytes(),
+            &[OptionType::Call.marker()],
+            &expiry_ms.to_le_bytes(),
+            &strike_price_e8.to_le_bytes(),
             seller.key().as_ref(),
         ],
         bump,
     )]
     pub seller_vault: Box<Account<'info, SellerVault>>,
     #[account(
-        mut,
+        init_if_needed,
+        payer = seller,
         associated_token::mint = base_mint,
         associated_token::authority = series,
     )]
     pub base_collateral_vault: Box<Account<'info, TokenAccount>>,
-    #[account(
-        mut,
-        associated_token::mint = quote_mint,
-        associated_token::authority = series,
-    )]
-    pub quote_collateral_vault: Box<Account<'info, TokenAccount>>,
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
+#[instruction(expiry_ms: u64, strike_price_e8: u64)]
 pub struct UnderwritePut<'info> {
     pub buyer: Signer<'info>,
     #[account(mut)]
@@ -391,28 +484,32 @@ pub struct UnderwritePut<'info> {
     #[account(address = market.quote_mint)]
     pub quote_mint: Box<Account<'info, Mint>>,
     #[account(
-        mut,
-        has_one = market @ OptionsError::SeriesMarketMismatch,
+        init_if_needed,
+        payer = seller,
+        space = Series::SPACE,
         seeds = [
             SERIES_SEED,
             market.key().as_ref(),
-            &[series.option_type.marker()],
-            &series.expiry_ms.to_le_bytes(),
-            &series.strike_price.to_le_bytes(),
+            &[OptionType::Put.marker()],
+            &expiry_ms.to_le_bytes(),
+            &strike_price_e8.to_le_bytes(),
         ],
         bump,
     )]
     pub series: Box<Account<'info, Series>>,
     #[account(
-        mut,
+        init_if_needed,
+        payer = seller,
         seeds = [
             LONG_MINT_SEED,
             market.key().as_ref(),
-            &[series.option_type.marker()],
-            &series.expiry_ms.to_le_bytes(),
-            &series.strike_price.to_le_bytes(),
+            &[OptionType::Put.marker()],
+            &expiry_ms.to_le_bytes(),
+            &strike_price_e8.to_le_bytes(),
         ],
         bump,
+        mint::decimals = base_mint.decimals,
+        mint::authority = series,
     )]
     pub long_mint: Box<Account<'info, Mint>>,
     #[account(
@@ -450,22 +547,17 @@ pub struct UnderwritePut<'info> {
         seeds = [
             SELLER_VAULT_SEED,
             market.key().as_ref(),
-            &[series.option_type.marker()],
-            &series.expiry_ms.to_le_bytes(),
-            &series.strike_price.to_le_bytes(),
+            &[OptionType::Put.marker()],
+            &expiry_ms.to_le_bytes(),
+            &strike_price_e8.to_le_bytes(),
             seller.key().as_ref(),
         ],
         bump,
     )]
     pub seller_vault: Box<Account<'info, SellerVault>>,
     #[account(
-        mut,
-        associated_token::mint = base_mint,
-        associated_token::authority = series,
-    )]
-    pub base_collateral_vault: Box<Account<'info, TokenAccount>>,
-    #[account(
-        mut,
+        init_if_needed,
+        payer = seller,
         associated_token::mint = quote_mint,
         associated_token::authority = series,
     )]

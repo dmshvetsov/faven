@@ -255,7 +255,6 @@ fn underwrite_instruction(
             ),
             seller_vault: seller_vault_address(market, option_type, participants.seller),
             base_collateral_vault: get_associated_token_address(&series, &base_mint),
-            quote_collateral_vault: get_associated_token_address(&series, &quote_mint),
             token_program: TOKEN_PROGRAM_ID,
             associated_token_program: ASSOCIATED_TOKEN_PROGRAM_ID,
             system_program: anchor_lang::system_program::ID,
@@ -279,7 +278,6 @@ fn underwrite_instruction(
                 &quote_mint,
             ),
             seller_vault: seller_vault_address(market, option_type, participants.seller),
-            base_collateral_vault: get_associated_token_address(&series, &base_mint),
             quote_collateral_vault: get_associated_token_address(&series, &quote_mint),
             token_program: TOKEN_PROGRAM_ID,
             associated_token_program: ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -292,6 +290,8 @@ fn underwrite_instruction(
         accounts: account_metas,
         data: if is_call {
             instruction::UnderwriteCallE18 {
+                expiry_ms: EXPIRY_MS,
+                strike_price_e8: STRIKE,
                 quantity_e18,
                 premium_e18,
                 operational_fee_bps: fee_bps,
@@ -299,6 +299,8 @@ fn underwrite_instruction(
             .data()
         } else {
             instruction::UnderwritePutE18 {
+                expiry_ms: EXPIRY_MS,
+                strike_price_e8: STRIKE,
                 quantity_e18,
                 premium_e18,
                 operational_fee_bps: fee_bps,
@@ -428,8 +430,95 @@ fn set_series_state(svm: &mut LiteSVM, series_key: Pubkey, state: SeriesState) {
     series.state = state;
     let mut data = Vec::new();
     series.try_serialize(&mut data).unwrap();
+    data.resize(account.data.len(), 0);
     account.data = data;
     svm.set_account(series_key, account).unwrap();
+}
+
+fn corrupt_series(svm: &mut LiteSVM, series_key: Pubkey, corruption: fn(&mut Series)) {
+    let mut account = svm.get_account(&series_key).unwrap();
+    let mut series = Series::try_deserialize(&mut account.data.as_slice()).unwrap();
+    corruption(&mut series);
+    let mut data = Vec::new();
+    series.try_serialize(&mut data).unwrap();
+    data.resize(account.data.len(), 0);
+    account.data = data;
+    svm.set_account(series_key, account).unwrap();
+}
+
+#[test]
+fn underwriting_never_repairs_an_already_allocated_series() {
+    let mut env = new_env(OptionType::Call, 0, 0, 1_000);
+    let participants = valid_participants(&mut env);
+    let series_key = series_address(env.market, OptionType::Call);
+    let mut account = env.svm.get_account(&series_key).unwrap();
+    let mut series = Series::try_deserialize(&mut account.data.as_slice()).unwrap();
+    series.market = Pubkey::default();
+    let mut data = Vec::new();
+    series.try_serialize(&mut data).unwrap();
+    data.resize(account.data.len(), 0);
+    account.data = data;
+    env.svm.set_account(series_key, account).unwrap();
+
+    let transaction = Transaction::new_signed_with_payer(
+        &[underwrite_instruction(
+            true,
+            env.market,
+            env.quote_mint,
+            env.base_mint,
+            OptionType::Call,
+            participants,
+            ONE_OPTION_E18,
+            0,
+            0,
+        )],
+        Some(&env.buyer.pubkey()),
+        &[&env.buyer, &env.seller],
+        env.svm.latest_blockhash(),
+    );
+
+    let result = env.svm.send_transaction(transaction);
+    assert!(result.is_err(), "{result:?}");
+}
+
+#[test]
+fn underwriting_validates_every_relevant_existing_series_field() {
+    let corruptions: [fn(&mut Series); 9] = [
+        |series| series.market = Pubkey::new_unique(),
+        |series| series.option_type = OptionType::Put,
+        |series| series.strike_price += 1,
+        |series| series.expiry_ms += 1_000,
+        |series| series.exercise_window_end_ms += 1_000,
+        |series| series.expiry_price = Some(1),
+        |series| series.total_manual_exercised_quantity = 1,
+        |series| series.total_settled_quantity = 1,
+        |series| series.total_quote_amount = 1,
+    ];
+
+    for corruption in corruptions {
+        let mut env = new_env(OptionType::Call, 0, 0, 1_000);
+        let participants = valid_participants(&mut env);
+        let series_key = series_address(env.market, OptionType::Call);
+        corrupt_series(&mut env.svm, series_key, corruption);
+        let transaction = Transaction::new_signed_with_payer(
+            &[underwrite_instruction(
+                true,
+                env.market,
+                env.quote_mint,
+                env.base_mint,
+                OptionType::Call,
+                participants,
+                ONE_OPTION_E18,
+                0,
+                0,
+            )],
+            Some(&env.buyer.pubkey()),
+            &[&env.buyer, &env.seller],
+            env.svm.latest_blockhash(),
+        );
+
+        assert!(env.svm.send_transaction(transaction).is_err());
+    }
 }
 
 #[test]

@@ -224,8 +224,6 @@ reconnected seller MUST create a new RFQ. A buyer disconnect does not remove an
 already accepted quote, while outbid delivery remains best effort.
 
 Known issues:
-- Embedding `create_series` in a generated transaction remains subject to a
-  deterministic-series race. `ensure_series` is out of scope for this rewrite.
 - `buyer_quote_source` and `seller_collateral_source` may have insufficient
   funds when the transaction reaches the blockchain. This is expected; final
   simulation detects it, but the server does not reserve balances.

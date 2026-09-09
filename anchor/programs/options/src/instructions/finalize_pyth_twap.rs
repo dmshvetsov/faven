@@ -13,7 +13,7 @@ pub fn finalize_pyth_twap_series(ctx: Context<FinalizePythTwapSeries>) -> Result
     let mut series_accounts = load_finalization_series(ctx.remaining_accounts)?;
     let expiry_ms = series_accounts
         .first()
-        .ok_or(error!(OptionsError::SeriesExpiryMismatch))?
+        .ok_or(error!(OptionsError::PriceFinalizationSeriesExpiryMismatch))?
         .series
         .expiry_ms;
     let expiry_seconds = i64::try_from(expiry_ms / 1_000)

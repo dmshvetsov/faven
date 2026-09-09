@@ -56,20 +56,38 @@ pub mod options {
 
     pub fn underwrite_call_e18(
         ctx: Context<UnderwriteCall>,
+        expiry_ms: u64,
+        strike_price_e8: u64,
         quantity_e18: u128,
         premium_e18: u128,
         operational_fee_bps: u16,
     ) -> Result<()> {
-        instructions::underwrite_call_e18(ctx, quantity_e18, premium_e18, operational_fee_bps)
+        instructions::underwrite_call_e18(
+            ctx,
+            expiry_ms,
+            strike_price_e8,
+            quantity_e18,
+            premium_e18,
+            operational_fee_bps,
+        )
     }
 
     pub fn underwrite_put_e18(
         ctx: Context<UnderwritePut>,
+        expiry_ms: u64,
+        strike_price_e8: u64,
         quantity_e18: u128,
         premium_e18: u128,
         operational_fee_bps: u16,
     ) -> Result<()> {
-        instructions::underwrite_put_e18(ctx, quantity_e18, premium_e18, operational_fee_bps)
+        instructions::underwrite_put_e18(
+            ctx,
+            expiry_ms,
+            strike_price_e8,
+            quantity_e18,
+            premium_e18,
+            operational_fee_bps,
+        )
     }
 
     pub fn exercise(ctx: Context<Exercise>, quantity: u64) -> Result<()> {

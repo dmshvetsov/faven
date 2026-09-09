@@ -1,11 +1,14 @@
-use anchor_lang::{AccountDeserialize, AccountSerialize, InstructionData, ToAccountMetas};
+use anchor_lang::{AccountDeserialize, AccountSerialize, Event, InstructionData, ToAccountMetas};
 use anchor_spl::{
     associated_token::{get_associated_token_address, ID as ASSOCIATED_TOKEN_PROGRAM_ID},
     token::{spl_token, ID as TOKEN_PROGRAM_ID},
 };
+use base64::{engine::general_purpose::STANDARD, Engine};
 use litesvm::LiteSVM;
 use options::{
-    accounts, instruction,
+    accounts,
+    events::SeriesCreated,
+    instruction,
     state::{SellerVault, Series, SeriesState, LONG_MINT_SEED, SELLER_VAULT_SEED, SERIES_SEED},
     OptionType, OracleConfig, ID as PROGRAM_ID,
 };
@@ -20,6 +23,23 @@ const LAMPORTS_PER_SOL: u64 = 1_000_000_000;
 const EXPIRY_MS: u64 = 2_000_000_000_000;
 const ONE_OPTION_E18: u128 = 1_000_000_000_000_000_000;
 const ONE_QUOTE_E18: u128 = 1_000_000_000_000_000_000;
+const FIRST_UNDERWRITE_COMPUTE_UNITS: u32 = 400_000;
+
+fn first_underwrite_compute_budget() -> Instruction {
+    let mut data = vec![2];
+    data.extend_from_slice(&FIRST_UNDERWRITE_COMPUTE_UNITS.to_le_bytes());
+    Instruction {
+        program_id: solana_sdk::pubkey!("ComputeBudget111111111111111111111111111111"),
+        accounts: vec![],
+        data,
+    }
+}
+
+fn deterministic_bytes(value: u32) -> [u8; 32] {
+    let mut bytes = [0; 32];
+    bytes[..4].copy_from_slice(&value.to_le_bytes());
+    bytes
+}
 
 fn add_mint(svm: &mut LiteSVM, mint_key: Pubkey, decimals: u8) {
     let mint = Mint {
@@ -273,7 +293,6 @@ fn underwrite_instruction(
                 &participants.seller,
             ),
             base_collateral_vault: get_associated_token_address(&series, &base_mint),
-            quote_collateral_vault: get_associated_token_address(&series, &quote_mint),
             token_program: TOKEN_PROGRAM_ID,
             associated_token_program: ASSOCIATED_TOKEN_PROGRAM_ID,
             system_program: anchor_lang::system_program::ID,
@@ -303,7 +322,6 @@ fn underwrite_instruction(
                 expiry,
                 &participants.seller,
             ),
-            base_collateral_vault: get_associated_token_address(&series, &base_mint),
             quote_collateral_vault: get_associated_token_address(&series, &quote_mint),
             token_program: TOKEN_PROGRAM_ID,
             associated_token_program: ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -316,6 +334,8 @@ fn underwrite_instruction(
         accounts: account_metas,
         data: if is_call {
             instruction::UnderwriteCallE18 {
+                expiry_ms: expiry,
+                strike_price_e8: strike,
                 quantity_e18,
                 premium_e18,
                 operational_fee_bps: fee_bps,
@@ -323,6 +343,8 @@ fn underwrite_instruction(
             .data()
         } else {
             instruction::UnderwritePutE18 {
+                expiry_ms: expiry,
+                strike_price_e8: strike,
                 quantity_e18,
                 premium_e18,
                 operational_fee_bps: fee_bps,
@@ -557,7 +579,7 @@ fn user_cannot_create_a_series_with_an_incorrect_pda() {
 }
 
 #[test]
-fn buyer_and_seller_can_underwrite_a_call_and_reuse_the_seller_vault() {
+fn buyer_and_seller_can_create_and_reuse_a_call_series_while_underwriting() {
     let mut svm = new_svm();
     let payer = Keypair::new();
     let operator = Keypair::new();
@@ -574,23 +596,6 @@ fn buyer_and_seller_can_underwrite_a_call_and_reuse_the_seller_vault() {
     add_mint(&mut svm, base_mint, 9);
     let market = create_market(&mut svm, &payer, &operator, quote_mint, base_mint);
     let strike = 350_000_000;
-    let create_series = create_series_instruction(
-        payer.pubkey(),
-        market,
-        quote_mint,
-        base_mint,
-        OptionType::Call,
-        strike,
-        EXPIRY_MS,
-    );
-    let create_series_tx = Transaction::new_signed_with_payer(
-        &[create_series],
-        Some(&payer.pubkey()),
-        &[&payer],
-        svm.latest_blockhash(),
-    );
-    svm.send_transaction(create_series_tx).unwrap();
-
     let buyer_quote_source = Pubkey::new_unique();
     let seller_base_source = Pubkey::new_unique();
     add_token_account(
@@ -622,25 +627,51 @@ fn buyer_and_seller_can_underwrite_a_call_and_reuse_the_seller_vault() {
         fee_recipient,
     };
     let terms = (market, quote_mint, base_mint, 1, strike, EXPIRY_MS);
-    for _ in 0..2 {
+    let series = series_address(&market, 1, strike, EXPIRY_MS);
+    let expected_created_log = format!(
+        "Program data: {}",
+        STANDARD.encode(
+            SeriesCreated {
+                series,
+                market,
+                option_type: OptionType::Call,
+                strike_price: strike,
+                expiry_ms: EXPIRY_MS,
+            }
+            .data()
+        )
+    );
+    for underwriting_index in 0..2 {
+        let underwrite = underwrite_instruction(
+            true,
+            terms,
+            UnderwriteAccounts { ..participants },
+            ONE_OPTION_E18,
+            ONE_QUOTE_E18,
+            500,
+        );
+        let instructions = if underwriting_index == 0 {
+            vec![first_underwrite_compute_budget(), underwrite]
+        } else {
+            vec![underwrite]
+        };
         let transaction = Transaction::new_signed_with_payer(
-            &[underwrite_instruction(
-                true,
-                terms,
-                UnderwriteAccounts { ..participants },
-                ONE_OPTION_E18,
-                ONE_QUOTE_E18,
-                500,
-            )],
+            &instructions,
             Some(&buyer.pubkey()),
             &[&buyer, &seller],
             svm.latest_blockhash(),
         );
-        assert!(svm.send_transaction(transaction).is_ok());
+        let result = svm.send_transaction(transaction);
+        assert!(result.is_ok(), "{result:?}");
+        let emitted_series_created = result
+            .unwrap()
+            .logs
+            .iter()
+            .any(|log| log == &expected_created_log);
+        assert_eq!(emitted_series_created, underwriting_index == 0);
         svm.expire_blockhash();
     }
 
-    let series = series_address(&market, 1, strike, EXPIRY_MS);
     let long_mint = long_mint_address(&market, 1, strike, EXPIRY_MS);
     assert_eq!(
         token_amount(
@@ -667,6 +698,9 @@ fn buyer_and_seller_can_underwrite_a_call_and_reuse_the_seller_vault() {
         token_amount(&svm, &get_associated_token_address(&series, &base_mint)),
         2_000_000_000
     );
+    assert!(svm
+        .get_account(&get_associated_token_address(&series, &quote_mint))
+        .is_none());
     let seller_vault = svm
         .get_account(&seller_vault_address(
             &market,
@@ -787,15 +821,15 @@ fn underwriting_rejects_a_seller_vault_with_invalid_owner_or_series() {
 }
 
 #[test]
-fn buyer_and_seller_can_underwrite_a_put_with_rounded_up_collateral() {
+fn buyer_and_seller_can_create_a_put_series_while_underwriting() {
     let mut svm = new_svm();
-    let payer = Keypair::new();
-    let operator = Keypair::new();
-    let buyer = Keypair::new();
-    let seller = Keypair::new();
-    let fee_recipient = Pubkey::new_unique();
-    let quote_mint = Pubkey::new_unique();
-    let base_mint = Pubkey::new_unique();
+    let payer = Keypair::new_from_array(deterministic_bytes(95_650));
+    let operator = Keypair::new_from_array(deterministic_bytes(95_651));
+    let buyer = Keypair::new_from_array(deterministic_bytes(195_651));
+    let seller = Keypair::new_from_array(deterministic_bytes(295_651));
+    let fee_recipient = Pubkey::new_from_array(deterministic_bytes(395_651));
+    let quote_mint = Pubkey::new_from_array(deterministic_bytes(495_651));
+    let base_mint = Pubkey::new_from_array(deterministic_bytes(595_651));
     for wallet in [&payer, &buyer, &seller] {
         svm.airdrop(&wallet.pubkey(), 10 * LAMPORTS_PER_SOL)
             .unwrap();
@@ -804,21 +838,6 @@ fn buyer_and_seller_can_underwrite_a_put_with_rounded_up_collateral() {
     add_mint(&mut svm, base_mint, 9);
     let market = create_market(&mut svm, &payer, &operator, quote_mint, base_mint);
     let strike = 350_000_000;
-    let create_series_tx = Transaction::new_signed_with_payer(
-        &[create_series_instruction(
-            payer.pubkey(),
-            market,
-            quote_mint,
-            base_mint,
-            OptionType::Put,
-            strike,
-            EXPIRY_MS,
-        )],
-        Some(&payer.pubkey()),
-        &[&payer],
-        svm.latest_blockhash(),
-    );
-    svm.send_transaction(create_series_tx).unwrap();
     let buyer_quote_source = Pubkey::new_unique();
     let seller_quote_source = Pubkey::new_unique();
     add_token_account(
@@ -836,31 +855,43 @@ fn buyer_and_seller_can_underwrite_a_put_with_rounded_up_collateral() {
         3_500_000,
     );
     let transaction = Transaction::new_signed_with_payer(
-        &[underwrite_instruction(
-            false,
-            (market, quote_mint, base_mint, 2, strike, EXPIRY_MS),
-            UnderwriteAccounts {
-                buyer: buyer.pubkey(),
-                seller: seller.pubkey(),
-                buyer_quote_source,
-                seller_collateral_source: seller_quote_source,
-                fee_recipient,
-            },
-            ONE_OPTION_E18,
-            ONE_QUOTE_E18,
-            0,
-        )],
+        &[
+            first_underwrite_compute_budget(),
+            underwrite_instruction(
+                false,
+                (market, quote_mint, base_mint, 2, strike, EXPIRY_MS),
+                UnderwriteAccounts {
+                    buyer: buyer.pubkey(),
+                    seller: seller.pubkey(),
+                    buyer_quote_source,
+                    seller_collateral_source: seller_quote_source,
+                    fee_recipient,
+                },
+                ONE_OPTION_E18,
+                ONE_QUOTE_E18,
+                0,
+            ),
+        ],
         Some(&buyer.pubkey()),
         &[&buyer, &seller],
         svm.latest_blockhash(),
     );
-    assert!(svm.send_transaction(transaction).is_ok());
+    let result = svm.send_transaction(transaction);
+    assert!(result.is_ok(), "{result:?}");
+    let compute_units_consumed = result.unwrap().compute_units_consumed;
+    assert!(
+        compute_units_consumed > 200_000,
+        "first underwriting consumed {compute_units_consumed} compute units"
+    );
 
     let series = series_address(&market, 2, strike, EXPIRY_MS);
     assert_eq!(
         token_amount(&svm, &get_associated_token_address(&series, &quote_mint)),
         3_500_000
     );
+    assert!(svm
+        .get_account(&get_associated_token_address(&series, &base_mint))
+        .is_none());
     assert_eq!(token_amount(&svm, &seller_quote_source), 1_000_000);
 }
 
@@ -882,21 +913,6 @@ fn underwriting_rejects_invalid_inputs_and_allows_zero_premium_without_a_fee() {
     add_mint(&mut svm, base_mint, 9);
     let market = create_market(&mut svm, &payer, &operator, quote_mint, base_mint);
     let strike = 350_000_000;
-    let create_series_tx = Transaction::new_signed_with_payer(
-        &[create_series_instruction(
-            payer.pubkey(),
-            market,
-            quote_mint,
-            base_mint,
-            OptionType::Call,
-            strike,
-            EXPIRY_MS,
-        )],
-        Some(&payer.pubkey()),
-        &[&payer],
-        svm.latest_blockhash(),
-    );
-    svm.send_transaction(create_series_tx).unwrap();
     let buyer_quote_source = Pubkey::new_unique();
     let seller_base_source = Pubkey::new_unique();
     add_token_account(
@@ -928,23 +944,53 @@ fn underwriting_rejects_invalid_inputs_and_allows_zero_premium_without_a_fee() {
         seller_collateral_source: seller_base_source,
         fee_recipient,
     };
+    for (invalid_strike, invalid_expiry) in [(0, EXPIRY_MS), (strike, 1), (strike, EXPIRY_MS + 1)] {
+        let transaction = Transaction::new_signed_with_payer(
+            &[
+                first_underwrite_compute_budget(),
+                underwrite_instruction(
+                    true,
+                    (
+                        market,
+                        quote_mint,
+                        base_mint,
+                        1,
+                        invalid_strike,
+                        invalid_expiry,
+                    ),
+                    participants,
+                    ONE_OPTION_E18,
+                    0,
+                    0,
+                ),
+            ],
+            Some(&buyer.pubkey()),
+            &[&buyer, &seller],
+            svm.latest_blockhash(),
+        );
+        assert!(svm.send_transaction(transaction).is_err());
+        svm.expire_blockhash();
+    }
     for (quantity, fee_bps, source) in [
         (0, 0, seller_base_source),
         (ONE_OPTION_E18, 1_001, seller_base_source),
         (ONE_OPTION_E18, 0, buyer_quote_source),
     ] {
         let transaction = Transaction::new_signed_with_payer(
-            &[underwrite_instruction(
-                true,
-                terms,
-                UnderwriteAccounts {
-                    seller_collateral_source: source,
-                    ..participants
-                },
-                quantity,
-                0,
-                fee_bps,
-            )],
+            &[
+                first_underwrite_compute_budget(),
+                underwrite_instruction(
+                    true,
+                    terms,
+                    UnderwriteAccounts {
+                        seller_collateral_source: source,
+                        ..participants
+                    },
+                    quantity,
+                    0,
+                    fee_bps,
+                ),
+            ],
             Some(&buyer.pubkey()),
             &[&buyer, &seller],
             svm.latest_blockhash(),
@@ -968,14 +1014,10 @@ fn underwriting_rejects_invalid_inputs_and_allows_zero_premium_without_a_fee() {
     svm.expire_blockhash();
 
     let zero_premium = Transaction::new_signed_with_payer(
-        &[underwrite_instruction(
-            true,
-            terms,
-            participants,
-            ONE_OPTION_E18,
-            0,
-            0,
-        )],
+        &[
+            first_underwrite_compute_budget(),
+            underwrite_instruction(true, terms, participants, ONE_OPTION_E18, 0, 0),
+        ],
         Some(&buyer.pubkey()),
         &[&buyer, &seller],
         svm.latest_blockhash(),
