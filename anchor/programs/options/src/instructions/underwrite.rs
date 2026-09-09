@@ -15,13 +15,32 @@ use crate::{
 };
 
 pub fn underwrite_call_e18(
-    ctx: Context<Underwrite>,
+    ctx: Context<UnderwriteCall>,
     quantity_e18: u128,
     premium_e18: u128,
     operational_fee_bps: u16,
 ) -> Result<()> {
     underwrite_e18(
-        ctx,
+        UnderwriteExecutionContext {
+            buyer: &ctx.accounts.buyer,
+            seller: &ctx.accounts.seller,
+            market: ctx.accounts.market.as_ref(),
+            series: ctx.accounts.series.as_mut(),
+            long_mint: ctx.accounts.long_mint.to_account_info(),
+            buyer_long_ata: ctx.accounts.buyer_long_ata.to_account_info(),
+            buyer_quote_source: ctx.accounts.buyer_quote_source.to_account_info(),
+            seller_collateral_source: ctx.accounts.seller_base_source.to_account_info(),
+            seller_quote_destination: ctx.accounts.seller_quote_destination.to_account_info(),
+            quote_mint: ctx.accounts.quote_mint.to_account_info(),
+            quote_mint_decimals: ctx.accounts.quote_mint.decimals,
+            fee_recipient: ctx.accounts.fee_recipient.to_account_info(),
+            fee_recipient_quote_ata: ctx.accounts.fee_recipient_quote_ata.to_account_info(),
+            seller_vault: ctx.accounts.seller_vault.as_mut(),
+            collateral_mint: ctx.accounts.base_mint.to_account_info(),
+            collateral_vault: ctx.accounts.base_collateral_vault.to_account_info(),
+            collateral_decimals: ctx.accounts.base_mint.decimals,
+            series_bump: ctx.bumps.series,
+        },
         quantity_e18,
         premium_e18,
         operational_fee_bps,
@@ -30,13 +49,32 @@ pub fn underwrite_call_e18(
 }
 
 pub fn underwrite_put_e18(
-    ctx: Context<Underwrite>,
+    ctx: Context<UnderwritePut>,
     quantity_e18: u128,
     premium_e18: u128,
     operational_fee_bps: u16,
 ) -> Result<()> {
     underwrite_e18(
-        ctx,
+        UnderwriteExecutionContext {
+            buyer: &ctx.accounts.buyer,
+            seller: &ctx.accounts.seller,
+            market: ctx.accounts.market.as_ref(),
+            series: ctx.accounts.series.as_mut(),
+            long_mint: ctx.accounts.long_mint.to_account_info(),
+            buyer_long_ata: ctx.accounts.buyer_long_ata.to_account_info(),
+            buyer_quote_source: ctx.accounts.buyer_quote_source.to_account_info(),
+            seller_collateral_source: ctx.accounts.seller_quote_account.to_account_info(),
+            seller_quote_destination: ctx.accounts.seller_quote_account.to_account_info(),
+            quote_mint: ctx.accounts.quote_mint.to_account_info(),
+            quote_mint_decimals: ctx.accounts.quote_mint.decimals,
+            fee_recipient: ctx.accounts.fee_recipient.to_account_info(),
+            fee_recipient_quote_ata: ctx.accounts.fee_recipient_quote_ata.to_account_info(),
+            seller_vault: ctx.accounts.seller_vault.as_mut(),
+            collateral_mint: ctx.accounts.quote_mint.to_account_info(),
+            collateral_vault: ctx.accounts.quote_collateral_vault.to_account_info(),
+            collateral_decimals: ctx.accounts.quote_mint.decimals,
+            series_bump: ctx.bumps.series,
+        },
         quantity_e18,
         premium_e18,
         operational_fee_bps,
@@ -44,15 +82,36 @@ pub fn underwrite_put_e18(
     )
 }
 
+struct UnderwriteExecutionContext<'a, 'info> {
+    buyer: &'a Signer<'info>,
+    seller: &'a Signer<'info>,
+    market: &'a Account<'info, Market>,
+    series: &'a mut Account<'info, Series>,
+    long_mint: AccountInfo<'info>,
+    buyer_long_ata: AccountInfo<'info>,
+    buyer_quote_source: AccountInfo<'info>,
+    seller_collateral_source: AccountInfo<'info>,
+    seller_quote_destination: AccountInfo<'info>,
+    quote_mint: AccountInfo<'info>,
+    quote_mint_decimals: u8,
+    fee_recipient: AccountInfo<'info>,
+    fee_recipient_quote_ata: AccountInfo<'info>,
+    seller_vault: &'a mut Account<'info, SellerVault>,
+    collateral_mint: AccountInfo<'info>,
+    collateral_vault: AccountInfo<'info>,
+    collateral_decimals: u8,
+    series_bump: u8,
+}
+
 fn underwrite_e18(
-    ctx: Context<Underwrite>,
+    accounts: UnderwriteExecutionContext<'_, '_>,
     quantity_e18: u128,
     premium_e18: u128,
     operational_fee_bps: u16,
     expected_option_type: OptionType,
 ) -> Result<()> {
-    let market = &ctx.accounts.market;
-    let series = &ctx.accounts.series;
+    let market = accounts.market;
+    let series = &accounts.series;
     require!(!market.paused, OptionsError::MarketPaused);
     require!(
         series.state == SeriesState::Open,
@@ -64,7 +123,7 @@ fn underwrite_e18(
     );
     require!(quantity_e18 > 0, OptionsError::ZeroQuantity);
     require!(
-        ctx.accounts.buyer.key() != ctx.accounts.seller.key(),
+        accounts.buyer.key() != accounts.seller.key(),
         OptionsError::BuyerAndSellerMustDiffer
     );
     require!(
@@ -80,27 +139,6 @@ fn underwrite_e18(
     require!(
         series.expiry_ms > minimum_expiry,
         OptionsError::ExpiryTooSoon
-    );
-
-    let (collateral_mint, collateral_mint_account, collateral_vault, collateral_decimals) =
-        match expected_option_type {
-            OptionType::Call => (
-                market.base_mint,
-                ctx.accounts.base_mint.to_account_info(),
-                ctx.accounts.base_collateral_vault.to_account_info(),
-                ctx.accounts.base_mint.decimals,
-            ),
-            OptionType::Put => (
-                market.quote_mint,
-                ctx.accounts.quote_mint.to_account_info(),
-                ctx.accounts.quote_collateral_vault.to_account_info(),
-                ctx.accounts.quote_mint.decimals,
-            ),
-        };
-    require!(
-        ctx.accounts.seller_collateral_source.owner == ctx.accounts.seller.key()
-            && ctx.accounts.seller_collateral_source.mint == collateral_mint,
-        OptionsError::InvalidFundingAccount
     );
 
     let base_mint_scale = math::token_scale(market.base_mint_decimals)?;
@@ -123,49 +161,49 @@ fn underwrite_e18(
         )?,
     };
 
-    let seller_vault = &mut ctx.accounts.seller_vault;
+    let seller_vault = accounts.seller_vault;
     if seller_vault.owner == Pubkey::default() && seller_vault.series == Pubkey::default() {
-        seller_vault.owner = ctx.accounts.seller.key();
+        seller_vault.owner = accounts.seller.key();
         seller_vault.series = series.key();
     }
     require!(
-        seller_vault.owner == ctx.accounts.seller.key() && seller_vault.series == series.key(),
+        seller_vault.owner == accounts.seller.key() && seller_vault.series == series.key(),
         OptionsError::InvalidSellerVault
     );
 
     transfer_tokens(
-        ctx.accounts.seller_collateral_source.to_account_info(),
-        collateral_mint_account,
-        collateral_vault,
-        ctx.accounts.seller.to_account_info(),
+        accounts.seller_collateral_source,
+        accounts.collateral_mint,
+        accounts.collateral_vault,
+        accounts.seller.to_account_info(),
         collateral,
-        collateral_decimals,
+        accounts.collateral_decimals,
     )?;
     if seller_premium > 0 {
         transfer_tokens(
-            ctx.accounts.buyer_quote_source.to_account_info(),
-            ctx.accounts.quote_mint.to_account_info(),
-            ctx.accounts.seller_quote_ata.to_account_info(),
-            ctx.accounts.buyer.to_account_info(),
+            accounts.buyer_quote_source.clone(),
+            accounts.quote_mint.clone(),
+            accounts.seller_quote_destination,
+            accounts.buyer.to_account_info(),
             seller_premium,
-            ctx.accounts.quote_mint.decimals,
+            accounts.quote_mint_decimals,
         )?;
     }
     if fee > 0 {
         transfer_tokens(
-            ctx.accounts.buyer_quote_source.to_account_info(),
-            ctx.accounts.quote_mint.to_account_info(),
-            ctx.accounts.fee_recipient_quote_ata.to_account_info(),
-            ctx.accounts.buyer.to_account_info(),
+            accounts.buyer_quote_source,
+            accounts.quote_mint.clone(),
+            accounts.fee_recipient_quote_ata,
+            accounts.buyer.to_account_info(),
             fee,
-            ctx.accounts.quote_mint.decimals,
+            accounts.quote_mint_decimals,
         )?;
     }
 
     let option_marker = [series.option_type.marker()];
     let expiry_bytes = series.expiry_ms.to_le_bytes();
     let strike_bytes = series.strike_price.to_le_bytes();
-    let series_bump = [ctx.bumps.series];
+    let series_bump = [accounts.series_bump];
     let market_key = market.key();
     let signer_seeds: &[&[u8]] = &[
         SERIES_SEED,
@@ -176,12 +214,13 @@ fn underwrite_e18(
         &series_bump,
     ];
     let signer = &[signer_seeds];
+    let long_mint = accounts.long_mint.key();
     token::mint_to(
         CpiContext::new_with_signer(
             token::ID,
             MintTo {
-                mint: ctx.accounts.long_mint.to_account_info(),
-                to: ctx.accounts.buyer_long_ata.to_account_info(),
+                mint: accounts.long_mint,
+                to: accounts.buyer_long_ata,
                 authority: series.to_account_info(),
             },
             signer,
@@ -197,7 +236,7 @@ fn underwrite_e18(
         .collateral_quantity
         .checked_add(collateral)
         .ok_or(error!(OptionsError::ArithmeticOverflow))?;
-    let series = &mut ctx.accounts.series;
+    let series = accounts.series;
     series.total_contracts_quantity = series
         .total_contracts_quantity
         .checked_add(quantity)
@@ -205,14 +244,14 @@ fn underwrite_e18(
 
     emit!(Underwritten {
         series: series.key(),
-        seller: ctx.accounts.seller.key(),
-        buyer: ctx.accounts.buyer.key(),
+        seller: accounts.seller.key(),
+        buyer: accounts.buyer.key(),
         quantity,
-        long_mint: ctx.accounts.long_mint.key(),
+        long_mint,
         collateral_deposited: collateral,
         premium_total: premium,
         operational_fee: fee,
-        fee_recipient: ctx.accounts.fee_recipient.key(),
+        fee_recipient: accounts.fee_recipient.key(),
     });
     Ok(())
 }
@@ -241,7 +280,7 @@ fn transfer_tokens<'info>(
 }
 
 #[derive(Accounts)]
-pub struct Underwrite<'info> {
+pub struct UnderwriteCall<'info> {
     pub buyer: Signer<'info>,
     #[account(mut)]
     pub seller: Signer<'info>,
@@ -288,15 +327,113 @@ pub struct Underwrite<'info> {
         constraint = buyer_quote_source.mint == market.quote_mint @ OptionsError::InvalidFundingAccount,
     )]
     pub buyer_quote_source: Box<Account<'info, TokenAccount>>,
-    #[account(mut)]
-    pub seller_collateral_source: Box<Account<'info, TokenAccount>>,
+    #[account(
+        mut,
+        constraint = seller_base_source.owner == seller.key() @ OptionsError::InvalidFundingAccount,
+        constraint = seller_base_source.mint == market.base_mint @ OptionsError::InvalidFundingAccount,
+    )]
+    pub seller_base_source: Box<Account<'info, TokenAccount>>,
+    #[account(
+        mut,
+        constraint = seller_quote_destination.owner == seller.key() @ OptionsError::InvalidFundingAccount,
+        constraint = seller_quote_destination.mint == market.quote_mint @ OptionsError::InvalidFundingAccount,
+    )]
+    pub seller_quote_destination: Box<Account<'info, TokenAccount>>,
+    /// CHECK: Any wallet may receive the operational fee.
+    pub fee_recipient: UncheckedAccount<'info>,
     #[account(
         init_if_needed,
         payer = seller,
         associated_token::mint = quote_mint,
-        associated_token::authority = seller,
+        associated_token::authority = fee_recipient,
     )]
-    pub seller_quote_ata: Box<Account<'info, TokenAccount>>,
+    pub fee_recipient_quote_ata: Box<Account<'info, TokenAccount>>,
+    #[account(
+        init_if_needed,
+        payer = seller,
+        space = SellerVault::SPACE,
+        seeds = [
+            SELLER_VAULT_SEED,
+            market.key().as_ref(),
+            &[series.option_type.marker()],
+            &series.expiry_ms.to_le_bytes(),
+            &series.strike_price.to_le_bytes(),
+            seller.key().as_ref(),
+        ],
+        bump,
+    )]
+    pub seller_vault: Box<Account<'info, SellerVault>>,
+    #[account(
+        mut,
+        associated_token::mint = base_mint,
+        associated_token::authority = series,
+    )]
+    pub base_collateral_vault: Box<Account<'info, TokenAccount>>,
+    #[account(
+        mut,
+        associated_token::mint = quote_mint,
+        associated_token::authority = series,
+    )]
+    pub quote_collateral_vault: Box<Account<'info, TokenAccount>>,
+    pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct UnderwritePut<'info> {
+    pub buyer: Signer<'info>,
+    #[account(mut)]
+    pub seller: Signer<'info>,
+    pub market: Box<Account<'info, Market>>,
+    #[account(address = market.base_mint)]
+    pub base_mint: Box<Account<'info, Mint>>,
+    #[account(address = market.quote_mint)]
+    pub quote_mint: Box<Account<'info, Mint>>,
+    #[account(
+        mut,
+        has_one = market @ OptionsError::SeriesMarketMismatch,
+        seeds = [
+            SERIES_SEED,
+            market.key().as_ref(),
+            &[series.option_type.marker()],
+            &series.expiry_ms.to_le_bytes(),
+            &series.strike_price.to_le_bytes(),
+        ],
+        bump,
+    )]
+    pub series: Box<Account<'info, Series>>,
+    #[account(
+        mut,
+        seeds = [
+            LONG_MINT_SEED,
+            market.key().as_ref(),
+            &[series.option_type.marker()],
+            &series.expiry_ms.to_le_bytes(),
+            &series.strike_price.to_le_bytes(),
+        ],
+        bump,
+    )]
+    pub long_mint: Box<Account<'info, Mint>>,
+    #[account(
+        init_if_needed,
+        payer = seller,
+        associated_token::mint = long_mint,
+        associated_token::authority = buyer,
+    )]
+    pub buyer_long_ata: Box<Account<'info, TokenAccount>>,
+    #[account(
+        mut,
+        constraint = buyer_quote_source.owner == buyer.key() @ OptionsError::InvalidFundingAccount,
+        constraint = buyer_quote_source.mint == market.quote_mint @ OptionsError::InvalidFundingAccount,
+    )]
+    pub buyer_quote_source: Box<Account<'info, TokenAccount>>,
+    #[account(
+        mut,
+        constraint = seller_quote_account.owner == seller.key() @ OptionsError::InvalidFundingAccount,
+        constraint = seller_quote_account.mint == market.quote_mint @ OptionsError::InvalidFundingAccount,
+    )]
+    pub seller_quote_account: Box<Account<'info, TokenAccount>>,
     /// CHECK: Any wallet may receive the operational fee.
     pub fee_recipient: UncheckedAccount<'info>,
     #[account(

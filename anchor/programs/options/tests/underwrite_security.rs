@@ -232,33 +232,64 @@ fn underwrite_instruction(
 ) -> Instruction {
     let series = series_address(market, option_type);
     let long_mint = long_mint_address(market, option_type);
-    let accounts = accounts::Underwrite {
-        buyer: participants.buyer,
-        seller: participants.seller,
-        market,
-        base_mint: base_mint,
-        quote_mint: quote_mint,
-        series,
-        long_mint,
-        buyer_long_ata: get_associated_token_address(&participants.buyer, &long_mint),
-        buyer_quote_source: participants.buyer_quote_source,
-        seller_collateral_source: participants.seller_collateral_source,
-        seller_quote_ata: get_associated_token_address(&participants.seller, &quote_mint),
-        fee_recipient: participants.fee_recipient,
-        fee_recipient_quote_ata: get_associated_token_address(
-            &participants.fee_recipient,
-            &quote_mint,
-        ),
-        seller_vault: seller_vault_address(market, option_type, participants.seller),
-        base_collateral_vault: get_associated_token_address(&series, &base_mint),
-        quote_collateral_vault: get_associated_token_address(&series, &quote_mint),
-        token_program: TOKEN_PROGRAM_ID,
-        associated_token_program: ASSOCIATED_TOKEN_PROGRAM_ID,
-        system_program: anchor_lang::system_program::ID,
+    let account_metas = if is_call {
+        accounts::UnderwriteCall {
+            buyer: participants.buyer,
+            seller: participants.seller,
+            market,
+            base_mint,
+            quote_mint,
+            series,
+            long_mint,
+            buyer_long_ata: get_associated_token_address(&participants.buyer, &long_mint),
+            buyer_quote_source: participants.buyer_quote_source,
+            seller_base_source: participants.seller_collateral_source,
+            seller_quote_destination: get_associated_token_address(
+                &participants.seller,
+                &quote_mint,
+            ),
+            fee_recipient: participants.fee_recipient,
+            fee_recipient_quote_ata: get_associated_token_address(
+                &participants.fee_recipient,
+                &quote_mint,
+            ),
+            seller_vault: seller_vault_address(market, option_type, participants.seller),
+            base_collateral_vault: get_associated_token_address(&series, &base_mint),
+            quote_collateral_vault: get_associated_token_address(&series, &quote_mint),
+            token_program: TOKEN_PROGRAM_ID,
+            associated_token_program: ASSOCIATED_TOKEN_PROGRAM_ID,
+            system_program: anchor_lang::system_program::ID,
+        }
+        .to_account_metas(None)
+    } else {
+        accounts::UnderwritePut {
+            buyer: participants.buyer,
+            seller: participants.seller,
+            market,
+            base_mint,
+            quote_mint,
+            series,
+            long_mint,
+            buyer_long_ata: get_associated_token_address(&participants.buyer, &long_mint),
+            buyer_quote_source: participants.buyer_quote_source,
+            seller_quote_account: participants.seller_collateral_source,
+            fee_recipient: participants.fee_recipient,
+            fee_recipient_quote_ata: get_associated_token_address(
+                &participants.fee_recipient,
+                &quote_mint,
+            ),
+            seller_vault: seller_vault_address(market, option_type, participants.seller),
+            base_collateral_vault: get_associated_token_address(&series, &base_mint),
+            quote_collateral_vault: get_associated_token_address(&series, &quote_mint),
+            token_program: TOKEN_PROGRAM_ID,
+            associated_token_program: ASSOCIATED_TOKEN_PROGRAM_ID,
+            system_program: anchor_lang::system_program::ID,
+        }
+        .to_account_metas(None)
     };
     Instruction {
         program_id: PROGRAM_ID,
-        accounts: accounts.to_account_metas(None),
+        accounts: account_metas,
         data: if is_call {
             instruction::UnderwriteCallE18 {
                 quantity_e18,
@@ -363,6 +394,15 @@ fn valid_participants(env: &mut TestEnv) -> Participants {
         env.seller.pubkey(),
         10_000_000_000,
     );
+    if env.option_type == OptionType::Call {
+        add_token_account(
+            &mut env.svm,
+            get_associated_token_address(&env.seller.pubkey(), &env.quote_mint),
+            env.quote_mint,
+            env.seller.pubkey(),
+            0,
+        );
+    }
     Participants {
         buyer: env.buyer.pubkey(),
         seller: env.seller.pubkey(),

@@ -244,33 +244,76 @@ fn underwrite_instruction(
     let (market, quote_mint, base_mint, marker, strike, expiry) = terms;
     let series = series_address(&market, marker, strike, expiry);
     let long_mint = long_mint_address(&market, marker, strike, expiry);
-    let accounts = accounts::Underwrite {
-        buyer: participants.buyer,
-        seller: participants.seller,
-        market,
-        base_mint: base_mint,
-        quote_mint: quote_mint,
-        series,
-        long_mint,
-        buyer_long_ata: get_associated_token_address(&participants.buyer, &long_mint),
-        buyer_quote_source: participants.buyer_quote_source,
-        seller_collateral_source: participants.seller_collateral_source,
-        seller_quote_ata: get_associated_token_address(&participants.seller, &quote_mint),
-        fee_recipient: participants.fee_recipient,
-        fee_recipient_quote_ata: get_associated_token_address(
-            &participants.fee_recipient,
-            &quote_mint,
-        ),
-        seller_vault: seller_vault_address(&market, marker, strike, expiry, &participants.seller),
-        base_collateral_vault: get_associated_token_address(&series, &base_mint),
-        quote_collateral_vault: get_associated_token_address(&series, &quote_mint),
-        token_program: TOKEN_PROGRAM_ID,
-        associated_token_program: ASSOCIATED_TOKEN_PROGRAM_ID,
-        system_program: anchor_lang::system_program::ID,
+    let account_metas = if is_call {
+        accounts::UnderwriteCall {
+            buyer: participants.buyer,
+            seller: participants.seller,
+            market,
+            base_mint,
+            quote_mint,
+            series,
+            long_mint,
+            buyer_long_ata: get_associated_token_address(&participants.buyer, &long_mint),
+            buyer_quote_source: participants.buyer_quote_source,
+            seller_base_source: participants.seller_collateral_source,
+            seller_quote_destination: get_associated_token_address(
+                &participants.seller,
+                &quote_mint,
+            ),
+            fee_recipient: participants.fee_recipient,
+            fee_recipient_quote_ata: get_associated_token_address(
+                &participants.fee_recipient,
+                &quote_mint,
+            ),
+            seller_vault: seller_vault_address(
+                &market,
+                marker,
+                strike,
+                expiry,
+                &participants.seller,
+            ),
+            base_collateral_vault: get_associated_token_address(&series, &base_mint),
+            quote_collateral_vault: get_associated_token_address(&series, &quote_mint),
+            token_program: TOKEN_PROGRAM_ID,
+            associated_token_program: ASSOCIATED_TOKEN_PROGRAM_ID,
+            system_program: anchor_lang::system_program::ID,
+        }
+        .to_account_metas(None)
+    } else {
+        accounts::UnderwritePut {
+            buyer: participants.buyer,
+            seller: participants.seller,
+            market,
+            base_mint,
+            quote_mint,
+            series,
+            long_mint,
+            buyer_long_ata: get_associated_token_address(&participants.buyer, &long_mint),
+            buyer_quote_source: participants.buyer_quote_source,
+            seller_quote_account: participants.seller_collateral_source,
+            fee_recipient: participants.fee_recipient,
+            fee_recipient_quote_ata: get_associated_token_address(
+                &participants.fee_recipient,
+                &quote_mint,
+            ),
+            seller_vault: seller_vault_address(
+                &market,
+                marker,
+                strike,
+                expiry,
+                &participants.seller,
+            ),
+            base_collateral_vault: get_associated_token_address(&series, &base_mint),
+            quote_collateral_vault: get_associated_token_address(&series, &quote_mint),
+            token_program: TOKEN_PROGRAM_ID,
+            associated_token_program: ASSOCIATED_TOKEN_PROGRAM_ID,
+            system_program: anchor_lang::system_program::ID,
+        }
+        .to_account_metas(None)
     };
     Instruction {
         program_id: PROGRAM_ID,
-        accounts: accounts.to_account_metas(None),
+        accounts: account_metas,
         data: if is_call {
             instruction::UnderwriteCallE18 {
                 quantity_e18,
@@ -564,6 +607,13 @@ fn buyer_and_seller_can_underwrite_a_call_and_reuse_the_seller_vault() {
         seller.pubkey(),
         2_000_000_000,
     );
+    add_token_account(
+        &mut svm,
+        get_associated_token_address(&seller.pubkey(), &quote_mint),
+        quote_mint,
+        seller.pubkey(),
+        0,
+    );
     let participants = UnderwriteAccounts {
         buyer: buyer.pubkey(),
         seller: seller.pubkey(),
@@ -586,8 +636,7 @@ fn buyer_and_seller_can_underwrite_a_call_and_reuse_the_seller_vault() {
             &[&buyer, &seller],
             svm.latest_blockhash(),
         );
-        let result = svm.send_transaction(transaction);
-        assert!(result.is_ok(), "{result:?}");
+        assert!(svm.send_transaction(transaction).is_ok());
         svm.expire_blockhash();
     }
 
@@ -684,6 +733,13 @@ fn underwriting_rejects_a_seller_vault_with_invalid_owner_or_series() {
         base_mint,
         seller.pubkey(),
         1_000_000_000,
+    );
+    add_token_account(
+        &mut svm,
+        get_associated_token_address(&seller.pubkey(), &quote_mint),
+        quote_mint,
+        seller.pubkey(),
+        0,
     );
     let series = series_address(&market, 1, strike, EXPIRY_MS);
     let seller_vault = seller_vault_address(&market, 1, strike, EXPIRY_MS, &seller.pubkey());
@@ -805,13 +861,7 @@ fn buyer_and_seller_can_underwrite_a_put_with_rounded_up_collateral() {
         token_amount(&svm, &get_associated_token_address(&series, &quote_mint)),
         3_500_000
     );
-    assert_eq!(
-        token_amount(
-            &svm,
-            &get_associated_token_address(&seller.pubkey(), &quote_mint)
-        ),
-        1_000_000
-    );
+    assert_eq!(token_amount(&svm, &seller_quote_source), 1_000_000);
 }
 
 #[test]
@@ -862,6 +912,13 @@ fn underwriting_rejects_invalid_inputs_and_allows_zero_premium_without_a_fee() {
         base_mint,
         seller.pubkey(),
         2_000_000_000,
+    );
+    add_token_account(
+        &mut svm,
+        get_associated_token_address(&seller.pubkey(), &quote_mint),
+        quote_mint,
+        seller.pubkey(),
+        0,
     );
     let terms = (market, quote_mint, base_mint, 1, strike, EXPIRY_MS);
     let participants = UnderwriteAccounts {

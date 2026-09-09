@@ -15,10 +15,11 @@ pub(crate) use instructions::__client_accounts_exercise;
 pub(crate) use instructions::__client_accounts_finalize_pyth_twap_series;
 pub(crate) use instructions::__client_accounts_finalize_pyth_unverified_series;
 pub(crate) use instructions::__client_accounts_settle_sellers_batch;
-pub(crate) use instructions::__client_accounts_underwrite;
+pub(crate) use instructions::__client_accounts_underwrite_call;
+pub(crate) use instructions::__client_accounts_underwrite_put;
 pub use instructions::{
     CloseSeries, CreateMarket, CreateSeries, Exercise, FinalizePythTwapSeries,
-    FinalizePythUnverifiedSeries, SettleSellersBatch, Underwrite,
+    FinalizePythUnverifiedSeries, SettleSellersBatch, UnderwriteCall, UnderwritePut,
 };
 pub use state::{OptionType, OracleConfig};
 
@@ -54,7 +55,7 @@ pub mod options {
     }
 
     pub fn underwrite_call_e18(
-        ctx: Context<Underwrite>,
+        ctx: Context<UnderwriteCall>,
         quantity_e18: u128,
         premium_e18: u128,
         operational_fee_bps: u16,
@@ -63,7 +64,7 @@ pub mod options {
     }
 
     pub fn underwrite_put_e18(
-        ctx: Context<Underwrite>,
+        ctx: Context<UnderwritePut>,
         quantity_e18: u128,
         premium_e18: u128,
         operational_fee_bps: u16,
