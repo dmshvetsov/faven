@@ -21,7 +21,7 @@ const BASE_MINT = "wSoLCzXHe214cjx7CFjP1axzXyqLkEwq5Xf873hy1JP";
 const MARKET_ADDRESS = configuredMarketAddress();
 
 function configuredMarketAddress(): string {
-  const market = configuredMarket("development:devnet", BASE_MINT);
+  const market = configuredMarket("localdevelopment:devnet", BASE_MINT);
   if (market === null) throw new Error("test market is missing");
   return market.marketAddress;
 }

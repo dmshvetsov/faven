@@ -29,7 +29,7 @@ const UNDERWRITE_PUT_E18_DISCRIMINATOR = new Uint8Array([
   172, 14, 246, 27, 28, 39, 229, 225,
 ]);
 const MARKET = configuredMarket(
-  "development:devnet",
+  "localdevelopment:devnet",
   "wSoLCzXHe214cjx7CFjP1axzXyqLkEwq5Xf873hy1JP"
 );
 

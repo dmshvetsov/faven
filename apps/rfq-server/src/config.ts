@@ -1,12 +1,8 @@
 import { baseUnits } from "./math";
 
-export type ProductEnvironment =
-  | "localdevelopment:devnet"
-  | "development:devnet"
-  | "staging:devnet"
-  | "production:mainnet";
+export type ProductEnvironment = Env["PRODUCT_ENVIRONMENT"];
 
-export type SolanaCluster = "testnet" | "devnet" | "mainnet-beta";
+export type SolanaCluster = Env["SOLANA_CLUSTER"];
 
 export interface MarketConfig {
   readonly optionsProgramId: string;
@@ -80,7 +76,7 @@ const FAVEN_TREASURY = "FvNtr5ZWQxcJPkknFNTSWLBtg3UhP431CxtapqSodVXe";
 
 const OPTIONS_PROGRAM_ID = "FAVENgBXzD9K9qYHKRF5RFRJeT4Qa2EV4EoTycki5gGT";
 
-const TESTNET_WSOL_MARKET: MarketConfig = {
+const DEVNET_WSOL_MARKET: MarketConfig = {
   optionsProgramId: OPTIONS_PROGRAM_ID,
   marketAddress: "CY7qdovcTnpA6qo3Mp1J9Zws2ZnSnM7uXLyEXWGY3EUo",
   oracleBase: "SOL", // Pyth SOLUSD
@@ -104,14 +100,18 @@ const environmentConfig: Record<ProductEnvironment, EnvironmentConfig> = {
   "localdevelopment:devnet": {
     cluster: "devnet",
     allowedOrigins: [LOCAL_ORIGIN],
-    markets: [TESTNET_WSOL_MARKET],
+    markets: [DEVNET_WSOL_MARKET],
   },
-  "development:devnet": {
+  "stagingdevelopment:devnet": {
     cluster: "devnet",
     allowedOrigins: [LOCAL_ORIGIN],
-    markets: [TESTNET_WSOL_MARKET],
+    markets: [DEVNET_WSOL_MARKET],
   },
-  "staging:devnet": { cluster: "devnet", allowedOrigins: [], markets: [] },
+  "staging:devnet": {
+    cluster: "devnet",
+    allowedOrigins: [],
+    markets: [DEVNET_WSOL_MARKET],
+  },
   "production:mainnet": {
     cluster: "mainnet-beta",
     allowedOrigins: [],

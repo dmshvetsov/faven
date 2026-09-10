@@ -236,10 +236,6 @@ Cron MUST create pending `series_settlement_batches` only for price finalized se
 
 Cron MUST only enqueue pending batches. Failed batches require explicit admin retry.
 
-#### Environment variables
-
-TBD
-
 #### Broadcasting transactions on-chain
 
 The RFQ underwrite queue requirements are specified in
@@ -288,21 +284,6 @@ Protocol fees MUST not be disclosed in seller UI. Fees are paid from the premium
 Administrators must authorize changes in server database with `wrangler d1 execute` commands that are wrapped in CLI utility that expose available administrative actions. Authentication and authorization is delegated to Cloudflare/wrangler login, thus administrators must have Cloudflare access to run D1 queries.
 
 `wrangler d1 execute` `--env` flag must be used to run commands against
-
-## Application environments
-
-Cloudflare server workers must work in following environments
-
-- `development:testnet` environment for development that does not contain real users data, with local database
-- `development:devnet` environment for development that may contains real users data that is not guaranteed to be preserved over product iterations and the blockchain devnet network iterations, this data has low value in comparison to real production users data (connected to staging DB)
-- `staging:devnet` testing and demo environment that may contains real users data that is not guaranteed to be preserved over product iterations and the blockchain devnet network iterations, this data has low value in comparison to real production users data
-- `production:mainnet` production environment with real users data in database and the blockchain mainnet network
-
-Wrangler configuration JSONC file must be configured so: 
-- top-level configuration is `development:testnet` with remove staging d1 database
-- `localdevelopment` cloudflare/wrangler env is for `development:devent` and local d1 database
-- `staging` cloudflare/wrangler env is for `staging:testnet`
-- `production`
 
 ## Unspecified Requirements and out off scope
 

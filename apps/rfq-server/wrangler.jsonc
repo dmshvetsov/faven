@@ -45,10 +45,11 @@
   },
 
   "env": {
-    "development": {
+    "stagingdevelopment-devnet": {
       "name": "faven-rfq-server-development",
       "d1_databases": [
         {
+          "remote": true,
           "binding": "DB",
           "database_name": "faven-db-staging",
           "database_id": "00000000-0000-0000-0000-000000000002",
@@ -57,21 +58,26 @@
       "queues": {
         "producers": [
           {
+            "remote": true,
             "binding": "BROADCAST_QUEUE",
             "queue": "faven-solana-broadcast-staging",
           },
         ],
         "consumers": [
-          { "queue": "faven-solana-broadcast-staging", "max_concurrency": 1 },
+          {
+            "remote": true,
+            "queue": "faven-solana-broadcast-staging",
+            "max_concurrency": 1,
+          },
         ],
       },
       "vars": {
-        "PRODUCT_ENVIRONMENT": "development:devnet",
+        "PRODUCT_ENVIRONMENT": "stagingdevelopment:devnet",
         "SOLANA_CLUSTER": "devnet",
       },
     },
 
-    "staging": {
+    "staging-devnet": {
       "name": "faven-rfq-server-staging",
       "observability": {
         "enabled": true,
@@ -101,7 +107,7 @@
       },
     },
 
-    "production": {
+    "production-mainnet": {
       "name": "faven-rfq-server-production",
       "observability": {
         "enabled": true,
