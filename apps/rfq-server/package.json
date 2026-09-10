@@ -24,7 +24,6 @@
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "1.1.5",
-    "@cloudflare/workers-types": "latest",
     "drizzle-kit": "1.0.0-rc.4",
     "eslint": "^9.35.0",
     "globals": "^16.4.0",
