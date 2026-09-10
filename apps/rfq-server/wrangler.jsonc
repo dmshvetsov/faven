@@ -52,7 +52,7 @@
           "remote": true,
           "binding": "DB",
           "database_name": "faven-db-staging",
-          "database_id": "00000000-0000-0000-0000-000000000002",
+          "database_id": "84dc8f5c-c1be-4098-8607-157a89d3fa0a",
         },
       ],
       "queues": {
@@ -79,6 +79,16 @@
 
     "staging-devnet": {
       "name": "faven-rfq-server-staging",
+      "durable_objects": {
+        "bindings": [
+          { "name": "ASSET_HUB", "class_name": "AssetHub" },
+          { "name": "CONNECTION_HUB", "class_name": "ConnectionHub" },
+          { "name": "RFQ_OBJECT", "class_name": "RfqDurableObject" },
+        ],
+      },
+      "routes": [
+        { "pattern": "devnet-api.faven.markets", "custom_domain": true },
+      ],
       "observability": {
         "enabled": true,
         "head_sampling_rate": 1,
@@ -87,7 +97,7 @@
         {
           "binding": "DB",
           "database_name": "faven-db-staging",
-          "database_id": "00000000-0000-0000-0000-000000000002",
+          "database_id": "84dc8f5c-c1be-4098-8607-157a89d3fa0a",
         },
       ],
       "queues": {

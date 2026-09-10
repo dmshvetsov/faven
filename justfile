@@ -24,6 +24,10 @@ apps-lint:
 rfq-test:
     pnpm -F rfq run test
 
+rfq-deploy-staging: rfq-test
+    pnpm -F rfq exec wrangler d1 migrations apply DB --remote --env staging-devnet
+    pnpm -F rfq exec wrangler deploy --env staging-devnet
+
 db-migrate-local:
     pnpm -F rfq run db:migrate:local
 
