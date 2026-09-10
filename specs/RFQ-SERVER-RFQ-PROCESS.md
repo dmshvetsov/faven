@@ -26,9 +26,8 @@ rfq.create
 ```
 
 1. `/taker` forwards `rfq.create` to the RFQ object named by `rfqId`. It MUST
-   reject an existing RFQ ID, validate market and seller terms, derive the Series,
-   obtain the latest blockhash and last valid block height, and store these
-   values durably.
+   reject an existing RFQ ID, validate market and seller terms, obtain the
+   latest blockhash and last valid block height, and store these values durably.
 2. The object resolves the configured BaseCoin and asks its Asset Hub to fan
    out `rfq.request`. At that boundary it MUST persist `requestDeadline` and
    schedule a Durable Object alarm. The aggregation period is fixed at 2.5
@@ -53,8 +52,7 @@ rfq.create
 - The server MUST build a Solana v0 transaction with inline accounts only and
   MUST reject legacy transactions and address lookup tables.
 - The builder derives the Series from stored market, expiry, strike, and
-  call/put values. It reads only the Series account to decide whether to add
-  `create_series`;
+  call/put values. The underwrite instruction creates it when needed.
 - The message uses the stored blockhash, seller as fee payer, configured
   operational fee and recipient, seller collateral source, maker, buyer quote
   source, and buyer premium.

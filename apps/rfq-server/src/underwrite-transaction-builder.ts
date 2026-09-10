@@ -17,11 +17,11 @@ import type { MarketConfig } from "./config";
 const ASSOCIATED_TOKEN_PROGRAM = address(
   "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
 );
+const COMPUTE_BUDGET_PROGRAM = address(
+  "ComputeBudget111111111111111111111111111111"
+);
 const SYSTEM_PROGRAM = address("11111111111111111111111111111111");
 const TOKEN_PROGRAM = address("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
-const CREATE_SERIES_DISCRIMINATOR = [
-  0xb5, 0x09, 0x34, 0x78, 0xc5, 0xdd, 0x2a, 0x8e,
-];
 const UNDERWRITE_CALL_DISCRIMINATOR = [
   0x7e, 0xf6, 0x59, 0xa5, 0x6a, 0xaa, 0x78, 0x93,
 ];
@@ -30,6 +30,9 @@ const UNDERWRITE_PUT_DISCRIMINATOR = [
 ];
 const U64_MAX = (1n << 64n) - 1n;
 const U128_MAX = (1n << 128n) - 1n;
+const FIRST_UNDERWRITE_COMPUTE_UNITS = 400_000;
+
+export const UNDERWRITE_INSTRUCTION_INDEX = 1;
 
 export interface UnderwriteTransactionInput {
   readonly market: MarketConfig;
@@ -50,7 +53,6 @@ export interface UnderwriteTransactionInput {
   readonly premium: string;
   readonly blockhash: string;
   readonly lastValidBlockHeight: number;
-  readonly seriesExists: boolean;
 }
 
 export interface OptionSeriesInput {
@@ -64,12 +66,10 @@ export async function buildUnderwriteTransaction(
   input: UnderwriteTransactionInput
 ): Promise<string> {
   const accounts = await deriveAccounts(input);
-  const instructions = input.seriesExists
-    ? [underwriteInstruction(input, accounts)]
-    : [
-        createSeriesInstruction(input, accounts),
-        underwriteInstruction(input, accounts),
-      ];
+  const instructions = [
+    computeBudgetInstruction(),
+    underwriteInstruction(input, accounts),
+  ];
   const message = appendTransactionMessageInstructions(
     instructions,
     setTransactionMessageLifetimeUsingBlockhash(
@@ -104,17 +104,12 @@ async function deriveAccounts(input: UnderwriteTransactionInput) {
     deriveSeriesPda("option_series_mint", input, programAddress, market),
     deriveSellerVault(input, programAddress, market, seller),
   ]);
-  const [
-    buyerLongAta,
-    feeRecipientQuoteAta,
-    baseCollateralVault,
-    quoteCollateralVault,
-  ] = await Promise.all([
-    deriveAta(buyer, longMint),
-    deriveAta(feeRecipient, quoteMint),
-    deriveAta(series, baseMint),
-    deriveAta(series, quoteMint),
-  ]);
+  const [buyerLongAta, feeRecipientQuoteAta, collateralVault] =
+    await Promise.all([
+      deriveAta(buyer, longMint),
+      deriveAta(feeRecipient, quoteMint),
+      deriveAta(series, input.isPut ? quoteMint : baseMint),
+    ]);
   return {
     programAddress,
     market,
@@ -131,8 +126,7 @@ async function deriveAccounts(input: UnderwriteTransactionInput) {
     buyerLongAta,
     feeRecipientQuoteAta,
     sellerVault,
-    baseCollateralVault,
-    quoteCollateralVault,
+    collateralVault,
   };
 }
 
@@ -144,26 +138,14 @@ export async function deriveOptionSeriesAddress(
   return deriveSeriesPda("option_series", input, programAddress, market);
 }
 
-function createSeriesInstruction(
-  input: UnderwriteTransactionInput,
-  accounts: Awaited<ReturnType<typeof deriveAccounts>>
-) {
+function computeBudgetInstruction() {
+  const data = new Uint8Array(5);
+  data[0] = 2;
+  new DataView(data.buffer).setUint32(1, FIRST_UNDERWRITE_COMPUTE_UNITS, true);
   return {
-    programAddress: accounts.programAddress,
-    data: createSeriesData(input),
-    accounts: [
-      writableSigner(accounts.seller),
-      readonly(accounts.market),
-      readonly(accounts.baseMint),
-      readonly(accounts.quoteMint),
-      writable(accounts.series),
-      writable(accounts.longMint),
-      writable(accounts.baseCollateralVault),
-      writable(accounts.quoteCollateralVault),
-      readonly(TOKEN_PROGRAM),
-      readonly(ASSOCIATED_TOKEN_PROGRAM),
-      readonly(SYSTEM_PROGRAM),
-    ],
+    programAddress: COMPUTE_BUDGET_PROGRAM,
+    data,
+    accounts: [],
   };
 }
 
@@ -193,8 +175,7 @@ function underwriteInstruction(
       readonly(accounts.feeRecipient),
       writable(accounts.feeRecipientQuoteAta),
       writable(accounts.sellerVault),
-      writable(accounts.baseCollateralVault),
-      writable(accounts.quoteCollateralVault),
+      writable(accounts.collateralVault),
       readonly(TOKEN_PROGRAM),
       readonly(ASSOCIATED_TOKEN_PROGRAM),
       readonly(SYSTEM_PROGRAM),
@@ -211,23 +192,16 @@ function requiredSellerQuoteDestination(
   return input.sellerQuoteDestination;
 }
 
-function createSeriesData(input: UnderwriteTransactionInput): Uint8Array {
-  const data = new Uint8Array(25);
-  data.set(CREATE_SERIES_DISCRIMINATOR);
-  data[8] = input.isPut ? 1 : 0;
-  writeU64(data, 9, BigInt(input.strike));
-  writeU64(data, 17, BigInt(input.expiry) * 1_000n);
-  return data;
-}
-
 function underwriteData(input: UnderwriteTransactionInput): Uint8Array {
-  const data = new Uint8Array(42);
+  const data = new Uint8Array(58);
   data.set(
     input.isPut ? UNDERWRITE_PUT_DISCRIMINATOR : UNDERWRITE_CALL_DISCRIMINATOR
   );
-  writeU128(data, 8, BigInt(input.quantity));
-  writeU128(data, 24, BigInt(input.premium));
-  writeU16(data, 40, input.market.operationalFeeBps);
+  writeU64(data, 8, BigInt(input.expiry) * 1_000n);
+  writeU64(data, 16, BigInt(input.strike));
+  writeU128(data, 24, BigInt(input.quantity));
+  writeU128(data, 40, BigInt(input.premium));
+  writeU16(data, 56, input.market.operationalFeeBps);
   return data;
 }
 

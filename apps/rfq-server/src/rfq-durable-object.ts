@@ -19,6 +19,7 @@ import {
 import {
   buildUnderwriteTransaction,
   deriveOptionSeriesAddress,
+  UNDERWRITE_INSTRUCTION_INDEX,
 } from "./underwrite-transaction-builder";
 import type { Env } from "./worker";
 
@@ -62,7 +63,6 @@ interface RfqState {
     "aggregating" | "selected" | "queued" | "no_quote" | "cancelled";
   readonly blockhash: string;
   readonly lastValidBlockHeight: number;
-  readonly seriesExists: boolean;
   readonly generatedMessages: readonly GeneratedMessage[];
   readonly quotes: readonly StoredQuote[];
   readonly bestQuote: StoredQuote | undefined;
@@ -266,7 +266,6 @@ export class RfqDurableObject implements DurableObject {
         premium: maker.premium,
         blockhash: rfq.blockhash,
         lastValidBlockHeight: rfq.lastValidBlockHeight,
-        seriesExists: rfq.seriesExists,
       });
       const message = transactionMessage(underwriteTx);
       const messageHash = await generatedMessageHash(message);
@@ -523,7 +522,6 @@ export class RfqDurableObject implements DurableObject {
         premium: rfq.bestQuote.premium,
         blockhash: rfq.blockhash,
         lastValidBlockHeight: rfq.lastValidBlockHeight,
-        seriesExists: rfq.seriesExists,
       });
       try {
         validateFinalUnderwriteTransaction({
@@ -565,7 +563,9 @@ export class RfqDurableObject implements DurableObject {
       const createdAtMs = Date.now();
       await new UnderwriteRepository(this.env.DB).createQueued({
         txSignature,
-        ixIndex: rfq.seriesExists ? 0 : 1,
+        // TODO: do not assume underwrite will always be at index 1,
+        // different clients might include more tx before compute-budget and underwrite ix
+        ixIndex: UNDERWRITE_INSTRUCTION_INDEX,
         rfqId: rfq.rfqId,
         sellerAddress: rfq.seller,
         buyerAddress: rfq.bestQuote.maker,
@@ -593,7 +593,7 @@ export class RfqDurableObject implements DurableObject {
       });
       await this.env.BROADCAST_QUEUE.send({
         txSignature,
-        ixIndex: rfq.seriesExists ? 0 : 1,
+        ixIndex: UNDERWRITE_INSTRUCTION_INDEX,
         signedTransaction: submission.underwriteTx,
       });
       const queued: RfqState = {
@@ -644,16 +644,7 @@ export class RfqDurableObject implements DurableObject {
         underwriteTerms: rfqUnderwriteTerms(parsed),
       });
       const rpc = new JsonSolanaRpc(this.env.SOLANA_RPC_URL);
-      const [latestBlockhash, seriesAddress] = await Promise.all([
-        rpc.getLatestBlockhash(),
-        deriveOptionSeriesAddress({
-          market,
-          expiry: parsed.expiry,
-          isPut: parsed.isPut,
-          strike: parsed.strike,
-        }),
-      ]);
-      const seriesExists = await rpc.accountExists(seriesAddress);
+      const latestBlockhash = await rpc.getLatestBlockhash();
       const requestDeadline = Date.now() + RFQ_AGGREGATION_MS;
       const rfq: RfqState = {
         ...parsed,
@@ -667,7 +658,6 @@ export class RfqDurableObject implements DurableObject {
         status: "aggregating",
         blockhash: latestBlockhash.blockhash,
         lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-        seriesExists,
         generatedMessages: [],
         quotes: [],
         bestQuote: undefined,
@@ -734,7 +724,6 @@ function parseRfq(
   | "status"
   | "blockhash"
   | "lastValidBlockHeight"
-  | "seriesExists"
   | "generatedMessages"
   | "quotes"
   | "bestQuote"

@@ -193,9 +193,9 @@ It begins when the server fans out the RFQ notification. The server MUST reject
    source.
 4. A buyer may call `underwriteTx.generate` before the deadline with `rfqId`,
    premium, maker, and buyer quote source. The server generates a Solana v0
-   transaction with inline accounts only. It adds `create_series` when the
-   series does not exist and records the generated message for later matching.
-   A buyer may generate multiple transactions.
+   transaction with inline accounts only. Its underwrite instruction creates
+   the Series when needed. The server records the generated message for later
+   matching. A buyer may generate multiple transactions.
 5. The buyer validates and signs an unchanged generated transaction, then sends
    `quote.submit`. A maker may have only one accepted blind quote per RFQ across
    all connections. The quote must reference a previously generated message,

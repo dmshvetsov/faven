@@ -24,15 +24,6 @@ export class JsonSolanaRpc implements SolanaBroadcastRpc {
     };
   }
 
-  async accountExists(accountAddress: string): Promise<boolean> {
-    const result = await this.call("getAccountInfo", [
-      accountAddress,
-      { commitment: "confirmed", encoding: "base64" },
-    ]);
-    const value = accountInfoValue(result);
-    return value !== null;
-  }
-
   async simulate(
     transaction: string
   ): Promise<{ readonly error: string | null; readonly result: unknown }> {
@@ -151,17 +142,6 @@ function resultValue(value: unknown): Record<string, unknown> {
     throw new Error("Solana RPC returned an invalid response.");
   }
   return value.value;
-}
-
-function accountInfoValue(value: unknown): Record<string, unknown> | null {
-  if (!isRecord(value) || !("value" in value)) {
-    throw new Error("Solana RPC returned an invalid response.");
-  }
-  const account = value.value;
-  if (account !== null && !isRecord(account)) {
-    throw new Error("Solana RPC returned an invalid account.");
-  }
-  return account;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

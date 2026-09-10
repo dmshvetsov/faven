@@ -133,7 +133,7 @@ describe("RFQ server", () => {
     seller.close();
   });
 
-  it("uses the stored blockhash and existing Series when generating a quote", async () => {
+  it("uses the stored blockhash when generating a quote", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (_input: unknown, init: RequestInit) => {
@@ -150,11 +150,7 @@ describe("RFQ server", () => {
             },
           });
         }
-        return Response.json({
-          jsonrpc: "2.0",
-          id: request.method,
-          result: { value: { lamports: 1 } },
-        });
+        throw new Error(`Unexpected RPC method: ${request.method}`);
       })
     );
     const seller = acceptSocket(
@@ -197,7 +193,7 @@ describe("RFQ server", () => {
     expect(message.lifetimeToken).toBe(
       "So11111111111111111111111111111111111111112"
     );
-    expect(message.instructions).toHaveLength(1);
+    expect(message.instructions).toHaveLength(2);
     seller.close();
     maker.close();
   });

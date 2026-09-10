@@ -56,29 +56,28 @@ describe("final underwrite transaction validation", () => {
             premium: PREMIUM_E18.toString(),
             blockhash: "11111111111111111111111111111111",
             lastValidBlockHeight: 100,
-            seriesExists: false,
           })
         )
       );
       const message = getCompiledTransactionMessageDecoder().decode(
         new Uint8Array(transaction.messageBytes)
       );
-      const createSeries = message.instructions[0]?.data;
       const underwrite = message.instructions[1]?.data;
-      if (createSeries === undefined || underwrite === undefined) {
-        throw new Error("canonical instructions are missing data");
-      }
+      if (underwrite === undefined)
+        throw new Error("canonical underwrite instruction is missing data");
 
-      expect(createSeries).toHaveLength(25);
-      expect(createSeries[8]).toBe(isPut ? 1 : 0);
-      expect(readU64(createSeries, 9)).toBe(STRIKE_E8);
-      expect(readU64(createSeries, 17)).toBe(BigInt(EXPIRY_SECONDS) * 1_000n);
-      expect(underwrite).toHaveLength(42);
+      expect(message.instructions[0]?.data).toEqual(
+        new Uint8Array([2, 128, 26, 6, 0])
+      );
+      expect(underwrite).toHaveLength(58);
       expect(underwrite.slice(0, 8)).toEqual(discriminator);
-      expect(readU128(underwrite, 8)).toBe(QUANTITY_E18);
-      expect(readU128(underwrite, 24)).toBe(PREMIUM_E18);
+      expect(readU64(underwrite, 8)).toBe(BigInt(EXPIRY_SECONDS) * 1_000n);
+      expect(readU64(underwrite, 16)).toBe(STRIKE_E8);
+      expect(readU128(underwrite, 24)).toBe(QUANTITY_E18);
+      expect(readU128(underwrite, 40)).toBe(PREMIUM_E18);
+      expect(readU16(underwrite, 56)).toBe(MARKET.operationalFeeBps);
       expect(message.instructions[1]?.accountIndices).toHaveLength(
-        isPut ? 18 : 19
+        isPut ? 17 : 18
       );
     }
   });
@@ -99,7 +98,6 @@ describe("final underwrite transaction validation", () => {
       premium: PREMIUM_E18.toString(),
       blockhash: "11111111111111111111111111111111",
       lastValidBlockHeight: 100,
-      seriesExists: false,
     } as const;
 
     await expect(
@@ -141,7 +139,6 @@ describe("final underwrite transaction validation", () => {
       premium: PREMIUM_E18.toString(),
       blockhash: "11111111111111111111111111111111",
       lastValidBlockHeight: 100,
-      seriesExists: true,
     });
     const transaction = getTransactionDecoder().decode(
       base64Bytes(canonicalTransaction)
@@ -149,8 +146,13 @@ describe("final underwrite transaction validation", () => {
     const message = getCompiledTransactionMessageDecoder().decode(
       new Uint8Array(transaction.messageBytes)
     );
-    const instruction = message.instructions[0];
-    if (instruction === undefined || instruction.accountIndices === undefined) {
+    const computeBudgetInstruction = message.instructions[0];
+    const instruction = message.instructions[1];
+    if (
+      computeBudgetInstruction === undefined ||
+      instruction === undefined ||
+      instruction.accountIndices === undefined
+    ) {
       throw new Error("canonical underwrite instruction is missing accounts");
     }
 
@@ -177,7 +179,13 @@ describe("final underwrite transaction validation", () => {
       "instruction-program-does-not-match-canonical-terms",
       transaction,
       canonicalTransaction,
-      { ...message, instructions: [{ ...instruction, programAddressIndex: 0 }] }
+      {
+        ...message,
+        instructions: [
+          computeBudgetInstruction,
+          { ...instruction, programAddressIndex: 0 },
+        ],
+      }
     );
     expectValidationFailure(
       "instruction-accounts-do-not-match-canonical-terms",
@@ -186,6 +194,7 @@ describe("final underwrite transaction validation", () => {
       {
         ...message,
         instructions: [
+          computeBudgetInstruction,
           {
             ...instruction,
             accountIndices: [...instruction.accountIndices].reverse(),
@@ -199,7 +208,10 @@ describe("final underwrite transaction validation", () => {
       canonicalTransaction,
       {
         ...message,
-        instructions: [{ ...instruction, data: new Uint8Array([0]) }],
+        instructions: [
+          computeBudgetInstruction,
+          { ...instruction, data: new Uint8Array([0]) },
+        ],
       }
     );
   });
@@ -237,6 +249,11 @@ function readU64(data: ArrayLike<number>, offset: number): bigint {
 
 function readU128(data: ArrayLike<number>, offset: number): bigint {
   return readU64(data, offset) + (readU64(data, offset + 8) << 64n);
+}
+
+function readU16(data: ArrayLike<number>, offset: number): number {
+  const bytes = Uint8Array.from(data).slice(offset, offset + 2);
+  return new DataView(bytes.buffer).getUint16(0, true);
 }
 
 function base64Bytes(value: string): Uint8Array {

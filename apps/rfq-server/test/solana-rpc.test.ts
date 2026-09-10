@@ -12,7 +12,7 @@ const task: BroadcastTask = {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Solana JSON-RPC broadcast adapter", () => {
-  it("reads the blockhash and Series account needed to create an RFQ", async () => {
+  it("reads the blockhash needed to create an RFQ", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (_input: unknown, init: RequestInit) => {
@@ -29,11 +29,7 @@ describe("Solana JSON-RPC broadcast adapter", () => {
             },
           });
         }
-        return Response.json({
-          jsonrpc: "2.0",
-          id: request.method,
-          result: { value: null },
-        });
+        throw new Error(`Unexpected RPC method: ${request.method}`);
       })
     );
     const rpc = new JsonSolanaRpc("https://solana.example");
@@ -42,7 +38,6 @@ describe("Solana JSON-RPC broadcast adapter", () => {
       blockhash: "11111111111111111111111111111111",
       lastValidBlockHeight: 42,
     });
-    await expect(rpc.accountExists("series-address")).resolves.toBe(false);
   });
 
   it("persists a confirmed underwrite after successful mocked RPC responses", async () => {
