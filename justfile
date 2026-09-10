@@ -7,9 +7,6 @@ format: anchor-format apps-format
 anchor-test:
     cd anchor && cargo test
 
-anchor-deploy-devnet:
-    cd anchor && NO_DNA=1 anchor program deploy --program-name options --provider.cluster devnet
-
 anchor-lint:
     cd anchor && cargo clippy -- -D warnings
 
