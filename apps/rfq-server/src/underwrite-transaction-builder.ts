@@ -104,12 +104,17 @@ async function deriveAccounts(input: UnderwriteTransactionInput) {
     deriveSeriesPda("option_series_mint", input, programAddress, market),
     deriveSellerVault(input, programAddress, market, seller),
   ]);
-  const [buyerLongAta, feeRecipientQuoteAta, collateralVault] =
-    await Promise.all([
-      deriveAta(buyer, longMint),
-      deriveAta(feeRecipient, quoteMint),
-      deriveAta(series, input.isPut ? quoteMint : baseMint),
-    ]);
+  const [
+    buyerLongAta,
+    feeRecipientQuoteAta,
+    baseCollateralVault,
+    quoteCollateralVault,
+  ] = await Promise.all([
+    deriveAta(buyer, longMint),
+    deriveAta(feeRecipient, quoteMint),
+    deriveAta(series, baseMint),
+    deriveAta(series, quoteMint),
+  ]);
   return {
     programAddress,
     market,
@@ -126,7 +131,8 @@ async function deriveAccounts(input: UnderwriteTransactionInput) {
     buyerLongAta,
     feeRecipientQuoteAta,
     sellerVault,
-    collateralVault,
+    baseCollateralVault,
+    quoteCollateralVault,
   };
 }
 
@@ -175,7 +181,15 @@ function underwriteInstruction(
       readonly(accounts.feeRecipient),
       writable(accounts.feeRecipientQuoteAta),
       writable(accounts.sellerVault),
-      writable(accounts.collateralVault),
+      ...(input.isPut
+        ? [
+            writable(accounts.quoteCollateralVault),
+            writable(accounts.baseCollateralVault),
+          ]
+        : [
+            writable(accounts.baseCollateralVault),
+            writable(accounts.quoteCollateralVault),
+          ]),
       readonly(TOKEN_PROGRAM),
       readonly(ASSOCIATED_TOKEN_PROGRAM),
       readonly(SYSTEM_PROGRAM),

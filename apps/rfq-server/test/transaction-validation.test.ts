@@ -1,14 +1,20 @@
 import {
+  address,
   generateKeyPairSigner,
+  getAddressEncoder,
   getCompiledTransactionMessageDecoder,
   getCompiledTransactionMessageEncoder,
+  getProgramDerivedAddress,
   getTransactionDecoder,
 } from "@solana/kit";
 import { describe, expect, it } from "vitest";
 
 import { configuredMarket } from "../src/config";
 import { validateFinalUnderwriteTransaction } from "../src/transaction-validation";
-import { buildUnderwriteTransaction } from "../src/underwrite-transaction-builder";
+import {
+  buildUnderwriteTransaction,
+  deriveOptionSeriesAddress,
+} from "../src/underwrite-transaction-builder";
 
 Object.defineProperty(globalThis, "isSecureContext", { value: true });
 
@@ -77,7 +83,27 @@ describe("final underwrite transaction validation", () => {
       expect(readU128(underwrite, 40)).toBe(PREMIUM_E18);
       expect(readU16(underwrite, 56)).toBe(MARKET.operationalFeeBps);
       expect(message.instructions[1]?.accountIndices).toHaveLength(
-        isPut ? 17 : 18
+        isPut ? 18 : 19
+      );
+      const underwriteAccounts = message.instructions[1]?.accountIndices;
+      if (underwriteAccounts === undefined) {
+        throw new Error("canonical underwrite instruction is missing accounts");
+      }
+      const series = await deriveOptionSeriesAddress({
+        market: MARKET,
+        expiry: EXPIRY_SECONDS,
+        isPut,
+        strike: STRIKE_E8.toString(),
+      });
+      const [baseVault, quoteVault] = await Promise.all([
+        deriveAta(series, address(MARKET.baseMint)),
+        deriveAta(series, address(MARKET.quoteMint)),
+      ]);
+      const vaultAccounts = underwriteAccounts
+        .slice(isPut ? 13 : 14, isPut ? 15 : 16)
+        .map((index) => message.staticAccounts[index]);
+      expect(vaultAccounts).toEqual(
+        isPut ? [quoteVault, baseVault] : [baseVault, quoteVault]
       );
     }
   });
@@ -262,4 +288,21 @@ function base64Bytes(value: string): Uint8Array {
 
 function bytesBase64(value: Uint8Array): string {
   return btoa(String.fromCharCode(...value));
+}
+
+async function deriveAta(
+  owner: ReturnType<typeof address>,
+  mint: ReturnType<typeof address>
+) {
+  const [ata] = await getProgramDerivedAddress({
+    programAddress: address("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"),
+    seeds: [
+      getAddressEncoder().encode(owner),
+      getAddressEncoder().encode(
+        address("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+      ),
+      getAddressEncoder().encode(mint),
+    ],
+  });
+  return ata;
 }
