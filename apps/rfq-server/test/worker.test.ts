@@ -737,6 +737,15 @@ describe("RFQ server", () => {
     secondMaker.close();
   });
 
+  it("exposes the root health endpoint", async () => {
+    const response = await SELF.fetch("https://example.com/", {
+      headers: { Origin: "http://localhost:5173" },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ health: "OK" });
+  });
+
   it("exposes a health endpoint for local development", async () => {
     const response = await SELF.fetch("https://example.com/health", {
       headers: { Origin: "http://localhost:5173" },

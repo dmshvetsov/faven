@@ -58,6 +58,8 @@ app.use("*", async (context, next) => {
   await next();
 });
 
+app.get("/", (context) => context.json({ health: "OK" }));
+
 app.get("/health", (context) =>
   context.json({ environment: context.env.PRODUCT_ENVIRONMENT, status: "ok" })
 );
