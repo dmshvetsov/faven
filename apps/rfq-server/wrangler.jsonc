@@ -117,7 +117,7 @@
       },
     },
 
-    "production-mainnet": {
+    "production-mainnetbeta": {
       "name": "faven-rfq-server-production",
       "observability": {
         "enabled": true,
@@ -145,7 +145,7 @@
         ],
       },
       "vars": {
-        "PRODUCT_ENVIRONMENT": "production:mainnet",
+        "PRODUCT_ENVIRONMENT": "production:mainnetbeta",
         "SOLANA_CLUSTER": "mainnet-beta",
       },
     },
