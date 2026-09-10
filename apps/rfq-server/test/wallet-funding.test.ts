@@ -46,7 +46,7 @@ describe("wallet funding", () => {
       funded: {
         wSoLCzXHe214cjx7CFjP1axzXyqLkEwq5Xf873hy1JP: "1000000000000",
         usdcHvyN6fvECJ1poPYkt1vztze1pQ6psC8i4cji2Ly: "250000000000",
-        solLamport: "5000000",
+        solLamport: "25000000",
       },
     });
     expect(retryAfterSeconds(new Date(1_001), 1)).toBe(1);

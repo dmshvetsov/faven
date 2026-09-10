@@ -65,7 +65,7 @@ export const DEVNET_FUNDING: readonly DevnetFunding[] = [
     decimals: 6,
     mintAmount: 250_000_000_000n,
   },
-  { kind: "sol", lamports: 5_000_000n },
+  { kind: "sol", lamports: 25_000_000n },
 ];
 
 export const WALLET_FUNDING_COOLDOWN_MS = 24 * 60 * 60 * 1_000;
