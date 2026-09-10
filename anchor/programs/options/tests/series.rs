@@ -14,8 +14,13 @@ use options::{
 };
 use solana_program_pack::Pack;
 use solana_sdk::{
-    account::Account, clock::Clock, instruction::Instruction, pubkey::Pubkey, signature::Keypair,
-    signer::Signer, transaction::Transaction,
+    account::Account,
+    clock::Clock,
+    instruction::{AccountMeta, Instruction},
+    pubkey::Pubkey,
+    signature::Keypair,
+    signer::Signer,
+    transaction::Transaction,
 };
 use spl_token::state::{Account as SplTokenAccount, AccountState, Mint};
 
@@ -293,6 +298,7 @@ fn underwrite_instruction(
                 &participants.seller,
             ),
             base_collateral_vault: get_associated_token_address(&series, &base_mint),
+            quote_collateral_vault: get_associated_token_address(&series, &quote_mint),
             token_program: TOKEN_PROGRAM_ID,
             associated_token_program: ASSOCIATED_TOKEN_PROGRAM_ID,
             system_program: anchor_lang::system_program::ID,
@@ -323,6 +329,7 @@ fn underwrite_instruction(
                 &participants.seller,
             ),
             quote_collateral_vault: get_associated_token_address(&series, &quote_mint),
+            base_collateral_vault: get_associated_token_address(&series, &base_mint),
             token_program: TOKEN_PROGRAM_ID,
             associated_token_program: ASSOCIATED_TOKEN_PROGRAM_ID,
             system_program: anchor_lang::system_program::ID,
@@ -663,11 +670,15 @@ fn buyer_and_seller_can_create_and_reuse_a_call_series_while_underwriting() {
         );
         let result = svm.send_transaction(transaction);
         assert!(result.is_ok(), "{result:?}");
-        let emitted_series_created = result
-            .unwrap()
-            .logs
-            .iter()
-            .any(|log| log == &expected_created_log);
+        let result = result.unwrap();
+        if underwriting_index == 0 {
+            assert!(
+                result.compute_units_consumed <= u64::from(FIRST_UNDERWRITE_COMPUTE_UNITS),
+                "first underwriting consumed {} compute units",
+                result.compute_units_consumed
+            );
+        }
+        let emitted_series_created = result.logs.iter().any(|log| log == &expected_created_log);
         assert_eq!(emitted_series_created, underwriting_index == 0);
         svm.expire_blockhash();
     }
@@ -698,9 +709,13 @@ fn buyer_and_seller_can_create_and_reuse_a_call_series_while_underwriting() {
         token_amount(&svm, &get_associated_token_address(&series, &base_mint)),
         2_000_000_000
     );
-    assert!(svm
+    let quote_vault = svm
         .get_account(&get_associated_token_address(&series, &quote_mint))
-        .is_none());
+        .expect("fresh call series must initialize its quote collateral vault");
+    let quote_vault = SplTokenAccount::unpack(&quote_vault.data).unwrap();
+    assert_eq!(quote_vault.mint, quote_mint);
+    assert_eq!(quote_vault.owner, series);
+    assert_eq!(quote_vault.amount, 0);
     let seller_vault = svm
         .get_account(&seller_vault_address(
             &market,
@@ -883,16 +898,368 @@ fn buyer_and_seller_can_create_a_put_series_while_underwriting() {
         compute_units_consumed > 200_000,
         "first underwriting consumed {compute_units_consumed} compute units"
     );
+    assert!(
+        compute_units_consumed <= u64::from(FIRST_UNDERWRITE_COMPUTE_UNITS),
+        "first underwriting consumed {compute_units_consumed} compute units"
+    );
 
     let series = series_address(&market, 2, strike, EXPIRY_MS);
     assert_eq!(
         token_amount(&svm, &get_associated_token_address(&series, &quote_mint)),
         3_500_000
     );
+    let base_vault = svm
+        .get_account(&get_associated_token_address(&series, &base_mint))
+        .expect("fresh put series must initialize its base collateral vault");
+    let base_vault = SplTokenAccount::unpack(&base_vault.data).unwrap();
+    assert_eq!(base_vault.mint, base_mint);
+    assert_eq!(base_vault.owner, series);
+    assert_eq!(base_vault.amount, 0);
+    assert_eq!(token_amount(&svm, &seller_quote_source), 1_000_000);
+}
+
+fn finalize_unverified_instruction(
+    operator: Pubkey,
+    market: Pubkey,
+    series: Pubkey,
+    quote_collateral_vault: Pubkey,
+    price: u64,
+) -> Instruction {
+    let accounts = accounts::FinalizePythUnverifiedSeries { operator, market };
+    let mut account_metas = accounts.to_account_metas(None);
+    account_metas.push(AccountMeta::new(series, false));
+    account_metas.push(AccountMeta::new_readonly(quote_collateral_vault, false));
+    Instruction {
+        program_id: PROGRAM_ID,
+        accounts: account_metas,
+        data: instruction::FinalizePythUnverifiedSeries {
+            id: [1; 32],
+            price: i64::try_from(price).unwrap(),
+            conf: 0,
+            expo: -8,
+            publish_time: 0,
+        }
+        .data(),
+    }
+}
+
+fn exercise_instruction(
+    is_call: bool,
+    buyer: Pubkey,
+    market: Pubkey,
+    series: Pubkey,
+    base_mint: Pubkey,
+    quote_mint: Pubkey,
+    long_mint: Pubkey,
+    buyer_long_ata: Pubkey,
+    buyer_payment_source: Pubkey,
+) -> Instruction {
+    let accounts = accounts::Exercise {
+        holder: buyer,
+        market,
+        base_mint,
+        quote_mint,
+        series,
+        long_mint,
+        holder_long_source: buyer_long_ata,
+        holder_payment_source: buyer_payment_source,
+        holder_receipt_ata: get_associated_token_address(
+            &buyer,
+            if is_call { &base_mint } else { &quote_mint },
+        ),
+        base_collateral_vault: get_associated_token_address(&series, &base_mint),
+        quote_collateral_vault: get_associated_token_address(&series, &quote_mint),
+        token_program: TOKEN_PROGRAM_ID,
+        associated_token_program: ASSOCIATED_TOKEN_PROGRAM_ID,
+        system_program: anchor_lang::system_program::ID,
+    };
+    Instruction {
+        program_id: PROGRAM_ID,
+        accounts: accounts.to_account_metas(None),
+        data: instruction::Exercise {
+            quantity: 1_000_000_000,
+        }
+        .data(),
+    }
+}
+
+fn settle_instruction(
+    settler: Pubkey,
+    market: Pubkey,
+    series: Pubkey,
+    base_mint: Pubkey,
+    quote_mint: Pubkey,
+    seller_vault: Pubkey,
+    seller_base_ata: Option<Pubkey>,
+    seller_quote_ata: Option<Pubkey>,
+) -> Instruction {
+    let accounts = accounts::SettleSellersBatch {
+        settler,
+        market,
+        base_mint,
+        quote_mint,
+        series,
+        base_collateral_vault: get_associated_token_address(&series, &base_mint),
+        quote_collateral_vault: get_associated_token_address(&series, &quote_mint),
+        token_program: TOKEN_PROGRAM_ID,
+        associated_token_program: ASSOCIATED_TOKEN_PROGRAM_ID,
+        system_program: anchor_lang::system_program::ID,
+    };
+    let mut account_metas = accounts.to_account_metas(None);
+    account_metas.push(AccountMeta::new(seller_vault, false));
+    if let Some(seller_base_ata) = seller_base_ata {
+        account_metas.push(AccountMeta::new(seller_base_ata, false));
+    }
+    if let Some(seller_quote_ata) = seller_quote_ata {
+        account_metas.push(AccountMeta::new(seller_quote_ata, false));
+    }
+    Instruction {
+        program_id: PROGRAM_ID,
+        accounts: account_metas,
+        data: instruction::SettleSellersBatch {}.data(),
+    }
+}
+
+fn close_series_instruction(
+    series_closer: Pubkey,
+    market: Pubkey,
+    market_operator: Pubkey,
+    series: Pubkey,
+    base_mint: Pubkey,
+    quote_mint: Pubkey,
+) -> Instruction {
+    let accounts = accounts::CloseSeries {
+        series_closer,
+        market,
+        market_operator,
+        base_mint,
+        quote_mint,
+        series,
+        base_collateral_vault: get_associated_token_address(&series, &base_mint),
+        quote_collateral_vault: get_associated_token_address(&series, &quote_mint),
+        token_program: TOKEN_PROGRAM_ID,
+        associated_token_program: ASSOCIATED_TOKEN_PROGRAM_ID,
+        system_program: anchor_lang::system_program::ID,
+    };
+    Instruction {
+        program_id: PROGRAM_ID,
+        accounts: accounts.to_account_metas(None),
+        data: instruction::CloseSeries {}.data(),
+    }
+}
+
+fn assert_fresh_series_lifecycle(is_call: bool, exercise: bool) {
+    let mut svm = new_svm();
+    let payer = Keypair::new();
+    let operator = Keypair::new();
+    let buyer = Keypair::new();
+    let seller = Keypair::new();
+    let fee_recipient = Pubkey::new_unique();
+    let quote_mint = Pubkey::new_unique();
+    let base_mint = Pubkey::new_unique();
+    for wallet in [&payer, &operator, &buyer, &seller] {
+        svm.airdrop(&wallet.pubkey(), 10 * LAMPORTS_PER_SOL)
+            .unwrap();
+    }
+    add_mint(&mut svm, quote_mint, 6);
+    add_mint(&mut svm, base_mint, 9);
+    let market = create_market(&mut svm, &payer, &operator, quote_mint, base_mint);
+    let strike = 350_000_000;
+    let marker = if is_call { 1 } else { 2 };
+    let series = series_address(&market, marker, strike, EXPIRY_MS);
+    let long_mint = long_mint_address(&market, marker, strike, EXPIRY_MS);
+    let buyer_quote_ata = get_associated_token_address(&buyer.pubkey(), &quote_mint);
+    let buyer_base_ata = get_associated_token_address(&buyer.pubkey(), &base_mint);
+    let seller_base_ata = get_associated_token_address(&seller.pubkey(), &base_mint);
+    let seller_quote_ata = get_associated_token_address(&seller.pubkey(), &quote_mint);
+    add_token_account(
+        &mut svm,
+        buyer_quote_ata,
+        quote_mint,
+        buyer.pubkey(),
+        10_000_000,
+    );
+    add_token_account(
+        &mut svm,
+        buyer_base_ata,
+        base_mint,
+        buyer.pubkey(),
+        1_000_000_000,
+    );
+    add_token_account(
+        &mut svm,
+        seller_base_ata,
+        base_mint,
+        seller.pubkey(),
+        if is_call { 1_000_000_000 } else { 0 },
+    );
+    add_token_account(
+        &mut svm,
+        seller_quote_ata,
+        quote_mint,
+        seller.pubkey(),
+        if is_call { 0 } else { 3_500_000 },
+    );
+    let participants = UnderwriteAccounts {
+        buyer: buyer.pubkey(),
+        seller: seller.pubkey(),
+        buyer_quote_source: buyer_quote_ata,
+        seller_collateral_source: if is_call {
+            seller_base_ata
+        } else {
+            seller_quote_ata
+        },
+        fee_recipient,
+    };
+    let underwrite = underwrite_instruction(
+        is_call,
+        (market, quote_mint, base_mint, marker, strike, EXPIRY_MS),
+        participants,
+        ONE_OPTION_E18,
+        0,
+        0,
+    );
+    let transaction = Transaction::new_signed_with_payer(
+        &[first_underwrite_compute_budget(), underwrite],
+        Some(&buyer.pubkey()),
+        &[&buyer, &seller],
+        svm.latest_blockhash(),
+    );
+    svm.send_transaction(transaction).unwrap();
+    assert!(svm
+        .get_account(&get_associated_token_address(&series, &base_mint))
+        .is_some());
+    assert!(svm
+        .get_account(&get_associated_token_address(&series, &quote_mint))
+        .is_some());
+
+    let mut clock = svm.get_sysvar::<Clock>();
+    clock.unix_timestamp = i64::try_from(EXPIRY_MS / 1_000).unwrap();
+    svm.set_sysvar(&clock);
+    let price = if exercise {
+        if is_call {
+            strike + 1
+        } else {
+            strike - 1
+        }
+    } else {
+        strike
+    };
+    let transaction = Transaction::new_signed_with_payer(
+        &[finalize_unverified_instruction(
+            operator.pubkey(),
+            market,
+            series,
+            get_associated_token_address(&series, &quote_mint),
+            price,
+        )],
+        Some(&operator.pubkey()),
+        &[&operator],
+        svm.latest_blockhash(),
+    );
+    svm.send_transaction(transaction).unwrap();
+
+    if exercise {
+        let transaction = Transaction::new_signed_with_payer(
+            &[exercise_instruction(
+                is_call,
+                buyer.pubkey(),
+                market,
+                series,
+                base_mint,
+                quote_mint,
+                long_mint,
+                get_associated_token_address(&buyer.pubkey(), &long_mint),
+                if is_call {
+                    buyer_quote_ata
+                } else {
+                    buyer_base_ata
+                },
+            )],
+            Some(&buyer.pubkey()),
+            &[&buyer],
+            svm.latest_blockhash(),
+        );
+        svm.send_transaction(transaction).unwrap();
+    }
+
+    let mut clock = svm.get_sysvar::<Clock>();
+    clock.unix_timestamp = i64::try_from((EXPIRY_MS + 3_600_000) / 1_000).unwrap();
+    svm.set_sysvar(&clock);
+    let seller_vault = seller_vault_address(&market, marker, strike, EXPIRY_MS, &seller.pubkey());
+    let (seller_base_payout, seller_quote_payout) = if exercise {
+        if is_call {
+            (None, Some(seller_quote_ata))
+        } else {
+            (Some(seller_base_ata), None)
+        }
+    } else if is_call {
+        (Some(seller_base_ata), None)
+    } else {
+        (None, Some(seller_quote_ata))
+    };
+    let transaction = Transaction::new_signed_with_payer(
+        &[settle_instruction(
+            payer.pubkey(),
+            market,
+            series,
+            base_mint,
+            quote_mint,
+            seller_vault,
+            seller_base_payout,
+            seller_quote_payout,
+        )],
+        Some(&payer.pubkey()),
+        &[&payer],
+        svm.latest_blockhash(),
+    );
+    svm.send_transaction(transaction).unwrap();
+    if exercise {
+        if is_call {
+            assert_eq!(token_amount(&svm, &seller_base_ata), 0);
+            assert_eq!(token_amount(&svm, &seller_quote_ata), 3_500_000);
+        } else {
+            assert_eq!(token_amount(&svm, &seller_base_ata), 1_000_000_000);
+            assert_eq!(token_amount(&svm, &seller_quote_ata), 0);
+        }
+    } else if is_call {
+        assert_eq!(token_amount(&svm, &seller_base_ata), 1_000_000_000);
+    } else {
+        assert_eq!(token_amount(&svm, &seller_quote_ata), 3_500_000);
+    }
+    let transaction = Transaction::new_signed_with_payer(
+        &[close_series_instruction(
+            payer.pubkey(),
+            market,
+            operator.pubkey(),
+            series,
+            base_mint,
+            quote_mint,
+        )],
+        Some(&payer.pubkey()),
+        &[&payer],
+        svm.latest_blockhash(),
+    );
+    svm.send_transaction(transaction).unwrap();
+    assert!(svm.get_account(&series).is_none());
     assert!(svm
         .get_account(&get_associated_token_address(&series, &base_mint))
         .is_none());
-    assert_eq!(token_amount(&svm, &seller_quote_source), 1_000_000);
+    assert!(svm
+        .get_account(&get_associated_token_address(&series, &quote_mint))
+        .is_none());
+}
+
+#[test]
+fn fresh_call_and_put_series_settle_without_exercise_and_close() {
+    assert_fresh_series_lifecycle(true, false);
+    assert_fresh_series_lifecycle(false, false);
+}
+
+#[test]
+fn fresh_call_and_put_series_exercise_settle_and_close() {
+    assert_fresh_series_lifecycle(true, true);
+    assert_fresh_series_lifecycle(false, true);
 }
 
 #[test]
