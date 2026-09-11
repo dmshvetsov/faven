@@ -19,6 +19,7 @@ export interface MarketConfig {
   readonly operationalFeeBps: number;
   /** QuoteCoin minimal required fee to pay for underwrite, base units, 18 decimals as premium */
   readonly minFee: bigint;
+  readonly exerciseWindowMs: number;
   readonly quantity: {
     /** minimum underwrite quantity, base units, 18 decimals. */
     readonly minimum: bigint;
@@ -76,6 +77,8 @@ const FAVEN_TREASURY = "FvNtr5ZWQxcJPkknFNTSWLBtg3UhP431CxtapqSodVXe";
 
 const OPTIONS_PROGRAM_ID = "FAVENgBXzD9K9qYHKRF5RFRJeT4Qa2EV4EoTycki5gGT";
 
+const ONE_HOUR_MS = 60 * 60 * 1000;
+
 const DEVNET_WSOL_MARKET: MarketConfig = {
   optionsProgramId: OPTIONS_PROGRAM_ID,
   marketAddress: "CY7qdovcTnpA6qo3Mp1J9Zws2ZnSnM7uXLyEXWGY3EUo",
@@ -89,6 +92,7 @@ const DEVNET_WSOL_MARKET: MarketConfig = {
   feeRecipient: FAVEN_TREASURY,
   operationalFeeBps: 523,
   minFee: 250_000_000_000_000_000n, // 0.25 usdc e18
+  exerciseWindowMs: ONE_HOUR_MS,
   quantity: {
     minimum: baseUnits(1n, 18),
     step: baseUnits(1n, 18),
