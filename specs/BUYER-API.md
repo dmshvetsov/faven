@@ -227,18 +227,61 @@ type QuoteOutbidNotification = {
 
 ## 4. Get positions — `/maker` endpoint
 
-> Not available yet. Do not rely on this API for position tracking.
 
 ```ts
-{
+type PositionsRequest = {
   jsonrpc: "2.0",
   id: string, // generated UUIDv7
-  method: "positions",
+  method: "positions.open",
   params: {
     account: string // public key (address) used to sign underwrite transactions (buy options)
+    expired?: boolean; // false - open position, true - cannot be exercised, exercise window ended
+    priceFinalized?: boolean; // false - open option series and expiration price is not know, true - either in the exercise window or already expired
   }
 }
 ```
+
+Use `priceFinalized` and `expired` together for getting open positions, positions that can be exercised now, 
+
+| expired | priceFinalized| result |
+|---|---|---|
+| false | false | open European options positions, expiry not passed, price at expiry not knowm, not exercisable
+| false | true | open European options positions with known expiration price, exercisable (if position ITM) until the exercise window ends
+| true | true| expired European options positions, with known expiraiton price, no longer exercisable
+| true | false | not possible, no results
+
+```ts
+type PositionsResult = {
+  jsonrpc: "2.0"
+  id: string // will match PositionsRequest.id
+  result: {
+    account: string   // will match PositionsRequest.params.account
+    asOfMs: string    // Unix milliseconds when the data was fetched from source
+    positions: PositionsGouppedBySeries[]
+  }
+}
+
+type PositionsGouppedBySeries = {
+  seriesAddress: string
+  longMint: string                 // SPL mint address for the Long option token
+  marketAddress: string
+  isPut: boolean
+  expiryMs: number
+  expiryPrice: string | null       // USD final price, 1e8 fixed-point; present when priceFinalized is true
+  exerciseWindowEndMs: number
+  strike: string                   // USD strike, 1e8 fixed-point
+  baseMint: string                 // physical-delivery token mint address
+  quoteMint: string                // strike, premium, and call-exercise payment token mint address
+  quantity: string                 // current Long token balance, 1e18 fixed-point
+}
+```
+
+`positions` contains one item for each series where `PositionsRequest.params.account`
+was buyer. A position is `exercisable` only when the series price is finalized,
+the option is ITM. "positions" API does not track of Long token transfers.
+
+No pagination at this point the whole list of filtered/unfiltered positions is returned.
+
 
 ## 5. Exercise - `/maker` endpoint
 
