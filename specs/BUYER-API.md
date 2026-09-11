@@ -285,7 +285,24 @@ No pagination at this point the whole list of filtered/unfiltered positions is r
 
 ## 5. Exercise - `/maker` endpoint
 
-TBD
+`exercise` takes one argument:
+- `quantity: u64` — Long tokens to burn, in `longMint` base units.
+
+The holder sends these accounts in order:
+- `holder` — Long tokens holder, signer and transaction fee payer
+- `market`
+- `baseMint`
+- `quoteMint`
+- `series`
+- `longMint`
+- `holderLongSource` — holder-owned token account for `longMint`
+- `holderPaymentSource` — holder-owned `quoteMint` account for calls, `baseMint` account for puts
+- `holderReceiptAta` — holder’s ATA for `baseMint` on calls, `quoteMint` on puts; created by the instruction if absent
+- `baseCollateralVault` — Series PDA’s ATA for `baseMint`
+- `quoteCollateralVault` — Series PDA’s ATA for `quoteMint`
+- `tokenProgram`
+- `associatedTokenProgram`
+- `systemProgram`
 
 Exercise is permitted only after expiry-price finalization, while an ITM
 option series' one-hour exercise window remains open. `Long` option series
