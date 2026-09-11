@@ -225,16 +225,16 @@ type QuoteOutbidNotification = {
 }
 ```
 
-## 4. Get positions — `/maker` endpoint
+## 4. Get list of options — `/maker` endpoint
 
 
 ```ts
 type PositionsRequest = {
   jsonrpc: "2.0",
   id: string, // generated UUIDv7
-  method: "positions.open",
+  method: "underwrites.list",
   params: {
-    account: string // public key (address) used to sign underwrite transactions (buy options)
+    buyerAccount: string // address used to sign underwrite transactions as a buyer (bought Long)
     expired?: boolean; // false - open position, true - cannot be exercised, exercise window ended
     priceFinalized?: boolean; // false - open option series and expiration price is not know, true - either in the exercise window or already expired
   }
@@ -245,9 +245,9 @@ Use `priceFinalized` and `expired` together for getting open positions, position
 
 | expired | priceFinalized| result |
 |---|---|---|
-| false | false | open European options positions, expiry not passed, price at expiry not knowm, not exercisable
-| false | true | open European options positions with known expiration price, exercisable (if position ITM) until the exercise window ends
-| true | true| expired European options positions, with known expiraiton price, no longer exercisable
+| false | true | options with known expiration price, exercisable (if position ITM) until the exercise window ends
+| false | false | options that have time to expiry, hence expiry price is unknown, not exercisable
+| true | true | expired options, with known expiraiton price, no longer exercisable
 | true | false | not possible, no results
 
 ```ts
@@ -255,13 +255,12 @@ type PositionsResult = {
   jsonrpc: "2.0"
   id: string // will match PositionsRequest.id
   result: {
-    account: string   // will match PositionsRequest.params.account
-    asOfMs: string    // Unix milliseconds when the data was fetched from source
-    positions: PositionsGouppedBySeries[]
+    account: string                         // will match PositionsRequest.params.account
+    underwrites: AccountSeriesUnderwrites[] // total options underwritten by series where provided account is buyer
   }
 }
 
-type PositionsGouppedBySeries = {
+type AccountSeriesUnderwrites = {
   seriesAddress: string
   longMint: string                 // SPL mint address for the Long option token
   marketAddress: string
@@ -276,9 +275,12 @@ type PositionsGouppedBySeries = {
 }
 ```
 
-`positions` contains one item for each series where `PositionsRequest.params.account`
-was buyer. A position is `exercisable` only when the series price is finalized,
-the option is ITM. "positions" API does not track of Long token transfers.
+`underwrite` contains one item for each series where `PositionsRequest.params.account`
+was buyer. 
+
+Note `PositionsRequest` API does not track Long token transfers
+and must be treated as a snapshot of all underwrite transactions
+when they happened.
 
 No pagination at this point the whole list of filtered/unfiltered positions is returned.
 
