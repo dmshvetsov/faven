@@ -287,8 +287,15 @@ No pagination at this point the whole list of filtered/unfiltered positions is r
 
 ## 5. Exercise - `/maker` endpoint
 
-`exercise` takes one argument:
-- `quantity: u64` — Long tokens to burn, in `longMint` base units.
+`exercise_e18` instruction takes one argument:
+- `quantity_e18: u128` — Long tokens to burn, expressed as an e18 Base Token quantity.
+
+`quantity_e18` must be greater than zero and scalable down to the Base Token
+mint's decimals without rounding. For example, a 9-decimal Base Token requires
+`quantity_e18` to be divisible by `1_000_000_000` which is `1e9 = e18 - e9`:
+`1_000_000_000_123_000_000` is invalid `quantity_e18` for 9-decimal mint token,
+`1_000_000_321_000_000_000` is valid `quantity_e18` for 9-decimal mint token,
+Converted amount to Base mint decimals that exceeds `u64` are rejected.
 
 The holder sends these accounts in order:
 - `holder` — Long tokens holder, signer and transaction fee payer

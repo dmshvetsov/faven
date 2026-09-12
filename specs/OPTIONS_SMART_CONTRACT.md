@@ -357,7 +357,13 @@ The holder MUST provide:
 - a `Long` token,
 - required payment asset that acts as payout to sellers,
 
-Exercise MUST accept an explicit `quantity` and burn exactly that quantity of `Long` tokens from holder. The exercised quantity MUST be greater than zero and no greater than holder's `Long` token balance.
+`exercise_e18(ctx, quantity_e18: u128)` instruction MUST accept an explicit e18
+BaseCoin quantity. `quantity_e18` MUST be greater than zero and exactly
+representable in the BaseCoin mint's decimals; unsupported precision and
+conversion overflow MUST be rejected. The contract MUST convert `quantity_e18`
+to BaseCoin base units before every existing exercise check. It MUST burn
+exactly the converted quantity of `Long` tokens, which MUST be no greater than
+the holder's `Long` token balance.
 
 ### Covered Call Exercise
 
@@ -378,10 +384,10 @@ For an ITM put:
 Exercise MUST abort if:
 - `Series` expiry price is not finalized,
 - option is not ITM,
-- payment asset to exercise is insufficient for amount of `Long` token quantity,
+- payment asset to exercise is insufficient for the converted BaseCoin quantity,
 - `Long` token option does not match `Series`,
-- `Long` token quantity is zero,
-- `Series` PDA does not have enough collateral for amount of `Long` token quantity.
+- `quantity_e18` is zero, cannot be represented exactly in BaseCoin base units, or overflows during conversion,
+- `Series` PDA does not have enough collateral for the converted BaseCoin quantity.
 
 The contract MUST emit `Exercised` with:
 - series id,
@@ -495,11 +501,11 @@ The contract MUST expose exactly API:
 - `unpause_market`
 - `create_series`
 - `close_series`
-- `underwrite_call`
-- `underwrite_put`
+- `underwrite_call_e18`
+- `underwrite_put_e18`
 - `finalize_pyth_twap_series`
 - `finalize_pyth_unverified_series`
-- `exercise`
+- `exercise_e18`
 - `settle_sellers_batch`
 
 ## Non-Goals For MVP

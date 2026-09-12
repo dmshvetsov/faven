@@ -13,11 +13,13 @@ use crate::{
     },
 };
 
-pub fn exercise(ctx: Context<Exercise>, quantity: u64) -> Result<()> {
+pub fn exercise_e18(ctx: Context<Exercise>, quantity_e18: u128) -> Result<()> {
     let market = &ctx.accounts.market;
     let series = &ctx.accounts.series;
     require!(!market.paused, OptionsError::MarketPaused);
-    require!(quantity > 0, OptionsError::ZeroQuantity);
+    require!(quantity_e18 > 0, OptionsError::ZeroQuantity);
+    let base_mint_scale = crate::math::token_scale(market.base_mint_decimals)?;
+    let quantity = crate::math::e18_to_token_decimals(quantity_e18, base_mint_scale)?;
     require!(
         quantity <= ctx.accounts.holder_long_source.amount,
         OptionsError::ExerciseQuantityExceedsLongBalance
@@ -39,7 +41,6 @@ pub fn exercise(ctx: Context<Exercise>, quantity: u64) -> Result<()> {
         OptionType::Put => expiry_price < series.strike_price,
     };
     require!(is_itm, OptionsError::SeriesNotInTheMoney);
-    let base_mint_scale = crate::math::token_scale(market.base_mint_decimals)?;
     let quote_mint_scale = crate::math::token_scale(market.quote_mint_decimals)?;
     let updated_exercised = series
         .total_manual_exercised_quantity

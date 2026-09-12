@@ -976,8 +976,8 @@ fn exercise_instruction(
     Instruction {
         program_id: PROGRAM_ID,
         accounts: accounts.to_account_metas(None),
-        data: instruction::Exercise {
-            quantity: 1_000_000_000,
+        data: instruction::ExerciseE18 {
+            quantity_e18: ONE_OPTION_E18,
         }
         .data(),
     }

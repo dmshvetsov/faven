@@ -23,6 +23,11 @@ const EXPIRY_MS: u64 = 2_000_000_000_000;
 const STRIKE: u64 = 350_000_000;
 const QUANTITY: u64 = 1_000_000_000;
 const EXERCISE_QUANTITY: u64 = 400_000_000;
+const BASE_UNIT_E18: u128 = 1_000_000_000;
+
+fn quantity_e18(quantity: u64) -> u128 {
+    u128::from(quantity) * BASE_UNIT_E18
+}
 
 fn add_mint(svm: &mut LiteSVM, key: Pubkey, decimals: u8, supply: u64) {
     let mint = Mint {
@@ -263,8 +268,13 @@ fn put_fixture() -> ExerciseFixture {
     fixture(OptionType::Put)
 }
 
-fn exercise_instruction(fixture: &ExerciseFixture, quantity: u64) -> Instruction {
-    exercise_instruction_with_vaults(fixture, quantity, fixture.base_vault, fixture.quote_vault)
+fn exercise_instruction(fixture: &ExerciseFixture, quantity_e18: u128) -> Instruction {
+    exercise_instruction_with_vaults(
+        fixture,
+        quantity_e18,
+        fixture.base_vault,
+        fixture.quote_vault,
+    )
 }
 
 fn finalize_unverified_instruction(fixture: &ExerciseFixture) -> Instruction {
@@ -297,7 +307,7 @@ fn finalize_unverified_instruction(fixture: &ExerciseFixture) -> Instruction {
 
 fn exercise_instruction_with_vaults(
     fixture: &ExerciseFixture,
-    quantity: u64,
+    quantity_e18: u128,
     base_collateral_vault: Pubkey,
     quote_collateral_vault: Pubkey,
 ) -> Instruction {
@@ -326,7 +336,7 @@ fn exercise_instruction_with_vaults(
     Instruction {
         program_id: PROGRAM_ID,
         accounts: accounts.to_account_metas(None),
-        data: instruction::Exercise { quantity }.data(),
+        data: instruction::ExerciseE18 { quantity_e18 }.data(),
     }
 }
 
@@ -351,9 +361,9 @@ fn update_market(fixture: &mut ExerciseFixture, update: impl FnOnce(&mut Market)
     fixture.svm.set_account(fixture.market, account).unwrap();
 }
 
-fn exercise_fails(fixture: &mut ExerciseFixture, quantity: u64) -> bool {
+fn exercise_fails(fixture: &mut ExerciseFixture, quantity_e18: u128) -> bool {
     let transaction = Transaction::new_signed_with_payer(
-        &[exercise_instruction(fixture, quantity)],
+        &[exercise_instruction(fixture, quantity_e18)],
         Some(&fixture.holder.pubkey()),
         &[&fixture.holder],
         fixture.svm.latest_blockhash(),
@@ -400,7 +410,10 @@ fn itm_put_can_exercise_after_finalization_snapshots_the_quote_vault() {
     assert!(finalization_result.is_ok(), "{finalization_result:?}");
 
     let transaction = Transaction::new_signed_with_payer(
-        &[exercise_instruction(&fixture, EXERCISE_QUANTITY + 1)],
+        &[exercise_instruction(
+            &fixture,
+            quantity_e18(EXERCISE_QUANTITY + 1),
+        )],
         Some(&fixture.holder.pubkey()),
         &[&fixture.holder],
         fixture.svm.latest_blockhash(),
@@ -417,7 +430,10 @@ fn itm_call_partial_exercise_burns_only_requested_long_and_delivers_base_coin() 
     let mut fixture = call_fixture();
     let receipt = get_associated_token_address(&fixture.holder.pubkey(), &fixture.base_mint);
     let transaction = Transaction::new_signed_with_payer(
-        &[exercise_instruction(&fixture, EXERCISE_QUANTITY)],
+        &[exercise_instruction(
+            &fixture,
+            quantity_e18(EXERCISE_QUANTITY),
+        )],
         Some(&fixture.holder.pubkey()),
         &[&fixture.holder],
         fixture.svm.latest_blockhash(),
@@ -459,7 +475,7 @@ fn multiple_call_exercises_snapshot_each_rounded_quote_payment() {
     );
     for quantity in [200_000_001, 200_000_002] {
         let transaction = Transaction::new_signed_with_payer(
-            &[exercise_instruction(&fixture, quantity)],
+            &[exercise_instruction(&fixture, quantity_e18(quantity))],
             Some(&fixture.holder.pubkey()),
             &[&fixture.holder],
             fixture.svm.latest_blockhash(),
@@ -480,7 +496,10 @@ fn itm_put_partial_exercise_collects_base_coin_and_delivers_floor_rounded_quote_
     let mut fixture = put_fixture();
     let receipt = get_associated_token_address(&fixture.holder.pubkey(), &fixture.quote_mint);
     let transaction = Transaction::new_signed_with_payer(
-        &[exercise_instruction(&fixture, EXERCISE_QUANTITY + 1)],
+        &[exercise_instruction(
+            &fixture,
+            quantity_e18(EXERCISE_QUANTITY + 1),
+        )],
         Some(&fixture.holder.pubkey()),
         &[&fixture.holder],
         fixture.svm.latest_blockhash(),
@@ -519,7 +538,7 @@ fn itm_put_partial_exercise_collects_base_coin_and_delivers_floor_rounded_quote_
 fn exercise_rejects_invalid_quantity_phase_accounts_and_insufficient_funds_without_changes() {
     let mut fixture = call_fixture();
     assert!(exercise_fails(&mut fixture, 0));
-    assert!(exercise_fails(&mut fixture, QUANTITY + 1));
+    assert!(exercise_fails(&mut fixture, quantity_e18(QUANTITY + 1)));
 
     let mut fixture = call_fixture();
     let long_before = token_amount(&fixture.svm, fixture.long_source);
@@ -532,7 +551,10 @@ fn exercise_rejects_invalid_quantity_phase_accounts_and_insufficient_funds_witho
         fixture.holder.pubkey(),
         0,
     );
-    assert!(exercise_fails(&mut fixture, EXERCISE_QUANTITY));
+    assert!(exercise_fails(
+        &mut fixture,
+        quantity_e18(EXERCISE_QUANTITY)
+    ));
     assert_eq!(token_amount(&fixture.svm, fixture.long_source), long_before);
     assert_eq!(token_amount(&fixture.svm, fixture.payment_source), 0);
     assert_eq!(token_amount(&fixture.svm, fixture.base_vault), vault_before);
@@ -546,7 +568,10 @@ fn exercise_rejects_invalid_quantity_phase_accounts_and_insufficient_funds_witho
         fixture.series,
         EXERCISE_QUANTITY - 1,
     );
-    assert!(exercise_fails(&mut fixture, EXERCISE_QUANTITY));
+    assert!(exercise_fails(
+        &mut fixture,
+        quantity_e18(EXERCISE_QUANTITY)
+    ));
     assert_eq!(token_amount(&fixture.svm, fixture.long_source), QUANTITY);
     assert_eq!(
         token_amount(&fixture.svm, fixture.payment_source),
@@ -555,33 +580,51 @@ fn exercise_rejects_invalid_quantity_phase_accounts_and_insufficient_funds_witho
 
     let mut fixture = call_fixture();
     update_market(&mut fixture, |market| market.paused = true);
-    assert!(exercise_fails(&mut fixture, EXERCISE_QUANTITY));
+    assert!(exercise_fails(
+        &mut fixture,
+        quantity_e18(EXERCISE_QUANTITY)
+    ));
 
     let mut fixture = call_fixture();
     update_series(&mut fixture, |series| series.state = SeriesState::Open);
-    assert!(exercise_fails(&mut fixture, EXERCISE_QUANTITY));
+    assert!(exercise_fails(
+        &mut fixture,
+        quantity_e18(EXERCISE_QUANTITY)
+    ));
 
     let mut fixture = call_fixture();
     update_series(&mut fixture, |series| series.expiry_price = Some(STRIKE));
-    assert!(exercise_fails(&mut fixture, EXERCISE_QUANTITY));
+    assert!(exercise_fails(
+        &mut fixture,
+        quantity_e18(EXERCISE_QUANTITY)
+    ));
 
     let mut fixture = call_fixture();
     update_series(&mut fixture, |series| {
         series.expiry_price = Some(STRIKE - 1)
     });
-    assert!(exercise_fails(&mut fixture, EXERCISE_QUANTITY));
+    assert!(exercise_fails(
+        &mut fixture,
+        quantity_e18(EXERCISE_QUANTITY)
+    ));
 
     let mut fixture = call_fixture();
     let mut clock = fixture.svm.get_sysvar::<Clock>();
     clock.unix_timestamp = i64::try_from(EXPIRY_MS / 1_000 - 1).unwrap();
     fixture.svm.set_sysvar(&clock);
-    assert!(exercise_fails(&mut fixture, EXERCISE_QUANTITY));
+    assert!(exercise_fails(
+        &mut fixture,
+        quantity_e18(EXERCISE_QUANTITY)
+    ));
 
     let mut fixture = call_fixture();
     let mut clock = fixture.svm.get_sysvar::<Clock>();
     clock.unix_timestamp = i64::try_from(EXPIRY_MS / 1_000 + 3_600).unwrap();
     fixture.svm.set_sysvar(&clock);
-    assert!(exercise_fails(&mut fixture, EXERCISE_QUANTITY));
+    assert!(exercise_fails(
+        &mut fixture,
+        quantity_e18(EXERCISE_QUANTITY)
+    ));
 }
 
 #[test]
@@ -594,7 +637,10 @@ fn exercise_rejects_wrong_holder_token_mints_owners_and_series_vault() {
         fixture.holder.pubkey(),
         QUANTITY,
     );
-    assert!(exercise_fails(&mut fixture, EXERCISE_QUANTITY));
+    assert!(exercise_fails(
+        &mut fixture,
+        quantity_e18(EXERCISE_QUANTITY)
+    ));
 
     let mut fixture = call_fixture();
     add_token_account(
@@ -604,7 +650,10 @@ fn exercise_rejects_wrong_holder_token_mints_owners_and_series_vault() {
         Pubkey::new_unique(),
         QUANTITY,
     );
-    assert!(exercise_fails(&mut fixture, EXERCISE_QUANTITY));
+    assert!(exercise_fails(
+        &mut fixture,
+        quantity_e18(EXERCISE_QUANTITY)
+    ));
 
     let mut fixture = call_fixture();
     add_token_account(
@@ -614,13 +663,16 @@ fn exercise_rejects_wrong_holder_token_mints_owners_and_series_vault() {
         fixture.holder.pubkey(),
         2_000_000,
     );
-    assert!(exercise_fails(&mut fixture, EXERCISE_QUANTITY));
+    assert!(exercise_fails(
+        &mut fixture,
+        quantity_e18(EXERCISE_QUANTITY)
+    ));
 
     let mut fixture = call_fixture();
     let transaction = Transaction::new_signed_with_payer(
         &[exercise_instruction_with_vaults(
             &fixture,
-            EXERCISE_QUANTITY,
+            quantity_e18(EXERCISE_QUANTITY),
             Pubkey::new_unique(),
             fixture.quote_vault,
         )],
@@ -638,7 +690,32 @@ fn exercise_rejects_quantity_that_exceeds_the_series_issued_contracts() {
         series.total_manual_exercised_quantity = QUANTITY - 100;
     });
 
-    assert!(exercise_fails(&mut fixture, 101));
+    assert!(exercise_fails(&mut fixture, quantity_e18(101)));
+    assert_eq!(token_amount(&fixture.svm, fixture.long_source), QUANTITY);
+    assert_eq!(
+        token_amount(&fixture.svm, fixture.payment_source),
+        2_000_000
+    );
+}
+
+#[test]
+fn exercise_rejects_e18_quantities_that_are_not_exact_base_coin_units_or_overflow() {
+    let mut fixture = call_fixture();
+    let long_before = token_amount(&fixture.svm, fixture.long_source);
+    let payment_before = token_amount(&fixture.svm, fixture.payment_source);
+    assert!(exercise_fails(
+        &mut fixture,
+        quantity_e18(EXERCISE_QUANTITY) + 1
+    ));
+    assert_eq!(token_amount(&fixture.svm, fixture.long_source), long_before);
+    assert_eq!(
+        token_amount(&fixture.svm, fixture.payment_source),
+        payment_before
+    );
+
+    let mut fixture = call_fixture();
+    let overflow_quantity_e18 = (u128::MAX / BASE_UNIT_E18) * BASE_UNIT_E18;
+    assert!(exercise_fails(&mut fixture, overflow_quantity_e18));
     assert_eq!(token_amount(&fixture.svm, fixture.long_source), QUANTITY);
     assert_eq!(
         token_amount(&fixture.svm, fixture.payment_source),

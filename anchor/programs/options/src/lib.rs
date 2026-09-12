@@ -90,8 +90,8 @@ pub mod options {
         )
     }
 
-    pub fn exercise(ctx: Context<Exercise>, quantity: u64) -> Result<()> {
-        instructions::exercise(ctx, quantity)
+    pub fn exercise_e18(ctx: Context<Exercise>, quantity_e18: u128) -> Result<()> {
+        instructions::exercise_e18(ctx, quantity_e18)
     }
 
     pub fn close_series<'info>(ctx: Context<'info, CloseSeries<'info>>) -> Result<()> {
