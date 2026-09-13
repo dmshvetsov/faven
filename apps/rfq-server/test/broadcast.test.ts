@@ -9,6 +9,7 @@ import {
 const task: BroadcastTask = {
   txSignature: "transaction-signature",
   ixIndex: 0,
+  rfqId: "rfq-id",
   signedTransaction: "base64-transaction",
 };
 

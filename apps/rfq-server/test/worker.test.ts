@@ -555,6 +555,29 @@ describe("RFQ server", () => {
         },
       ],
     });
+    const fill = nextSocketMessage(maker);
+    await rfq.fetch(
+      new Request("https://rfq/broadcast-result", {
+        method: "POST",
+        body: JSON.stringify({ txSignature, status: "confirmed" }),
+      })
+    );
+    await expect(fill).resolves.toEqual({
+      jsonrpc: "2.0",
+      method: "underwrite.fill",
+      params: {
+        rfqId,
+        txSig: txSignature,
+        status: "confirmed",
+        marketId: MARKET_ADDRESS,
+        seriesId: expect.any(String),
+        strike: "6000000000000",
+        isPut: false,
+        expiry: 1_735_689_600,
+        quantity: TEN_OPTIONS_E18,
+        premium: PREMIUM_25_E18,
+      },
+    });
     seller.close();
     maker.close();
   });

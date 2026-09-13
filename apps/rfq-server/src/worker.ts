@@ -128,7 +128,24 @@ export default {
         if (!isBroadcastTask(message.body)) {
           throw new Error("Invalid broadcast queue message.");
         }
-        await processor.process(message.body, Date.now());
+        const result = await processor.process(message.body, Date.now());
+        if (
+          result !== null &&
+          (result.status === "confirmed" || result.buyerFault) &&
+          message.body.rfqId !== undefined
+        ) {
+          await env.RFQ_OBJECT.get(
+            env.RFQ_OBJECT.idFromName(message.body.rfqId)
+          ).fetch(
+            new Request("https://rfq/broadcast-result", {
+              method: "POST",
+              body: JSON.stringify({
+                txSignature: message.body.txSignature,
+                ...result,
+              }),
+            })
+          );
+        }
       } catch (error) {
         if (error instanceof PendingConfirmationError) {
           message.retry();
@@ -194,6 +211,7 @@ function isBroadcastTask(value: unknown): value is BroadcastTask {
     typeof value.txSignature === "string" &&
     typeof value.ixIndex === "number" &&
     Number.isSafeInteger(value.ixIndex) &&
+    (value.rfqId === undefined || typeof value.rfqId === "string") &&
     typeof value.signedTransaction === "string"
   );
 }

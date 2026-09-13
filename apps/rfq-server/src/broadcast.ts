@@ -1,6 +1,10 @@
+import { isBuyerFaultUnderwriteFailure } from "./underwrite-fill";
+
 export interface BroadcastTask {
   readonly txSignature: string;
   readonly ixIndex: number;
+  /** Present for fill notifications; absent on queue messages created before this feature. */
+  readonly rfqId?: string;
   readonly signedTransaction: string;
 }
 
@@ -51,22 +55,30 @@ export type SolanaConfirmation =
 
 export class PendingConfirmationError extends Error {}
 
+export type BroadcastResult =
+  | { readonly status: "confirmed" }
+  | {
+      readonly status: "failed";
+      readonly error: string;
+      readonly buyerFault: boolean;
+    }
+  | null;
+
 export class BroadcastProcessor {
   constructor(
     private readonly repository: BroadcastRepository,
     private readonly rpc: SolanaBroadcastRpc
   ) {}
 
-  async process(task: BroadcastTask, nowMs: number): Promise<void> {
+  async process(task: BroadcastTask, nowMs: number): Promise<BroadcastResult> {
     const status = await this.repository.getStatus(
       task.txSignature,
       task.ixIndex
     );
     if (status === null || status === "confirmed" || status === "failed")
-      return;
+      return null;
     if (status === "submitted") {
-      await this.confirm(task, nowMs);
-      return;
+      return this.confirm(task, nowMs);
     }
     let simulation: SimulationResult;
     try {
@@ -80,7 +92,7 @@ export class BroadcastProcessor {
         nowMs,
         message
       );
-      return;
+      return failedResult(message);
     }
     if (simulation.error !== null) {
       logBroadcastFailure("simulation", task, {
@@ -92,7 +104,10 @@ export class BroadcastProcessor {
         nowMs,
         simulation.error
       );
-      return;
+      return failedResult(
+        simulation.error,
+        isBuyerFaultUnderwriteFailure(simulation.error, simulation.result)
+      );
     }
     try {
       await this.rpc.send(task.signedTransaction);
@@ -105,13 +120,16 @@ export class BroadcastProcessor {
         nowMs,
         message
       );
-      return;
+      return failedResult(message);
     }
     await this.repository.markSubmitted(task.txSignature, task.ixIndex, nowMs);
-    await this.confirm(task, nowMs);
+    return this.confirm(task, nowMs);
   }
 
-  private async confirm(task: BroadcastTask, nowMs: number): Promise<void> {
+  private async confirm(
+    task: BroadcastTask,
+    nowMs: number
+  ): Promise<BroadcastResult> {
     let confirmation: SolanaConfirmation;
     try {
       confirmation = await this.rpc.confirm(task.txSignature);
@@ -124,7 +142,7 @@ export class BroadcastProcessor {
         nowMs,
         message
       );
-      return;
+      return failedResult(message);
     }
     if (confirmation.status === "pending") {
       throw new PendingConfirmationError("Solana confirmation is pending.");
@@ -140,7 +158,7 @@ export class BroadcastProcessor {
         nowMs,
         confirmation.error
       );
-      return;
+      return failedResult(confirmation.error);
     }
     await this.repository.markConfirmed(
       task.txSignature,
@@ -148,7 +166,12 @@ export class BroadcastProcessor {
       nowMs,
       confirmation.receipt
     );
+    return { status: "confirmed" };
   }
+}
+
+function failedResult(error: string, buyerFault = false): BroadcastResult {
+  return { status: "failed", error, buyerFault };
 }
 
 function logBroadcastFailure(

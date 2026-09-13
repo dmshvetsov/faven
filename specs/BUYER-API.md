@@ -320,9 +320,38 @@ token holders MUST submit exercise transaction.
 Seller settlement remains server-operated after exercise window; Settlement
 is not a `/maker` action.
 
-## 6. Quote Fill (UnderwriteTx status) Notifications - `/maker` endpoint
+## 6. Quote Fill Notifications - `/maker` endpoint
 
-TBD
+The server sends `underwrite.fill` only to the connected to `/maker` WebSocket
+buyer that produced the selected quote and signed `underwriteTx`.
+
+It fires when the underwrite transaction is confirmed on-chain. It also fires
+with `status: "failed"` when the transaction cannot complete because of the
+buyer input, such as an expired blockhash, an invalid buyer payment token
+account, or insufficient buyer SPL tokens.
+
+The server sends no notification when no quote fills, or when the failure is
+caused by the seller or a technical issue such as network or compute failure.
+
+```ts
+type UnderwriteFillNotification = {
+  jsonrpc: "2.0"
+  method: "underwrite.fill"
+  params: {
+    rfqId: string              // RFQ that selected this quote
+    txSig: string              // fee-payer transaction signature
+    status: "confirmed" | "failed"
+    marketId: string           // market public key
+    seriesId: string           // option series public key
+    strike: string             // USD strike, 1e8
+    isPut: boolean             // false for calls, true for puts
+    expiry: number             // Unix seconds
+    quantity: string           // 1e18 option contracts
+    premium: string            // 1e18 premium per whole option contract
+    error?: string             // present only when status is "failed"
+  }
+}
+```
 
 ## Error codes
 

@@ -6,6 +6,7 @@ import { JsonSolanaRpc } from "../src/solana-rpc";
 const task: BroadcastTask = {
   txSignature: "seller-transaction-signature",
   ixIndex: 0,
+  rfqId: "rfq-id",
   signedTransaction: "signed-transaction",
 };
 

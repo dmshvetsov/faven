@@ -7,7 +7,11 @@ import {
 } from "@solana/kit";
 import { validate as validateUuid, version as uuidVersion } from "uuid";
 
-import { configuredMarketByAddress, type MarketConfig } from "./config";
+import {
+  configuredMarketByAddress,
+  type MarketConfig,
+  type ProductEnvironment,
+} from "./config";
 import { UnderwriteRepository } from "./database/underwrite-repository";
 import { tickerForSeries } from "./format";
 import { jsonRpcError, jsonRpcResult, isRecord } from "./rfq-rpc";
@@ -68,6 +72,7 @@ interface RfqState {
   readonly bestQuote: StoredQuote | undefined;
   readonly queuedUnderwriteTx: string | undefined;
   readonly queuedTxSignature: string | undefined;
+  readonly fillNotificationStatus: "confirmed" | "failed" | undefined;
 }
 
 interface GeneratedMessage {
@@ -132,6 +137,8 @@ export class RfqDurableObject implements DurableObject {
     if (url.pathname === "/generate") return this.generate(request);
     if (url.pathname === "/quote") return this.quote(request);
     if (url.pathname === "/underwrite") return this.underwrite(request);
+    if (url.pathname === "/broadcast-result")
+      return this.broadcastResult(request);
     return new Response("Not found.", { status: 404 });
   }
 
@@ -594,6 +601,7 @@ export class RfqDurableObject implements DurableObject {
       await this.env.BROADCAST_QUEUE.send({
         txSignature,
         ixIndex: UNDERWRITE_INSTRUCTION_INDEX,
+        rfqId: rfq.rfqId,
         signedTransaction: submission.underwriteTx,
       });
       const queued: RfqState = {
@@ -616,6 +624,48 @@ export class RfqDurableObject implements DurableObject {
         )
       );
     }
+  }
+
+  private async broadcastResult(request: Request): Promise<Response> {
+    const result = parseBroadcastResult(await request.json());
+    if (result === null)
+      return new Response("Invalid broadcast result.", { status: 400 });
+    const rfq = await this.state.storage.get<RfqState>("rfq");
+    if (
+      rfq === undefined ||
+      rfq.status !== "queued" ||
+      rfq.queuedTxSignature !== result.txSignature ||
+      rfq.bestQuote === undefined ||
+      rfq.fillNotificationStatus !== undefined ||
+      (result.status === "failed" && !result.buyerFault)
+    ) {
+      return new Response(null, { status: 204 });
+    }
+    const notification = await fillNotification(
+      rfq,
+      result,
+      this.env.PRODUCT_ENVIRONMENT
+    );
+    await this.state.storage.put("rfq", {
+      ...rfq,
+      fillNotificationStatus: result.status,
+    });
+    try {
+      await this.env.CONNECTION_HUB.get(
+        this.env.CONNECTION_HUB.idFromName("connections")
+      ).fetch(
+        new Request("https://connection-hub/notify", {
+          method: "POST",
+          body: JSON.stringify({
+            connectionId: rfq.bestQuote.makerConnectionId,
+            message: JSON.stringify(notification),
+          }),
+        })
+      );
+    } catch {
+      // Fill notifications are best effort and must not affect durable status.
+    }
+    return new Response(null, { status: 204 });
   }
 
   /**
@@ -663,6 +713,7 @@ export class RfqDurableObject implements DurableObject {
         bestQuote: undefined,
         queuedUnderwriteTx: undefined,
         queuedTxSignature: undefined,
+        fillNotificationStatus: undefined,
       };
       await this.state.storage.put("rfq", rfq);
       await this.state.storage.setAlarm(requestDeadline);
@@ -729,6 +780,7 @@ function parseRfq(
   | "bestQuote"
   | "queuedUnderwriteTx"
   | "queuedTxSignature"
+  | "fillNotificationStatus"
 > {
   if (!isRecord(value)) throw new Error("invalid-rfq");
   const rfqId = stringField(value, "rfqId");
@@ -1037,6 +1089,66 @@ function quoteNotification(quote: StoredQuote): Quote {
     premium: quote.premium,
     underwriteTx: quote.underwriteTx,
   };
+}
+
+type BroadcastResult =
+  | { readonly txSignature: string; readonly status: "confirmed" }
+  | {
+      readonly txSignature: string;
+      readonly status: "failed";
+      readonly error: string;
+      readonly buyerFault: boolean;
+    };
+
+function parseBroadcastResult(value: unknown): BroadcastResult | null {
+  if (!isRecord(value) || typeof value.txSignature !== "string") return null;
+  if (value.status === "confirmed") {
+    return { txSignature: value.txSignature, status: "confirmed" };
+  }
+  if (
+    value.status === "failed" &&
+    typeof value.error === "string" &&
+    typeof value.buyerFault === "boolean"
+  ) {
+    return {
+      txSignature: value.txSignature,
+      status: "failed",
+      error: value.error,
+      buyerFault: value.buyerFault,
+    };
+  }
+  return null;
+}
+
+async function fillNotification(
+  rfq: RfqState,
+  result: BroadcastResult,
+  environment: ProductEnvironment
+): Promise<Record<string, unknown>> {
+  const market = configuredMarketByAddress(environment, rfq.market);
+  if (market === null) throw new Error("unknown-market");
+  const quote = rfq.bestQuote;
+  if (quote === undefined) throw new Error("queued-rfq-missing-best-quote");
+  const seriesId = await deriveOptionSeriesAddress({
+    market,
+    expiry: rfq.expiry,
+    isPut: rfq.isPut,
+    strike: rfq.strike,
+  });
+  const params: Record<string, unknown> = {
+    rfqId: rfq.rfqId,
+    txSig: result.txSignature,
+    status: result.status,
+    marketId: rfq.market,
+    seriesId,
+    strike: rfq.strike,
+    isPut: rfq.isPut,
+    expiry: rfq.expiry,
+    quantity: rfq.quantity,
+    premium: quote.premium,
+  };
+  if (result.status === "failed") params.error = result.error;
+  return { jsonrpc: "2.0", method: "underwrite.fill", params };
 }
 
 function queuedResult(rfq: RfqState): {
