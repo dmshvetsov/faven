@@ -13,7 +13,6 @@ import {
   type ProductEnvironment,
 } from "./config";
 import { UnderwriteRepository } from "./database/underwrite-repository";
-import { tickerForSeries } from "./format";
 import { jsonRpcError, jsonRpcResult, isRecord } from "./rfq-rpc";
 import { JsonSolanaRpc } from "./solana-rpc";
 import {
@@ -578,15 +577,9 @@ export class RfqDurableObject implements DurableObject {
         buyerAddress: rfq.bestQuote.maker,
         marketAddress: market.marketAddress,
         seriesAddress,
-        ticker: tickerForSeries({
-          oracleBase: market.oracleBase,
-          quoteCoinSymbol: market.quoteCoinSymbol,
-          baseCoinSymbol: market.baseCoinSymbol,
-          expirySeconds: rfq.expiry,
-          isPut: rfq.isPut,
-          strike: BigInt(rfq.strike),
-          strikeDecimals: 8,
-        }),
+        oracleAsset: market.oracleBase,
+        baseAsset: market.baseCoinSymbol,
+        quoteAsset: market.quoteCoinSymbol,
         isPut: rfq.isPut,
         expiryMs: rfq.expiry * 1_000,
         strike: rfq.strike,

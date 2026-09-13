@@ -20,7 +20,9 @@ export const underwrites = sqliteTable(
     buyerAddress: text("buyer_address").notNull(),
     marketAddress: text("market_address").notNull(),
     seriesAddress: text("series_address").notNull(),
-    ticker: text("ticker").notNull(),
+    oracleAsset: text("oracle_asset").notNull(),
+    baseAsset: text("base_asset").notNull(),
+    quoteAsset: text("quote_asset").notNull(),
     isPut: integer("is_put", { mode: "boolean" }).notNull(),
     expiryMs: integer("expiry_ms").notNull(),
     // strike is e8 decimals base unit.
@@ -74,7 +76,12 @@ export const underwriteAudit = sqliteTable(
 export const optionSeries = sqliteTable("option_series", {
   seriesAddress: text("series_address").primaryKey(),
   marketAddress: text("market_address").notNull(),
-  ticker: text("ticker").notNull(),
+  /** Display-only oracle asset, such as BTC or SOL. */
+  oracleAsset: text("oracle_asset").notNull(),
+  /** Display-only physically delivered asset, such as wBTC or wSOL. */
+  baseAsset: text("base_asset").notNull(),
+  /** Display-only quote asset, such as USDC or USDT. */
+  quoteAsset: text("quote_asset").notNull(),
   isPut: integer("is_put", { mode: "boolean" }).notNull(),
   expiryMs: integer("expiry_ms").notNull(),
   // USD strike using 8 decimals (e8).
@@ -82,6 +89,14 @@ export const optionSeries = sqliteTable("option_series", {
   baseMint: text("base_mint").notNull(),
   quoteMint: text("quote_mint").notNull(),
   confirmedAtMs: integer("confirmed_at_ms").notNull(),
+  /** USD expiry price using 8 decimals (e8); null until finalized. */
+  expiryPrice: text("expiry_price"),
+  /** Time the price-finalization transaction was confirmed, not the expiry time. */
+  finalizedAtMs: integer("finalized_at_ms"),
+  finalizedSlot: integer("finalized_slot"),
+  finalizationSignature: text("finalization_signature"),
+  /** Options-program instruction that finalized the expiry price. */
+  finalizationMethod: text("finalization_method"),
 });
 
 export type WalletFundingStatus = "pending" | "succeeded" | "failed";

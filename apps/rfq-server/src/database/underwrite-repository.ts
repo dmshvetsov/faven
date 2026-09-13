@@ -18,7 +18,9 @@ export interface QueuedUnderwrite {
   readonly buyerAddress: string;
   readonly marketAddress: string;
   readonly seriesAddress: string;
-  readonly ticker: string;
+  readonly oracleAsset: string;
+  readonly baseAsset: string;
+  readonly quoteAsset: string;
   readonly isPut: boolean;
   readonly expiryMs: number;
   /** USD strike using 8 decimals. */
@@ -150,7 +152,9 @@ export class UnderwriteRepository {
         .values({
           seriesAddress: underwrite.seriesAddress,
           marketAddress: underwrite.marketAddress,
-          ticker: underwrite.ticker,
+          oracleAsset: underwrite.oracleAsset,
+          baseAsset: underwrite.baseAsset,
+          quoteAsset: underwrite.quoteAsset,
           isPut: underwrite.isPut,
           expiryMs: underwrite.expiryMs,
           strike: underwrite.strike,

@@ -14,7 +14,9 @@ const underwrite: QueuedUnderwrite = {
   buyerAddress: "buyer-address",
   marketAddress: "market-address",
   seriesAddress: "series-address",
-  ticker: "BTC-USDC-WBTC-01JAN25-60000-C",
+  oracleAsset: "BTC",
+  baseAsset: "WBTC",
+  quoteAsset: "USDC",
   isPut: false,
   expiryMs: 1_735_689_600_000,
   strike: "6000000000000",
@@ -46,7 +48,7 @@ describe("underwrite repository", () => {
       repository.get(underwrite.txSignature, 0)
     ).resolves.toMatchObject({
       status: "queued",
-      ticker: "BTC-USDC-WBTC-01JAN25-60000-C",
+      oracleAsset: "BTC",
       sellerAddress: "seller-address",
     });
     await expect(
@@ -141,13 +143,20 @@ describe("underwrite repository", () => {
     await expect(repository.getSeries("series-address")).resolves.toEqual({
       seriesAddress: "series-address",
       marketAddress: "market-address",
-      ticker: "BTC-USDC-WBTC-01JAN25-60000-C",
+      oracleAsset: "BTC",
+      baseAsset: "WBTC",
+      quoteAsset: "USDC",
       isPut: false,
       expiryMs: 1_735_689_600_000,
       strike: "6000000000000",
       baseMint: "base-mint",
       quoteMint: "quote-mint",
       confirmedAtMs: 1_735_600_002_000,
+      expiryPrice: null,
+      finalizedAtMs: null,
+      finalizedSlot: null,
+      finalizationSignature: null,
+      finalizationMethod: null,
     });
   });
 
@@ -290,7 +299,9 @@ async function resetDatabase(): Promise<void> {
       buyer_address TEXT NOT NULL,
       market_address TEXT NOT NULL,
       series_address TEXT NOT NULL,
-      ticker TEXT NOT NULL,
+      oracle_asset TEXT NOT NULL,
+      base_asset TEXT NOT NULL,
+      quote_asset TEXT NOT NULL,
       is_put INTEGER NOT NULL,
       expiry_ms INTEGER NOT NULL,
       strike TEXT NOT NULL,
@@ -318,13 +329,20 @@ async function resetDatabase(): Promise<void> {
     `CREATE TABLE option_series (
       series_address TEXT PRIMARY KEY,
       market_address TEXT NOT NULL,
-      ticker TEXT NOT NULL,
+      oracle_asset TEXT NOT NULL,
+      base_asset TEXT NOT NULL,
+      quote_asset TEXT NOT NULL,
       is_put INTEGER NOT NULL,
       expiry_ms INTEGER NOT NULL,
       strike TEXT NOT NULL,
       base_mint TEXT NOT NULL,
       quote_mint TEXT NOT NULL,
-      confirmed_at_ms INTEGER NOT NULL
+      confirmed_at_ms INTEGER NOT NULL,
+      expiry_price TEXT,
+      finalized_at_ms INTEGER,
+      finalized_slot INTEGER,
+      finalization_signature TEXT,
+      finalization_method TEXT
     )`,
   ];
   for (const statement of statements) {
