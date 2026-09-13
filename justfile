@@ -16,10 +16,12 @@ anchor-format:
 apps-format:
     pnpm -F rfq run format
     pnpm -F admin-cli run format
+    pnpm -F sdk run format
 
 apps-lint:
     pnpm -F rfq run lint
     pnpm -F admin-cli run lint
+    pnpm -F sdk run lint
 
 rfq-test:
     pnpm -F rfq run test
