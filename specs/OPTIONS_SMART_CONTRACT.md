@@ -285,11 +285,11 @@ Every finalization method MUST require:
 - every supplied series is `Open` 
 - every supplied series has the same market and expiry.
 
-One finalization transaction MAY finalize one or more series. The stored 1e6-scale expiry price is immutable; successful finalization moves every supplied series from `Open` to `ExpirationPriceFinalized`.
+One finalization transaction MAY finalize one or more series. The stored 1e8-scale expiry price is immutable; successful finalization moves every supplied series from `Open` to `ExpirationPriceFinalized`.
 
 ### Price Representation
 
-Pyth raw prices are `raw_price * 10^expo`. Every finalization MUST require a positive raw price and convert it to the protocol's 1e6 strike scale using checked arithmetic and round-half-up. The conversion MUST reject values that cannot be represented as a positive `u64` at the 1e6 scale.
+Pyth raw prices are `raw_price * 10^expo`. Every finalization MUST require a positive raw price and convert it to the protocol's 1e8 strike scale using checked arithmetic and round-half-up. The conversion MUST reject values that cannot be represented as a positive `u64` at the 1e8 scale.
 
 ### Permissionless Pyth TWAP Finalization
 
