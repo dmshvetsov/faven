@@ -353,6 +353,32 @@ type UnderwriteFillNotification = {
 }
 ```
 
+## 7. Series Expiry Price Notification - `/maker` endpoint
+
+The server sends this JSON-RPC notification to every buyer currently connected
+to `/maker` after an options Series expiry price is set on-chain.
+The expiry price is in USD e8 fixed-point units.
+
+```ts
+type SeriesExpiryPriceNotification = {
+  jsonrpc: "2.0"
+  method: "series.priceFinalized"
+  params: {
+    eventId: string       // `${signature}:${seriesAddress}`; use for de-duplication
+    seriesAddress: string // finalized Series public key
+    expiryPrice: string   // USD expiry price, 1e8 fixed-point
+    method: "pythTwap" | "pythUnverified"
+    slot: number          // finalized Solana transaction slot
+    signature: string     // finalized Solana transaction signature
+  }
+}
+```
+
+The notification is sent only to sockets connected at that time. Clients that
+reconnect do not receive missed notifications and SHOULD read their positions
+to obtain the current expiry price. Retrying the same finalization does not
+send another notification.
+
 ## Error codes
 
 RFQ errors use `1xxx` codes. The error `data` SHOULD include `rfqId` when available,
