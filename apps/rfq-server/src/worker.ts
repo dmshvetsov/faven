@@ -36,7 +36,6 @@ export interface Env {
   readonly PRODUCT_ENVIRONMENT: ProductEnvironment;
   readonly SOLANA_CLUSTER: SolanaCluster;
   readonly SOLANA_RPC_URL: string;
-  readonly SOLANA_WEBSOCKET_URL: string;
   readonly ADMIN_AUTH_TOKEN: string;
   readonly FAUCET_PRIVATE_KEY?: string;
 }
