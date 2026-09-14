@@ -5,6 +5,7 @@ type Role = "maker" | "taker";
 
 export class ConnectionHub implements DurableObject {
   private readonly sockets = new Map<string, WebSocket>();
+  private readonly makerConnectionIds = new Set<string>();
   private readonly sellerRfqs = new Map<string, Set<string>>();
 
   constructor(
@@ -19,6 +20,12 @@ export class ConnectionHub implements DurableObject {
     ) {
       return this.notify(request);
     }
+    if (
+      request.method === "POST" &&
+      new URL(request.url).pathname === "/broadcast-maker"
+    ) {
+      return this.broadcastMaker(request);
+    }
     const role = roleFor(new URL(request.url).pathname);
     if (role === null || request.headers.get("Upgrade") !== "websocket") {
       return new Response("WebSocket endpoint not found.", { status: 404 });
@@ -29,6 +36,7 @@ export class ConnectionHub implements DurableObject {
     server.accept();
     const connectionId = crypto.randomUUID();
     this.sockets.set(connectionId, server);
+    if (role === "maker") this.makerConnectionIds.add(connectionId);
     server.addEventListener("message", (event) => {
       void this.handleMessage(server, role, connectionId, event.data);
     });
@@ -47,6 +55,26 @@ export class ConnectionHub implements DurableObject {
       socket.send(body.message);
     } catch {
       this.sockets.delete(body.connectionId);
+    }
+    return new Response(null, { status: 204 });
+  }
+
+  private async broadcastMaker(request: Request): Promise<Response> {
+    const body: unknown = await request.json();
+    if (!isMakerBroadcast(body)) {
+      return new Response("Invalid maker notification.", { status: 400 });
+    }
+    for (const connectionId of this.makerConnectionIds) {
+      const socket = this.sockets.get(connectionId);
+      if (socket === undefined) {
+        this.removeConnection(connectionId);
+        continue;
+      }
+      try {
+        socket.send(body.message);
+      } catch {
+        this.removeConnection(connectionId);
+      }
     }
     return new Response(null, { status: 204 });
   }
@@ -187,6 +215,7 @@ export class ConnectionHub implements DurableObject {
 
   private removeConnection(connectionId: string): void {
     this.sockets.delete(connectionId);
+    this.makerConnectionIds.delete(connectionId);
     const rfqIds = this.sellerRfqs.get(connectionId);
     this.sellerRfqs.delete(connectionId);
     if (rfqIds === undefined) return;
@@ -258,4 +287,10 @@ function isNotification(
   return (
     typeof value.connectionId === "string" && typeof value.message === "string"
   );
+}
+
+function isMakerBroadcast(
+  value: unknown
+): value is { readonly message: string } {
+  return isRecord(value) && typeof value.message === "string";
 }

@@ -12,6 +12,7 @@ secrets:
 pnpm --dir apps/rfq-server exec wrangler secret put SOLANA_RPC_URL --env <cf env>
 pnpm --dir apps/rfq-server exec wrangler secret put SOLANA_WEBSOCKET_URL --env <cf env>
 pnpm --dir apps/rfq-server exec wrangler secret put FAUCET_PRIVATE_KEY --env <cf env>
+pnpm --dir apps/rfq-server exec wrangler secret put ADMIN_AUTH_TOKEN --env <cf env>
 ```
 
 Repeat for staging and production. Local development includes a testnet SOL

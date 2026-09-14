@@ -1,6 +1,16 @@
-/**
- * Shared Faven business logic and Solana protocol integrations.
- *
- * Public SDK exports are added here as code moves out of rfq-server.
- */
-export {};
+export {
+  decodeFinalizedPriceFinalizations,
+  fetchSeriesBackfill,
+  PriceFinalizationError,
+  validateSignature,
+  type FinalizedPriceFinalization,
+  type PriceFinalizationMethod,
+  type SeriesBackfill,
+} from "./price-finalization.js";
+export {
+  createPythTwapPriceFinalizationTransaction,
+  createPythUnverifiedPriceFinalizationTransaction,
+  type FinalizationSeriesAccounts,
+  type PythTwapFinalizationTransactionInput,
+  type PythUnverifiedFinalizationTransactionInput,
+} from "./price-finalization-transaction.js";
