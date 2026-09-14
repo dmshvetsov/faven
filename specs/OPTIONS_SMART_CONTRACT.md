@@ -293,7 +293,7 @@ Pyth raw prices are `raw_price * 10^expo`. Every finalization MUST require a pos
 
 ### Permissionless Pyth TWAP Finalization
 
-For `PythTwap` markets signer MUST finalize a series from any suitable, already-posted Pyth Receiver `TwapUpdate` on-chain account; the update account's write authority MUST NOT restrict Options finalization. 
+For `PythTwap` markets signer MUST finalize a series from any suitable, already-posted Pyth Receiver `TwapUpdate` on-chain account; the update account's write authority MUST NOT restrict Options finalization.
 
 The Options program MUST hardcode the canonical Pyth Receiver program identity (`rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ`). The passed `TwapUpdate` MUST be owned by that program and have been produced through Pyth's full VAA-verification path. `TwapUpdate` has no `VerificationLevel` field.
 
@@ -321,7 +321,7 @@ The program MUST emit exactly one `PythTwapPrice` per finalized batch with:
 `PythUnverified` an operator-only fallback. It MAY be used after expiry only while the series remains `Open`. Its authority is the market's configured operator, not any Pyth account.
 
 The fallback MUST accept exactly the reported Pyth Hermes API payload as instruction arguments:
-- `id: [u8; 32]`,
+- `id: [u8; 32]` - price feed id,
 - `price: i64`,
 - `conf: u64`,
 - `expo: i32`, and

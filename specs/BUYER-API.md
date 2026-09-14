@@ -225,7 +225,42 @@ type QuoteOutbidNotification = {
 }
 ```
 
-## 4. Get list of options — `/maker` endpoint
+## 4. Quote Fill Notifications - `/maker` endpoint
+
+The server sends `underwrite.fill` only to the connected to `/maker` WebSocket
+buyer that produced the selected quote and signed `underwriteTx`.
+
+It fires when the underwrite transaction is confirmed on-chain. It also fires
+with `status: "failed"` when the transaction cannot complete because of the
+buyer input, such as an expired blockhash, an invalid buyer payment token
+account, or insufficient buyer SPL tokens.
+
+The server sends no notification when no quote fills, or when the failure is
+caused by the seller or a technical issue such as network or compute failure.
+
+```ts
+type UnderwriteFillNotification = {
+  jsonrpc: "2.0"
+  method: "underwrite.fill"
+  params: {
+    rfqId: string              // RFQ that selected this quote
+    txSig: string              // fee-payer transaction signature
+    status: "confirmed" | "failed"
+    marketId: string           // market public key
+    seriesId: string           // option series public key
+    strike: string             // USD strike, 1e8
+    isPut: boolean             // false for calls, true for puts
+    expiry: number             // Unix seconds
+    quantity: string           // 1e18 option contracts
+    premium: string            // 1e18 premium per whole option contract
+    error?: string             // present only when status is "failed"
+  }
+}
+```
+
+## 5. Get list of options — `/maker` endpoint
+
+> Not yet implemented
 
 
 ```ts
@@ -284,8 +319,31 @@ when they happened.
 
 No pagination at this point the whole list of filtered/unfiltered positions is returned.
 
+## 6. Series Expiry Price Notification - `/maker` endpoint
 
-## 5. Exercise - `/maker` endpoint
+The server sends this JSON-RPC notification to every buyer currently connected
+to `/maker` after an options Series expiry price is set on-chain.
+
+```ts
+type SeriesExpiryPriceNotification = {
+  jsonrpc: "2.0"
+  method: "series.priceFinalized"
+  params: {
+    seriesAddress: string // finalized Series public key
+    expiryPrice: string   // USD expiry price, 1e8 fixed-point
+    method: "pythTwap" | "pythUnverified"
+    slot: number          // finalized Solana transaction slot
+    signature: string     // finalized Solana transaction signature
+  }
+}
+```
+
+Price finalization methods:
+- `pythTwap` expiry price is set using Pyth off-chain cryptographic proof of time-weighted average price with `twap.start_time = expiry_ms / 1_000 - 60`, `twap.end_time == expiry_ms / 1_000`, and `twap.down_slots_ratio <= 500_000`, meaning at least 50% data coverage over the 60-second window.
+- `pythUnverified` manually provided pyth hermes price including `id` and `publish_time` that can be used to confirm legitimacy of provided data; this method is permissioned - requires market operator authority, does not perform any on-chain checks and used as a fallback mechanics;
+
+
+## 7. Exercise - `/maker` endpoint
 
 `exercise_e18` instruction takes one argument:
 - `quantity_e18: u128` — Long tokens to burn, expressed as an e18 Base Token quantity.
@@ -319,64 +377,6 @@ token holders MUST submit exercise transaction.
 
 Seller settlement remains server-operated after exercise window; Settlement
 is not a `/maker` action.
-
-## 6. Quote Fill Notifications - `/maker` endpoint
-
-The server sends `underwrite.fill` only to the connected to `/maker` WebSocket
-buyer that produced the selected quote and signed `underwriteTx`.
-
-It fires when the underwrite transaction is confirmed on-chain. It also fires
-with `status: "failed"` when the transaction cannot complete because of the
-buyer input, such as an expired blockhash, an invalid buyer payment token
-account, or insufficient buyer SPL tokens.
-
-The server sends no notification when no quote fills, or when the failure is
-caused by the seller or a technical issue such as network or compute failure.
-
-```ts
-type UnderwriteFillNotification = {
-  jsonrpc: "2.0"
-  method: "underwrite.fill"
-  params: {
-    rfqId: string              // RFQ that selected this quote
-    txSig: string              // fee-payer transaction signature
-    status: "confirmed" | "failed"
-    marketId: string           // market public key
-    seriesId: string           // option series public key
-    strike: string             // USD strike, 1e8
-    isPut: boolean             // false for calls, true for puts
-    expiry: number             // Unix seconds
-    quantity: string           // 1e18 option contracts
-    premium: string            // 1e18 premium per whole option contract
-    error?: string             // present only when status is "failed"
-  }
-}
-```
-
-## 7. Series Expiry Price Notification - `/maker` endpoint
-
-The server sends this JSON-RPC notification to every buyer currently connected
-to `/maker` after an options Series expiry price is set on-chain.
-The expiry price is in USD e8 fixed-point units.
-
-```ts
-type SeriesExpiryPriceNotification = {
-  jsonrpc: "2.0"
-  method: "series.priceFinalized"
-  params: {
-    seriesAddress: string // finalized Series public key
-    expiryPrice: string   // USD expiry price, 1e8 fixed-point
-    method: "pythTwap" | "pythUnverified"
-    slot: number          // finalized Solana transaction slot
-    signature: string     // finalized Solana transaction signature
-  }
-}
-```
-
-The notification is sent only to sockets connected at that time. Clients that
-reconnect do not receive missed notifications and SHOULD read their positions
-to obtain the current expiry price. Retrying the same finalization does not
-send another notification.
 
 ## Error codes
 
