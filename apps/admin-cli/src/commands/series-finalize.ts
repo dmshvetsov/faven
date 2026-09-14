@@ -32,6 +32,8 @@ const CONFIDENCE = 1_000_000n;
 const EXPONENT = -8;
 const MAX_SERIES_PER_TRANSACTION = 16;
 const MAX_RETRIES = 3;
+const FINALIZATION_POLL_INTERVAL_MS = 1_000;
+const PENDING_FINALIZATION_WAIT_TIMEOUT_MS = 60_000;
 
 interface LatestBlockhash {
   readonly blockhash: string;
@@ -124,6 +126,7 @@ export const seriesFinalizeCommand: CliCommand = {
       [
         `RPC endpoint: ${rpc.label}`,
         `Cluster genesis hash: ${genesisHash}`,
+        `RFQ server: ${server.serverUrl}`,
         `Operator and fee payer: ${operator.address}`,
         `Market: ${plan.group.marketAddress}`,
         `Pyth feed: ${feed.symbol} (${plan.group.pythFeedId})`,
@@ -165,7 +168,15 @@ async function offerPendingFinalizationRetry(): Promise<CliCommandResult | null>
   if (action === "create") return null;
 
   const authToken = requiredEnvironment("RFQ_SERVER_ADMIN_AUTH_TOKEN");
-  const failed = await syncPendingPriceFinalizations(pending, authToken);
+  const solanaConfig = await loadSolanaCliConfig();
+  const rpc = loadSolanaRpcClient(solanaConfig);
+  const genesisHash = await fetchGenesisHash(rpc);
+  const failed = await syncPendingPriceFinalizations(
+    pending,
+    rpc,
+    genesisHash,
+    authToken
+  );
   if (failed === 0) {
     log.success(
       "All pending price finalizations were synced with the RFQ server."
@@ -324,17 +335,23 @@ async function sendAndSyncFinalizations(input: {
           "RPC returned a transaction signature that does not match the signed transaction."
         );
       }
+      log.info(`Waiting for finalization: ${signature}`);
+      await waitForFinalizedTransaction(
+        input.rpc,
+        signature,
+        latestBlockhash.lastValidBlockHeight
+      );
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unknown transaction error.";
       log.error(
-        `Finalization stopped after ${sent} transaction(s): ${message}`
+        `Finalization stopped after ${sent} finalized transaction(s): ${message}`
       );
       return { outcome: "failed" };
     }
 
     sent += 1;
-    log.success(`Finalization transaction sent: ${signature}`);
+    log.success(`Finalization transaction finalized: ${signature}`);
     const pending: PendingPriceFinalization = {
       signature,
       serverUrl: input.server.serverUrl,
@@ -362,10 +379,33 @@ async function sendAndSyncFinalizations(input: {
 
 async function syncPendingPriceFinalizations(
   pending: readonly PendingPriceFinalization[],
+  rpc: SolanaRpcClient,
+  genesisHash: string,
   authToken: string
 ): Promise<number> {
   let failed = 0;
   for (const entry of pending) {
+    if (entry.clusterGenesisHash !== genesisHash) {
+      log.error(
+        `Pending transaction ${entry.signature} belongs to a different Solana cluster.`
+      );
+      failed += 1;
+      continue;
+    }
+    try {
+      log.info(
+        `Waiting for finalization before RFQ server sync: ${entry.signature}`
+      );
+      await waitForFinalizedTransaction(rpc, entry.signature);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unknown transaction error.";
+      log.error(
+        `RFQ server sync was not attempted for ${entry.signature}: ${message}`
+      );
+      failed += 1;
+      continue;
+    }
     if (!(await syncPendingPriceFinalization(entry, authToken))) failed += 1;
   }
   return failed;
@@ -379,7 +419,10 @@ async function syncPendingPriceFinalization(
     let response: Response;
     try {
       response = await fetch(
-        new URL("backfills/price-finalizations", `${pending.serverUrl}/`),
+        new URL(
+          "internal/backfills/price-finalizations",
+          `${pending.serverUrl}/`
+        ),
         {
           method: "POST",
           headers: {
@@ -389,7 +432,11 @@ async function syncPendingPriceFinalization(
           body: JSON.stringify({ signature: pending.signature }),
         }
       );
-    } catch {
+    } catch (error) {
+      const message = describeNetworkError(error);
+      log.error(
+        `Could not reach the RFQ server for ${pending.signature}: ${message}`
+      );
       return false;
     }
     if (response.status === 204) {
@@ -413,6 +460,13 @@ async function syncPendingPriceFinalization(
     }
   }
   return false;
+}
+
+function describeNetworkError(error: unknown): string {
+  if (!(error instanceof Error)) return "Unknown network error.";
+  const cause = error.cause;
+  if (cause instanceof Error) return `${error.message}: ${cause.message}`;
+  return error.message;
 }
 
 function loadRfqServerConfig(): RfqServerConfig {
@@ -492,6 +546,86 @@ async function fetchGenesisHash(rpc: SolanaRpcClient): Promise<string> {
     throw new Error("RPC returned an invalid cluster genesis hash.");
   }
   return result;
+}
+
+async function waitForFinalizedTransaction(
+  rpc: SolanaRpcClient,
+  signature: string,
+  lastValidBlockHeight?: bigint
+): Promise<void> {
+  const startedAt = Date.now();
+  while (true) {
+    const status = await fetchSignatureStatus(rpc, signature);
+    if (status.kind === "finalized") return;
+    if (status.kind === "failed") {
+      throw new Error(
+        `Solana transaction failed before finalization: ${status.error}`
+      );
+    }
+    if (lastValidBlockHeight !== undefined) {
+      const blockHeight = await fetchBlockHeight(rpc);
+      if (blockHeight > lastValidBlockHeight) {
+        throw new Error("Solana transaction expired before finalization.");
+      }
+    } else if (Date.now() - startedAt >= PENDING_FINALIZATION_WAIT_TIMEOUT_MS) {
+      throw new Error("Timed out waiting for Solana transaction finalization.");
+    }
+    await delay(FINALIZATION_POLL_INTERVAL_MS);
+  }
+}
+
+async function fetchSignatureStatus(
+  rpc: SolanaRpcClient,
+  signature: string
+): Promise<
+  | { readonly kind: "pending" }
+  | { readonly kind: "finalized" }
+  | { readonly kind: "failed"; readonly error: string }
+> {
+  const result = await rpc.call("getSignatureStatuses", [
+    [signature],
+    { searchTransactionHistory: true },
+  ]);
+  if (!isRecord(result) || !Array.isArray(result.value)) {
+    throw new Error("RPC returned an invalid transaction status response.");
+  }
+  const status = result.value[0];
+  if (status === null) return { kind: "pending" };
+  if (!isRecord(status) || !("err" in status)) {
+    throw new Error("RPC returned an invalid transaction status response.");
+  }
+  if (status.err !== null) {
+    return { kind: "failed", error: safelyStringify(status.err) };
+  }
+  return status.confirmationStatus === "finalized"
+    ? { kind: "finalized" }
+    : { kind: "pending" };
+}
+
+async function fetchBlockHeight(rpc: SolanaRpcClient): Promise<bigint> {
+  const result = await rpc.call("getBlockHeight", [
+    { commitment: "confirmed" },
+  ]);
+  if (
+    typeof result !== "number" ||
+    !Number.isSafeInteger(result) ||
+    result < 0
+  ) {
+    throw new Error("RPC returned an invalid block height response.");
+  }
+  return BigInt(result);
+}
+
+function safelyStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return "an unreadable error";
+  }
+}
+
+async function delay(milliseconds: number): Promise<void> {
+  await new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function isSimulationSuccessful(value: unknown): boolean {
