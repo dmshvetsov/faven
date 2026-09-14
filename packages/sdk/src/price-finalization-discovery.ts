@@ -59,7 +59,10 @@ export async function discoverEligiblePriceFinalizationGroups(input: {
       ],
     },
   ]);
-  const allSeries = parseProgramAccounts(response).map(parseSeriesAccount);
+  const allSeries = parseProgramAccounts(response).flatMap((account) => {
+    const series = parseSeriesAccount(account);
+    return series === null ? [] : [series];
+  });
   const eligibleSeries = allSeries.filter(
     (series) =>
       series.state === 0 &&
@@ -81,9 +84,7 @@ export async function discoverEligiblePriceFinalizationGroups(input: {
   >();
   for (const series of eligibleSeries) {
     const market = markets.get(series.marketAddress);
-    if (market === undefined) {
-      throw new Error("An eligible Series refers to a missing Market.");
-    }
+    if (market === undefined) continue;
     if (market.paused) continue;
     const key = `${series.marketAddress}:${series.expiryMs}`;
     const existing = groups.get(key);
@@ -151,7 +152,8 @@ async function fetchMarkets(
     if (marketAddress === undefined) {
       throw new Error("RPC returned an invalid Market account response.");
     }
-    markets.set(marketAddress, parseMarketAccount(marketAddress, account));
+    const market = parseMarketAccount(marketAddress, account);
+    if (market !== null) markets.set(marketAddress, market);
   }
   return markets;
 }
@@ -163,7 +165,7 @@ function parseProgramAccounts(value: unknown): readonly {
   if (!Array.isArray(value)) {
     throw new Error("RPC returned an invalid Series account response.");
   }
-  return value.map((entry) => {
+  return value.flatMap((entry) => {
     if (
       !isRecord(entry) ||
       typeof entry.pubkey !== "string" ||
@@ -171,9 +173,20 @@ function parseProgramAccounts(value: unknown): readonly {
     ) {
       throw new Error("RPC returned an invalid Series account response.");
     }
+    const accountAddress = parseAddress(entry.pubkey);
+    if (accountAddress === null) {
+      logInvalidLayout("series", entry.pubkey);
+      return [];
+    }
+    const data = parseOptionsAccountData(
+      entry.account,
+      "series",
+      accountAddress
+    );
+    if (data === null) return [];
     return {
-      address: parseAddress(entry.pubkey, "Series address"),
-      data: parseOptionsAccountData(entry.account, "Series"),
+      address: accountAddress,
+      data,
     };
   });
 }
@@ -181,16 +194,17 @@ function parseProgramAccounts(value: unknown): readonly {
 function parseSeriesAccount(input: {
   readonly address: Address;
   readonly data: Uint8Array;
-}): DecodedSeries {
+}): DecodedSeries | null {
   const { address: seriesAddress, data } = input;
   if (
     data.length !== SERIES_ACCOUNT_LENGTH ||
     !equalBytes(data.slice(0, 8), SERIES_ACCOUNT_DISCRIMINATOR) ||
     (data[8] !== 0 && data[8] !== 1 && data[8] !== 2) ||
-    (data[41] !== 1 && data[41] !== 2) ||
+    (data[41] !== 0 && data[41] !== 1) ||
     (data[66] !== 0 && data[66] !== 1)
   ) {
-    throw new Error("A Series account has an invalid on-chain layout.");
+    logInvalidLayout("series", seriesAddress);
+    return null;
   }
   const expiry = new DataView(
     data.buffer,
@@ -198,7 +212,8 @@ function parseSeriesAccount(input: {
     data.byteLength
   ).getBigUint64(50, true);
   if (expiry > BigInt(Number.MAX_SAFE_INTEGER)) {
-    throw new Error("A Series expiry is outside the supported range.");
+    logInvalidLayout("series", seriesAddress);
+    return null;
   }
   return {
     address: seriesAddress,
@@ -212,18 +227,21 @@ function parseSeriesAccount(input: {
 function parseMarketAccount(
   addressValue: Address,
   value: unknown
-): DecodedMarket {
+): DecodedMarket | null {
   if (!isRecord(value)) {
-    throw new Error("An eligible Series refers to a missing Market.");
+    logInvalidLayout("market", addressValue);
+    return null;
   }
-  const data = parseOptionsAccountData(value, "Market");
+  const data = parseOptionsAccountData(value, "market", addressValue);
+  if (data === null) return null;
   if (
     data.length !== MARKET_ACCOUNT_LENGTH ||
     !equalBytes(data.slice(0, 8), MARKET_ACCOUNT_DISCRIMINATOR) ||
     data[8] !== 0 ||
     (data[75] !== 0 && data[75] !== 1)
   ) {
-    throw new Error("A Market account has an invalid on-chain layout.");
+    logInvalidLayout("market", addressValue);
+    return null;
   }
   return {
     address: addressValue,
@@ -236,8 +254,9 @@ function parseMarketAccount(
 
 function parseOptionsAccountData(
   value: Record<string, unknown>,
-  name: string
-): Uint8Array {
+  accountType: "series" | "market",
+  accountAddress: string
+): Uint8Array | null {
   if (
     value.owner !== OPTIONS_PROGRAM_ADDRESS ||
     value.executable !== false ||
@@ -246,21 +265,32 @@ function parseOptionsAccountData(
     typeof value.data[0] !== "string" ||
     value.data[1] !== "base64"
   ) {
-    throw new Error(`${name} account is not an Options-program account.`);
+    logInvalidLayout(accountType, accountAddress);
+    return null;
   }
   try {
     return Buffer.from(value.data[0], "base64");
   } catch {
-    throw new Error(`${name} account contains invalid base64 data.`);
+    logInvalidLayout(accountType, accountAddress);
+    return null;
   }
 }
 
-function parseAddress(value: string, name: string): Address {
+function parseAddress(value: string): Address | null {
   try {
     return address(value);
   } catch {
-    throw new Error(`${name} is invalid.`);
+    return null;
   }
+}
+
+function logInvalidLayout(
+  accountType: "series" | "market",
+  address: string
+): void {
+  console.debug(
+    `option.${accountType} ${address} has an invalid on-chain layout`
+  );
 }
 
 function equalBytes(left: Uint8Array, right: Uint8Array): boolean {

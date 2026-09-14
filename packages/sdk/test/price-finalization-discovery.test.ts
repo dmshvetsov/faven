@@ -17,6 +17,67 @@ const FEED_ID =
 afterEach(() => vi.unstubAllGlobals());
 
 describe("price finalization discovery", () => {
+  it("skips a malformed Series account and logs its address", async () => {
+    const malformed = seriesAccount(1_735_689_600_000n);
+    malformed[41] = 9;
+    const debug = vi.spyOn(console, "debug").mockImplementation(() => {});
+    const call = vi.fn(async (method: string) => {
+      if (method === "getProgramAccounts") {
+        return [
+          { pubkey: SERIES, account: account(malformed) },
+          {
+            pubkey: "Vote111111111111111111111111111111111111111",
+            account: account(seriesAccount(1_735_689_600_000n)),
+          },
+        ];
+      }
+      if (method === "getMultipleAccounts") {
+        return { value: [account(marketAccount())] };
+      }
+      throw new Error(`Unexpected RPC method: ${method}`);
+    });
+
+    await expect(
+      discoverEligiblePriceFinalizationGroups({
+        rpc: { call },
+        nowMs: 1_735_689_600_000,
+      })
+    ).resolves.toHaveLength(1);
+    expect(debug).toHaveBeenCalledWith(
+      `option.series ${SERIES} has an invalid on-chain layout`
+    );
+  });
+
+  it("skips an eligible group whose Market account has an invalid layout", async () => {
+    const malformed = marketAccount();
+    malformed[8] = 1;
+    const debug = vi.spyOn(console, "debug").mockImplementation(() => {});
+    const call = vi.fn(async (method: string) => {
+      if (method === "getProgramAccounts") {
+        return [
+          {
+            pubkey: SERIES,
+            account: account(seriesAccount(1_735_689_600_000n)),
+          },
+        ];
+      }
+      if (method === "getMultipleAccounts") {
+        return { value: [account(malformed)] };
+      }
+      throw new Error(`Unexpected RPC method: ${method}`);
+    });
+
+    await expect(
+      discoverEligiblePriceFinalizationGroups({
+        rpc: { call },
+        nowMs: 1_735_689_600_000,
+      })
+    ).resolves.toEqual([]);
+    expect(debug).toHaveBeenCalledWith(
+      `option.market ${MARKET} has an invalid on-chain layout`
+    );
+  });
+
   it("groups open expired Series by Market and expiry with the market Pyth feed", async () => {
     const call = vi.fn(async (method: string) => {
       if (method === "getProgramAccounts") {
@@ -100,7 +161,7 @@ function seriesAccount(
   data.set([240, 97, 8, 183, 139, 77, 250, 162]);
   data[8] = state;
   data.set(addressBytes(MARKET), 9);
-  data[41] = 1;
+  data[41] = 0;
   new DataView(data.buffer).setBigUint64(50, expiryMs, true);
   data[66] = hasExpiryPrice;
   return data;
