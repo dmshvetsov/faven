@@ -116,13 +116,29 @@ describe("price finalization backfill", () => {
   });
 
   it("accepts an identical finalized transaction retry", async () => {
+    const maker = acceptSocket(
+      await SELF.fetch("https://example.com/maker", webSocketHeaders())
+    );
     vi.stubGlobal("fetch", solanaRpcFetch());
 
+    const firstNotification = nextSocketMessage(maker);
     const first = await backfillRequest();
+    await expect(firstNotification).resolves.toMatchObject({
+      method: "series.priceFinalized",
+    });
+
+    const retryNotification = nextSocketMessage(maker);
     const second = await backfillRequest();
 
     expect(first.status).toBe(204);
     expect(second.status).toBe(204);
+    await expect(
+      Promise.race([
+        retryNotification.then(() => true),
+        new Promise<false>((resolve) => setTimeout(() => resolve(false), 25)),
+      ])
+    ).resolves.toBe(false);
+    maker.close();
   });
 
   it("records the first finalization for a Series created by an underwrite", async () => {

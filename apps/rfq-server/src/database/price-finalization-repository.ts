@@ -45,7 +45,9 @@ export class PriceFinalizationRepository {
     return rows[0] ?? null;
   }
 
-  async record(writes: readonly PriceFinalizationWrite[]): Promise<void> {
+  async record(
+    writes: readonly PriceFinalizationWrite[]
+  ): Promise<readonly FinalizedPriceFinalization[]> {
     const existing = new Map(
       await Promise.all(
         writes.map(
@@ -58,6 +60,7 @@ export class PriceFinalizationRepository {
       )
     );
     const statements: BatchItem<"sqlite">[] = [];
+    const recordedFinalizations: FinalizedPriceFinalization[] = [];
     for (const write of writes) {
       const stored = existing.get(write.finalization.seriesAddress);
       if (stored === null) {
@@ -71,6 +74,7 @@ export class PriceFinalizationRepository {
             ...finalizationColumns(write.finalization),
           })
         );
+        recordedFinalizations.push(write.finalization);
         continue;
       }
       if (stored === undefined) throw new PriceFinalizationConflictError();
@@ -84,6 +88,7 @@ export class PriceFinalizationRepository {
               eq(optionSeries.seriesAddress, write.finalization.seriesAddress)
             )
         );
+        recordedFinalizations.push(write.finalization);
         continue;
       }
       if (
@@ -100,9 +105,11 @@ export class PriceFinalizationRepository {
             eq(optionSeries.seriesAddress, write.finalization.seriesAddress)
           )
       );
+      recordedFinalizations.push(write.finalization);
     }
     const [first, ...remaining] = statements;
     if (first !== undefined) await this.database.batch([first, ...remaining]);
+    return recordedFinalizations;
   }
 }
 

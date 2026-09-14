@@ -102,8 +102,8 @@ app.post("/internal/backfills/price-finalizations", async (context) => {
         priceFinalizationWrite(repository, context.env, finalization)
       )
     );
-    await repository.record(writes);
-    await broadcastPriceFinalizations(context.env, finalizations);
+    const recordedFinalizations = await repository.record(writes);
+    await broadcastPriceFinalizations(context.env, recordedFinalizations);
     return new Response(null, { status: 204 });
   } catch (error) {
     return priceFinalizationErrorResponse(context, error);
