@@ -5,7 +5,7 @@
 ## Solana configuration
 
 Commands that access Solana use the default Solana CLI configuration at
-`~/.config/solana/cli/config.yaml`. Configure its RPC endpoint and keypair with
+`~/.config/solana/cli/config.yml`. Configure its RPC endpoint and keypair with
 the Solana CLI, then verify them before running a command:
 
     $ solana config get
@@ -13,6 +13,16 @@ the Solana CLI, then verify them before running a command:
     $ solana config set -k <path to keypair json file>
 
     $ solana config set -u <rpc url>
+
+## RFQ server configuration
+
+`faven series finalize` sends each on-chain finalization signature to the RFQ
+server. Set these variables in the shell where you run the command:
+
+```sh
+export RFQ_SERVER_URL="https://devent-api.faven.markets"
+export RFQ_SERVER_ADMIN_AUTH_TOKEN="your-admin-token"
+```
 
 ## Install locally
 

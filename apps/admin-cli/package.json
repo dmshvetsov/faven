@@ -37,6 +37,7 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.7.0",
-    "@solana/kit": "^5.1.0"
+    "@solana/kit": "^5.1.0",
+    "sdk": "workspace:*"
   }
 }

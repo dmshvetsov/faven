@@ -43,7 +43,21 @@ async function main(args: readonly string[]): Promise<void> {
 
   intro(`faven ${groupName} ${commandName}`);
   const result = await command.run(commandArgs);
-  outro(result.outcome === "cancelled" ? "No changes were made." : "Done.");
+  if (result.outcome === "cancelled") {
+    outro("No changes were made.");
+    return;
+  }
+  if (result.outcome === "pending") {
+    process.exitCode = 1;
+    outro("On-chain finalization succeeded; RFQ server sync is pending.");
+    return;
+  }
+  if (result.outcome === "failed") {
+    process.exitCode = 1;
+    outro("Finalization did not complete.");
+    return;
+  }
+  outro("Done.");
 }
 
 function isHelp(value: string): boolean {

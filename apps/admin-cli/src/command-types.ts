@@ -4,7 +4,7 @@ export interface CliCommand {
 }
 
 export interface CliCommandResult {
-  readonly outcome: "completed" | "cancelled";
+  readonly outcome: "completed" | "cancelled" | "pending" | "failed";
 }
 
 export interface CommandGroup {
