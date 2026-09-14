@@ -247,7 +247,7 @@ The contract MUST emit `Underwritten` with:
 
 ## Strike Payment Calculation
 
-All strike prices have 6 decimal scale `strike_scale = 1_000_000`.
+All strike prices have 8 decimal scale `strike_scale = 1_0000_0000`.
 
 The contract MUST provide deterministic conversion between `Base Token` quantity and `Quote Token` strike payment.
 
@@ -261,11 +261,11 @@ Use round down for put payouts and round up for put collateral, leaving any diff
 
 Example: call option for 1 SUI, strike $3.50, quote is USDC:
 - 1 Sui has 1_000_000_000 base units because SUI has 9 decimals, 1e9 scale
-- $3.5 strike_price = 3_500_000 because strike scale is 1e6
+- $3.5 strike_price = 350_000_000 because strike scale is 1e8
 - quote_mint_scale = 1_000_000 because USDC has 6 decimals, 1e6 scale
 - base_mint_scale = 1_000_000_000
-- strike_scale = 1_000_000
-- `ceil_div(1_000_000_000 * 3_500_000 * 1_000_000, 1_000_000_000 * 1_000_000) = 3_500_000`
+- strike_scale = 100_000_000
+- `ceil_div(1_000_000_000 * 350_000_000 * 1_000_000, 1_000_000_000 * 100_000_000) = 3_500_000`
 - holder pays 3_500_000 USDC base units which is 3.5 USDC.
 
 For puts, seller quote collateral and holder quote payout MUST use the same formula.
