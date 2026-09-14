@@ -364,7 +364,6 @@ type SeriesExpiryPriceNotification = {
   jsonrpc: "2.0"
   method: "series.priceFinalized"
   params: {
-    eventId: string       // `${signature}:${seriesAddress}`; use for de-duplication
     seriesAddress: string // finalized Series public key
     expiryPrice: string   // USD expiry price, 1e8 fixed-point
     method: "pythTwap" | "pythUnverified"

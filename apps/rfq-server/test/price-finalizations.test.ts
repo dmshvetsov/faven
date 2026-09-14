@@ -88,7 +88,6 @@ describe("price finalization backfill", () => {
         jsonrpc: "2.0",
         method: "series.priceFinalized",
         params: {
-          eventId: `${SIGNATURE}:${SERIES}`,
           seriesAddress: SERIES,
           expiryPrice: "6000000000",
           method: "pythTwap",

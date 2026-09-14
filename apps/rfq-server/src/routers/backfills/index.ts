@@ -127,7 +127,6 @@ async function broadcastPriceFinalizations(
             jsonrpc: "2.0",
             method: "series.priceFinalized",
             params: {
-              eventId: `${finalization.signature}:${finalization.seriesAddress}`,
               seriesAddress: finalization.seriesAddress,
               expiryPrice: finalization.expiryPrice,
               method: finalization.method,
