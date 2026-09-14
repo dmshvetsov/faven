@@ -8,4 +8,5 @@ Must be used only by Faven engineers and in internal systems.
 ```sh
 pnpm --dir packages/sdk run build
 pnpm --dir packages/sdk run lint
+pnpm --dir packages/sdk run test
 ```

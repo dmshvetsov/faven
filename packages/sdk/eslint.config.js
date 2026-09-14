@@ -6,7 +6,7 @@ export default tseslint.config(
   { ignores: ["dist"] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
-    files: ["src/**/*.ts"],
+    files: ["src/**/*.ts", "test/**/*.ts"],
     languageOptions: {
       globals: globals.node,
     },

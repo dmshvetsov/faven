@@ -11,7 +11,7 @@ import {
   decodeFinalizedPriceFinalizations,
   createPythTwapPriceFinalizationTransaction,
   fetchSeriesBackfill,
-} from "sdk";
+} from "../src/index.js";
 
 const OPTIONS_PROGRAM = "FAVENgBXzD9K9qYHKRF5RFRJeT4Qa2EV4EoTycki5gGT";
 const SERIES = "Stake11111111111111111111111111111111111111";
