@@ -23,6 +23,17 @@ const EXPIRY_MS: u64 = 2_000_000_000_000;
 const STRIKE: u64 = 350_000_000;
 const ONE_OPTION_E18: u128 = 1_000_000_000_000_000_000;
 const ONE_QUOTE_E18: u128 = 1_000_000_000_000_000_000;
+const FIRST_UNDERWRITE_COMPUTE_UNITS: u32 = 400_000;
+
+fn first_underwrite_compute_budget() -> Instruction {
+    let mut data = vec![2];
+    data.extend_from_slice(&FIRST_UNDERWRITE_COMPUTE_UNITS.to_le_bytes());
+    Instruction {
+        program_id: solana_sdk::pubkey!("ComputeBudget111111111111111111111111111111"),
+        accounts: vec![],
+        data,
+    }
+}
 
 fn add_mint(svm: &mut LiteSVM, key: Pubkey, decimals: u8) {
     let mint = Mint {
@@ -369,6 +380,36 @@ fn valid_participants(env: &mut TestEnv) -> Participants {
     }
 }
 
+fn initialize_call_series(
+    env: &mut TestEnv,
+    participants: Participants,
+    premium_e18: u128,
+    operational_fee_bps: u16,
+) {
+    let transaction = Transaction::new_signed_with_payer(
+        &[
+            first_underwrite_compute_budget(),
+            underwrite_instruction(
+                true,
+                env.market,
+                env.quote_mint,
+                env.base_mint,
+                OptionType::Call,
+                participants,
+                ONE_OPTION_E18,
+                premium_e18,
+                operational_fee_bps,
+            ),
+        ],
+        Some(&env.buyer.pubkey()),
+        &[&env.buyer, &env.seller],
+        env.svm.latest_blockhash(),
+    );
+    let result = env.svm.send_transaction(transaction);
+    assert!(result.is_ok(), "{result:?}");
+    env.svm.expire_blockhash();
+}
+
 fn set_market_paused(svm: &mut LiteSVM, market_key: Pubkey) {
     let mut account = svm.get_account(&market_key).unwrap();
     let mut market = Market::try_deserialize(&mut account.data.as_slice()).unwrap();
@@ -405,6 +446,7 @@ fn corrupt_series(svm: &mut LiteSVM, series_key: Pubkey, corruption: fn(&mut Ser
 fn underwriting_never_repairs_an_already_allocated_series() {
     let mut env = new_env(OptionType::Call, 0, 0, 1_000);
     let participants = valid_participants(&mut env);
+    initialize_call_series(&mut env, participants, 0, 0);
     let series_key = series_address(env.market, OptionType::Call);
     let mut account = env.svm.get_account(&series_key).unwrap();
     let mut series = Series::try_deserialize(&mut account.data.as_slice()).unwrap();
@@ -453,6 +495,7 @@ fn underwriting_validates_every_relevant_existing_series_field() {
     for corruption in corruptions {
         let mut env = new_env(OptionType::Call, 0, 0, 1_000);
         let participants = valid_participants(&mut env);
+        initialize_call_series(&mut env, participants, 0, 0);
         let series_key = series_address(env.market, OptionType::Call);
         corrupt_series(&mut env.svm, series_key, corruption);
         let transaction = Transaction::new_signed_with_payer(
@@ -501,6 +544,7 @@ fn underwrite_rejects_missing_seller_signature() {
 fn underwrite_rejects_paused_market_non_open_series_and_same_party() {
     let mut env = new_env(OptionType::Call, 0, 0, 1_000);
     let participants = valid_participants(&mut env);
+    initialize_call_series(&mut env, participants, 0, 0);
     let instruction = |participants| {
         underwrite_instruction(
             true,
@@ -527,6 +571,7 @@ fn underwrite_rejects_paused_market_non_open_series_and_same_party() {
 
     let mut env = new_env(OptionType::Call, 0, 0, 1_000);
     let participants = valid_participants(&mut env);
+    initialize_call_series(&mut env, participants, 0, 0);
     let series = series_address(env.market, OptionType::Call);
     for state in [SeriesState::ExpirationPriceFinalized, SeriesState::Closed] {
         set_series_state(&mut env.svm, series, state);
@@ -599,6 +644,7 @@ fn underwrite_rejects_paused_market_non_open_series_and_same_party() {
 fn underwrite_enforces_fee_bounds_and_minimum_fee() {
     let mut env = new_env(OptionType::Call, 0, 100, 200);
     let participants = valid_participants(&mut env);
+    initialize_call_series(&mut env, participants, ONE_QUOTE_E18, 100);
     for fee_bps in [100, 200] {
         let transaction = Transaction::new_signed_with_payer(
             &[underwrite_instruction(
@@ -642,6 +688,7 @@ fn underwrite_enforces_fee_bounds_and_minimum_fee() {
 
     let mut env = new_env(OptionType::Call, 1, 0, 1_000);
     let participants = valid_participants(&mut env);
+    initialize_call_series(&mut env, participants, ONE_QUOTE_E18, 0);
     assert!(env
         .svm
         .send_transaction(Transaction::new_signed_with_payer(
@@ -667,6 +714,7 @@ fn underwrite_enforces_fee_bounds_and_minimum_fee() {
 fn underwrite_rejects_invalid_funding_accounts_and_collateral_vault() {
     let mut env = new_env(OptionType::Call, 0, 0, 1_000);
     let valid = valid_participants(&mut env);
+    initialize_call_series(&mut env, valid, 0, 0);
     let wrong_buyer_owner = Pubkey::new_unique();
     let wrong_buyer_mint = Pubkey::new_unique();
     let wrong_seller_owner = Pubkey::new_unique();
@@ -770,17 +818,20 @@ fn put_underwriting_rounds_fractional_collateral_up_with_mismatched_decimals() {
     let mut env = new_env(OptionType::Put, 0, 0, 1_000);
     let participants = valid_participants(&mut env);
     let transaction = Transaction::new_signed_with_payer(
-        &[underwrite_instruction(
-            false,
-            env.market,
-            env.quote_mint,
-            env.base_mint,
-            OptionType::Put,
-            participants,
-            1_000_000_000,
-            0,
-            0,
-        )],
+        &[
+            first_underwrite_compute_budget(),
+            underwrite_instruction(
+                false,
+                env.market,
+                env.quote_mint,
+                env.base_mint,
+                OptionType::Put,
+                participants,
+                1_000_000_000,
+                0,
+                0,
+            ),
+        ],
         Some(&env.buyer.pubkey()),
         &[&env.buyer, &env.seller],
         env.svm.latest_blockhash(),
