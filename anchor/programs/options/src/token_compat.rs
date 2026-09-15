@@ -111,6 +111,22 @@ pub(crate) fn validate_token_account_with_owner_and_mint(
     expected_mint: Pubkey,
     token_program: &Interface<'_, TokenInterface>,
 ) -> Result<()> {
+    validate_token_account_with_owner_and_mint_for_error(
+        account,
+        expected_owner,
+        expected_mint,
+        token_program,
+        OptionsError::InvalidExerciseTokenAccount,
+    )
+}
+
+pub(crate) fn validate_token_account_with_owner_and_mint_for_error(
+    account: &AccountInfo<'_>,
+    expected_owner: Pubkey,
+    expected_mint: Pubkey,
+    token_program: &Interface<'_, TokenInterface>,
+    invalid_account_error: OptionsError,
+) -> Result<()> {
     validate_token_account_info(account, token_program)?;
     let data = account.try_borrow_data()?;
     let (owner, mint) = if token_program.key() == spl_token_2022_interface::id() {
@@ -122,10 +138,9 @@ pub(crate) fn validate_token_account_with_owner_and_mint(
             .map_err(|_| error!(OptionsError::InvalidTokenAccountProgram))?;
         (account.owner, account.mint)
     };
-    require!(
-        owner == expected_owner && mint == expected_mint,
-        OptionsError::InvalidExerciseTokenAccount
-    );
+    if owner != expected_owner || mint != expected_mint {
+        return Err(invalid_account_error.into());
+    }
     Ok(())
 }
 

@@ -1,6 +1,9 @@
 use anchor_lang::{AccountDeserialize, AccountSerialize, InstructionData, ToAccountMetas};
 use anchor_spl::{
-    associated_token::{get_associated_token_address, ID as ASSOCIATED_TOKEN_PROGRAM_ID},
+    associated_token::{
+        get_associated_token_address, get_associated_token_address_with_program_id,
+        ID as ASSOCIATED_TOKEN_PROGRAM_ID,
+    },
     token::{spl_token, ID as TOKEN_PROGRAM_ID},
 };
 use litesvm::LiteSVM;
@@ -23,12 +26,15 @@ use solana_sdk::{
     transaction::Transaction,
 };
 use spl_token::state::{Account as SplTokenAccount, AccountState, Mint};
+use spl_token_2022_interface::{
+    extension::StateWithExtensions, state::Account as Token2022Account,
+};
 
 const EXPIRY_MS: u64 = 2_000_000_000_000;
 const STRIKE: u64 = 350_000_000;
 const ACCOUNT_RENT: u64 = 1_000_000;
 
-fn add_mint(svm: &mut LiteSVM, key: Pubkey, decimals: u8) {
+fn add_mint_for_program(svm: &mut LiteSVM, key: Pubkey, decimals: u8, token_program: Pubkey) {
     let mint = Mint {
         mint_authority: solana_sdk::program_option::COption::None,
         supply: 0,
@@ -43,7 +49,7 @@ fn add_mint(svm: &mut LiteSVM, key: Pubkey, decimals: u8) {
         Account {
             lamports: 1_000_000,
             data,
-            owner: TOKEN_PROGRAM_ID,
+            owner: token_program,
             executable: false,
             rent_epoch: 0,
         },
@@ -52,12 +58,43 @@ fn add_mint(svm: &mut LiteSVM, key: Pubkey, decimals: u8) {
 }
 
 fn add_token_account(svm: &mut LiteSVM, key: Pubkey, mint: Pubkey, owner: Pubkey, amount: u64) {
+    add_token_account_for_program(svm, key, mint, owner, amount, TOKEN_PROGRAM_ID);
+}
+
+fn add_token_account_for_program(
+    svm: &mut LiteSVM,
+    key: Pubkey,
+    mint: Pubkey,
+    owner: Pubkey,
+    amount: u64,
+    token_program: Pubkey,
+) {
+    add_token_account_for_program_with_state(
+        svm,
+        key,
+        mint,
+        owner,
+        amount,
+        token_program,
+        AccountState::Initialized,
+    );
+}
+
+fn add_token_account_for_program_with_state(
+    svm: &mut LiteSVM,
+    key: Pubkey,
+    mint: Pubkey,
+    owner: Pubkey,
+    amount: u64,
+    token_program: Pubkey,
+    state: AccountState,
+) {
     let token_account = SplTokenAccount {
         mint,
         owner,
         amount,
         delegate: solana_sdk::program_option::COption::None,
-        state: AccountState::Initialized,
+        state,
         is_native: solana_sdk::program_option::COption::None,
         delegated_amount: 0,
         close_authority: solana_sdk::program_option::COption::None,
@@ -69,7 +106,85 @@ fn add_token_account(svm: &mut LiteSVM, key: Pubkey, mint: Pubkey, owner: Pubkey
         Account {
             lamports: 1_000_000,
             data,
-            owner: TOKEN_PROGRAM_ID,
+            owner: token_program,
+            executable: false,
+            rent_epoch: 0,
+        },
+    )
+    .unwrap();
+}
+
+fn add_token_2022_account_with_extension(
+    svm: &mut LiteSVM,
+    key: Pubkey,
+    mint: Pubkey,
+    owner: Pubkey,
+    amount: u64,
+    extension_type: spl_token_2022_interface::extension::ExtensionType,
+) {
+    const BASE_ACCOUNT_AND_TYPE_LENGTH: usize = 166;
+    const TLV_HEADER_LENGTH: usize = 4;
+    let account_length =
+        spl_token_2022_interface::extension::ExtensionType::try_calculate_account_len::<
+            Token2022Account,
+        >(&[extension_type])
+        .unwrap();
+    let extension_length = account_length - BASE_ACCOUNT_AND_TYPE_LENGTH - TLV_HEADER_LENGTH;
+    let token_account = SplTokenAccount {
+        mint,
+        owner,
+        amount,
+        delegate: solana_sdk::program_option::COption::None,
+        state: AccountState::Initialized,
+        is_native: solana_sdk::program_option::COption::None,
+        delegated_amount: 0,
+        close_authority: solana_sdk::program_option::COption::None,
+    };
+    let mut data = vec![0; account_length];
+    SplTokenAccount::pack(token_account, &mut data[..SplTokenAccount::LEN]).unwrap();
+    data[165] = 2;
+    data[166..168].copy_from_slice(&u16::from(extension_type).to_le_bytes());
+    data[168..170].copy_from_slice(&u16::try_from(extension_length).unwrap().to_le_bytes());
+    svm.set_account(
+        key,
+        Account {
+            lamports: 1_000_000,
+            data,
+            owner: spl_token_2022_interface::id(),
+            executable: false,
+            rent_epoch: 0,
+        },
+    )
+    .unwrap();
+}
+
+fn pause_token_2022_mint(svm: &mut LiteSVM, key: Pubkey, decimals: u8) {
+    const BASE_ACCOUNT_AND_TYPE_LENGTH: usize = 166;
+    const TLV_HEADER_LENGTH: usize = 4;
+    const PAUSABLE_CONFIG_LENGTH: usize = 33;
+    let mut data =
+        vec![0; BASE_ACCOUNT_AND_TYPE_LENGTH + TLV_HEADER_LENGTH + PAUSABLE_CONFIG_LENGTH];
+    Mint::pack(
+        Mint {
+            decimals,
+            is_initialized: true,
+            ..Mint::default()
+        },
+        &mut data[..Mint::LEN],
+    )
+    .unwrap();
+    data[165] = 1;
+    data[166..168].copy_from_slice(
+        &u16::from(spl_token_2022_interface::extension::ExtensionType::Pausable).to_le_bytes(),
+    );
+    data[168..170].copy_from_slice(&u16::try_from(PAUSABLE_CONFIG_LENGTH).unwrap().to_le_bytes());
+    data[202] = 1;
+    svm.set_account(
+        key,
+        Account {
+            lamports: 1_000_000,
+            data,
+            owner: spl_token_2022_interface::id(),
             executable: false,
             rent_epoch: 0,
         },
@@ -95,7 +210,14 @@ fn store_account<T: AccountSerialize>(svm: &mut LiteSVM, key: Pubkey, value: &T)
 
 fn token_amount(svm: &LiteSVM, key: Pubkey) -> u64 {
     let account = svm.get_account(&key).unwrap();
-    SplTokenAccount::unpack(&account.data).unwrap().amount
+    if account.owner == spl_token_2022_interface::id() {
+        StateWithExtensions::<Token2022Account>::unpack(&account.data)
+            .unwrap()
+            .base
+            .amount
+    } else {
+        SplTokenAccount::unpack(&account.data).unwrap().amount
+    }
 }
 
 fn series_address(market: Pubkey, option_type: OptionType) -> Pubkey {
@@ -141,6 +263,8 @@ struct SettlementFixture {
     seller_vault: Pubkey,
     seller_base_ata: Pubkey,
     seller_quote_ata: Pubkey,
+    base_token_program: Pubkey,
+    quote_token_program: Pubkey,
 }
 
 fn atm_call_fixture() -> SettlementFixture {
@@ -151,6 +275,22 @@ fn settlement_fixture(
     option_type: OptionType,
     seller_is_settler: bool,
     create_seller_payout_atas: bool,
+) -> SettlementFixture {
+    settlement_fixture_for_programs(
+        option_type,
+        seller_is_settler,
+        create_seller_payout_atas,
+        TOKEN_PROGRAM_ID,
+        TOKEN_PROGRAM_ID,
+    )
+}
+
+fn settlement_fixture_for_programs(
+    option_type: OptionType,
+    seller_is_settler: bool,
+    create_seller_payout_atas: bool,
+    base_token_program: Pubkey,
+    quote_token_program: Pubkey,
 ) -> SettlementFixture {
     let mut svm = LiteSVM::new();
     svm.add_program(
@@ -170,14 +310,18 @@ fn settlement_fixture(
     let market = Pubkey::new_unique();
     let series = series_address(market, option_type);
     let seller_vault = seller_vault_address(market, seller, option_type);
-    let base_vault = get_associated_token_address(&series, &base_mint);
-    let quote_vault = get_associated_token_address(&series, &quote_mint);
-    let seller_base_ata = get_associated_token_address(&seller, &base_mint);
-    let seller_quote_ata = get_associated_token_address(&seller, &quote_mint);
+    let base_vault =
+        get_associated_token_address_with_program_id(&series, &base_mint, &base_token_program);
+    let quote_vault =
+        get_associated_token_address_with_program_id(&series, &quote_mint, &quote_token_program);
+    let seller_base_ata =
+        get_associated_token_address_with_program_id(&seller, &base_mint, &base_token_program);
+    let seller_quote_ata =
+        get_associated_token_address_with_program_id(&seller, &quote_mint, &quote_token_program);
 
     svm.airdrop(&settler.pubkey(), 10_000_000_000).unwrap();
-    add_mint(&mut svm, base_mint, 0);
-    add_mint(&mut svm, quote_mint, 0);
+    add_mint_for_program(&mut svm, base_mint, 0, base_token_program);
+    add_mint_for_program(&mut svm, quote_mint, 0, quote_token_program);
     let (base_collateral, quote_collateral) = match option_type {
         OptionType::Call => (10, 0),
         OptionType::Put => (0, 10),
@@ -225,11 +369,39 @@ fn settlement_fixture(
             collateral_quantity: 10,
         },
     );
-    add_token_account(&mut svm, base_vault, base_mint, series, base_collateral);
-    add_token_account(&mut svm, quote_vault, quote_mint, series, quote_collateral);
+    add_token_account_for_program(
+        &mut svm,
+        base_vault,
+        base_mint,
+        series,
+        base_collateral,
+        base_token_program,
+    );
+    add_token_account_for_program(
+        &mut svm,
+        quote_vault,
+        quote_mint,
+        series,
+        quote_collateral,
+        quote_token_program,
+    );
     if create_seller_payout_atas {
-        add_token_account(&mut svm, seller_base_ata, base_mint, seller, 0);
-        add_token_account(&mut svm, seller_quote_ata, quote_mint, seller, 0);
+        add_token_account_for_program(
+            &mut svm,
+            seller_base_ata,
+            base_mint,
+            seller,
+            0,
+            base_token_program,
+        );
+        add_token_account_for_program(
+            &mut svm,
+            seller_quote_ata,
+            quote_mint,
+            seller,
+            0,
+            quote_token_program,
+        );
     } else {
         svm.airdrop(&seller, 1_000_000).unwrap();
     }
@@ -251,6 +423,8 @@ fn settlement_fixture(
         seller_vault,
         seller_base_ata,
         seller_quote_ata,
+        base_token_program,
+        quote_token_program,
     }
 }
 
@@ -288,18 +462,55 @@ fn settle_instruction(fixture: &SettlementFixture) -> Instruction {
     let accounts = accounts::SettleSellersBatch {
         settler: fixture.settler.pubkey(),
         market: fixture.market,
+        base_token_program: fixture.base_token_program,
+        quote_token_program: fixture.quote_token_program,
         series: fixture.series,
         base_mint: fixture.base_mint,
         quote_mint: fixture.quote_mint,
         base_collateral_vault: fixture.base_vault,
         quote_collateral_vault: fixture.quote_vault,
-        token_program: TOKEN_PROGRAM_ID,
         associated_token_program: ASSOCIATED_TOKEN_PROGRAM_ID,
         system_program: anchor_lang::system_program::ID,
     };
     let mut account_metas = accounts.to_account_metas(None);
     account_metas.push(AccountMeta::new(fixture.seller_vault, false));
-    account_metas.push(AccountMeta::new(fixture.seller_base_ata, false));
+    account_metas.push(AccountMeta::new(
+        match fixture.option_type {
+            OptionType::Call => fixture.seller_base_ata,
+            OptionType::Put => fixture.seller_quote_ata,
+        },
+        false,
+    ));
+    Instruction {
+        program_id: PROGRAM_ID,
+        accounts: account_metas,
+        data: instruction::SettleSellersBatch {}.data(),
+    }
+}
+
+fn settle_instruction_for_programs(fixture: &SettlementFixture) -> Instruction {
+    let accounts = accounts::SettleSellersBatch {
+        settler: fixture.settler.pubkey(),
+        market: fixture.market,
+        base_token_program: fixture.base_token_program,
+        quote_token_program: fixture.quote_token_program,
+        base_mint: fixture.base_mint,
+        quote_mint: fixture.quote_mint,
+        series: fixture.series,
+        base_collateral_vault: fixture.base_vault,
+        quote_collateral_vault: fixture.quote_vault,
+        associated_token_program: ASSOCIATED_TOKEN_PROGRAM_ID,
+        system_program: anchor_lang::system_program::ID,
+    };
+    let mut account_metas = accounts.to_account_metas(None);
+    account_metas.push(AccountMeta::new(fixture.seller_vault, false));
+    account_metas.push(AccountMeta::new(
+        match fixture.option_type {
+            OptionType::Call => fixture.seller_base_ata,
+            OptionType::Put => fixture.seller_quote_ata,
+        },
+        false,
+    ));
     Instruction {
         program_id: PROGRAM_ID,
         accounts: account_metas,
@@ -311,12 +522,13 @@ fn empty_settlement_instruction(fixture: &SettlementFixture) -> Instruction {
     let accounts = accounts::SettleSellersBatch {
         settler: fixture.settler.pubkey(),
         market: fixture.market,
+        base_token_program: fixture.base_token_program,
+        quote_token_program: fixture.quote_token_program,
         series: fixture.series,
         base_mint: fixture.base_mint,
         quote_mint: fixture.quote_mint,
         base_collateral_vault: fixture.base_vault,
         quote_collateral_vault: fixture.quote_vault,
-        token_program: TOKEN_PROGRAM_ID,
         associated_token_program: ASSOCIATED_TOKEN_PROGRAM_ID,
         system_program: anchor_lang::system_program::ID,
     };
@@ -337,12 +549,13 @@ fn settle_instruction_with_payouts(
     let accounts = accounts::SettleSellersBatch {
         settler: fixture.settler.pubkey(),
         market: fixture.market,
+        base_token_program: fixture.base_token_program,
+        quote_token_program: fixture.quote_token_program,
         series: fixture.series,
         base_mint: fixture.base_mint,
         quote_mint: fixture.quote_mint,
         base_collateral_vault: fixture.base_vault,
         quote_collateral_vault: fixture.quote_vault,
-        token_program: TOKEN_PROGRAM_ID,
         associated_token_program: ASSOCIATED_TOKEN_PROGRAM_ID,
         system_program: anchor_lang::system_program::ID,
     };
@@ -372,6 +585,27 @@ fn send_settlement(fixture: &mut SettlementFixture, instruction: Instruction) ->
         fixture.svm.latest_blockhash(),
     );
     fixture.svm.send_transaction(transaction).is_ok()
+}
+
+fn settlement_error_contains(
+    fixture: &mut SettlementFixture,
+    instruction: Instruction,
+    expected_error: &str,
+) -> bool {
+    let transaction = Transaction::new_signed_with_payer(
+        &[instruction],
+        Some(&fixture.settler.pubkey()),
+        &[&fixture.settler],
+        fixture.svm.latest_blockhash(),
+    );
+    fixture
+        .svm
+        .send_transaction(transaction)
+        .unwrap_err()
+        .meta
+        .logs
+        .iter()
+        .any(|log| log.contains(expected_error))
 }
 
 fn set_after_exercise_window(fixture: &mut SettlementFixture) {
@@ -422,6 +656,136 @@ fn permissionless_atm_call_settlement_returns_exact_collateral_and_closes_the_se
     assert_eq!(series.total_settled_quantity, 10);
     assert_eq!(series.state, SeriesState::Closed);
     assert_ne!(fixture.seller, fixture.settler.pubkey());
+}
+
+#[test]
+fn settlement_supports_every_base_and_quote_token_program_pair() {
+    let token_2022_program = spl_token_2022_interface::id();
+    for (base_token_program, quote_token_program) in [
+        (TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID),
+        (TOKEN_PROGRAM_ID, token_2022_program),
+        (token_2022_program, TOKEN_PROGRAM_ID),
+        (token_2022_program, token_2022_program),
+    ] {
+        for option_type in [OptionType::Call, OptionType::Put] {
+            let mut fixture = settlement_fixture_for_programs(
+                option_type,
+                false,
+                true,
+                base_token_program,
+                quote_token_program,
+            );
+            let result = fixture
+                .svm
+                .send_transaction(Transaction::new_signed_with_payer(
+                    &[settle_instruction_for_programs(&fixture)],
+                    Some(&fixture.settler.pubkey()),
+                    &[&fixture.settler],
+                    fixture.svm.latest_blockhash(),
+                ));
+            assert!(result.is_ok(), "{result:?}");
+            let payout_account = match option_type {
+                OptionType::Call => fixture.seller_base_ata,
+                OptionType::Put => fixture.seller_quote_ata,
+            };
+            assert_eq!(token_amount(&fixture.svm, payout_account), 10);
+        }
+    }
+}
+
+#[test]
+fn settlement_rejects_unsupported_token_2022_payout_accounts() {
+    let mut fixture = settlement_fixture_for_programs(
+        OptionType::Call,
+        false,
+        true,
+        spl_token_2022_interface::id(),
+        TOKEN_PROGRAM_ID,
+    );
+    add_token_2022_account_with_extension(
+        &mut fixture.svm,
+        fixture.seller_base_ata,
+        fixture.base_mint,
+        fixture.seller,
+        0,
+        spl_token_2022_interface::extension::ExtensionType::CpiGuard,
+    );
+
+    let instruction = settle_instruction_for_programs(&fixture);
+    assert!(settlement_error_contains(
+        &mut fixture,
+        instruction,
+        "UnsupportedTokenAccountExtension",
+    ));
+}
+
+#[test]
+fn settlement_creates_a_missing_token_2022_seller_payout_ata() {
+    let mut fixture = settlement_fixture_for_programs(
+        OptionType::Call,
+        false,
+        false,
+        spl_token_2022_interface::id(),
+        TOKEN_PROGRAM_ID,
+    );
+    let instruction = settle_instruction_with_payouts(
+        &fixture,
+        fixture.seller_vault,
+        Some(fixture.seller_base_ata),
+        None,
+        Some(fixture.seller),
+    );
+
+    assert!(send_settlement(&mut fixture, instruction));
+    let payout = fixture.svm.get_account(&fixture.seller_base_ata).unwrap();
+    assert_eq!(payout.owner, spl_token_2022_interface::id());
+    assert_eq!(token_amount(&fixture.svm, fixture.seller_base_ata), 10);
+}
+
+#[test]
+fn settlement_reports_an_issuer_paused_token_2022_mint() {
+    let mut fixture = settlement_fixture_for_programs(
+        OptionType::Call,
+        false,
+        true,
+        spl_token_2022_interface::id(),
+        TOKEN_PROGRAM_ID,
+    );
+    pause_token_2022_mint(&mut fixture.svm, fixture.base_mint, 0);
+
+    let instruction = settle_instruction_for_programs(&fixture);
+    assert!(settlement_error_contains(
+        &mut fixture,
+        instruction,
+        "OperationBlockedByMintIssuer",
+    ));
+}
+
+#[test]
+fn settlement_reports_an_issuer_frozen_token_2022_collateral_vault() {
+    let mut fixture = settlement_fixture_for_programs(
+        OptionType::Call,
+        false,
+        true,
+        spl_token_2022_interface::id(),
+        TOKEN_PROGRAM_ID,
+    );
+    add_token_account_for_program_with_state(
+        &mut fixture.svm,
+        fixture.base_vault,
+        fixture.base_mint,
+        fixture.series,
+        10,
+        fixture.base_token_program,
+        AccountState::Frozen,
+    );
+
+    let instruction = settle_instruction_for_programs(&fixture);
+    assert!(settlement_error_contains(
+        &mut fixture,
+        instruction,
+        "OperationBlockedByMintIssuer",
+    ));
 }
 
 #[test]

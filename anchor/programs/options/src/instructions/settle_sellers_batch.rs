@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{
-    associated_token::{self, get_associated_token_address, AssociatedToken},
-    token::{self, Mint, Token, TokenAccount, TransferChecked},
+    associated_token::{self, AssociatedToken},
+    token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked},
 };
 
 use crate::{
@@ -11,10 +11,27 @@ use crate::{
         current_time_ms, Market, OptionType, SellerVault, Series, SeriesState, SELLER_VAULT_SEED,
         SERIES_SEED,
     },
+    token_compat,
 };
 
 pub fn settle_sellers_batch<'info>(ctx: Context<'info, SettleSellersBatch<'info>>) -> Result<()> {
     require!(!ctx.accounts.market.paused, OptionsError::MarketPaused);
+    token_compat::validate_mint_transfer_allowed(
+        &ctx.accounts.base_mint,
+        &ctx.accounts.base_token_program,
+    )?;
+    token_compat::validate_mint_transfer_allowed(
+        &ctx.accounts.quote_mint,
+        &ctx.accounts.quote_token_program,
+    )?;
+    token_compat::validate_token_account(
+        &ctx.accounts.base_collateral_vault,
+        &ctx.accounts.base_token_program,
+    )?;
+    token_compat::validate_token_account(
+        &ctx.accounts.quote_collateral_vault,
+        &ctx.accounts.quote_token_program,
+    )?;
     require!(
         ctx.accounts.series.state == SeriesState::ExpirationPriceFinalized,
         OptionsError::InvalidSettlementPhase
@@ -157,17 +174,21 @@ pub fn settle_sellers_batch<'info>(ctx: Context<'info, SettleSellersBatch<'info>
                 seller,
                 seller_account,
                 ctx.accounts.base_mint.to_account_info(),
+                &ctx.accounts.base_token_program,
             )?;
             remaining_base = remaining_base
                 .checked_sub(base_paid)
                 .ok_or(error!(OptionsError::InsufficientSeriesCollateral))?;
             transfer_from_series(
                 &ctx,
-                ctx.accounts.base_collateral_vault.to_account_info(),
-                ctx.accounts.base_mint.to_account_info(),
-                base_ata.clone(),
+                SeriesTransfer {
+                    source: ctx.accounts.base_collateral_vault.to_account_info(),
+                    mint: ctx.accounts.base_mint.to_account_info(),
+                    destination: base_ata.clone(),
+                    decimals: ctx.accounts.base_mint.decimals,
+                    token_program: ctx.accounts.base_token_program.to_account_info(),
+                },
                 base_paid,
-                ctx.accounts.base_mint.decimals,
                 signer_seeds,
             )?;
         }
@@ -178,17 +199,21 @@ pub fn settle_sellers_batch<'info>(ctx: Context<'info, SettleSellersBatch<'info>
                 seller,
                 seller_account,
                 ctx.accounts.quote_mint.to_account_info(),
+                &ctx.accounts.quote_token_program,
             )?;
             remaining_quote = remaining_quote
                 .checked_sub(quote_paid)
                 .ok_or(error!(OptionsError::InsufficientSeriesCollateral))?;
             transfer_from_series(
                 &ctx,
-                ctx.accounts.quote_collateral_vault.to_account_info(),
-                ctx.accounts.quote_mint.to_account_info(),
-                quote_ata.clone(),
+                SeriesTransfer {
+                    source: ctx.accounts.quote_collateral_vault.to_account_info(),
+                    mint: ctx.accounts.quote_mint.to_account_info(),
+                    destination: quote_ata.clone(),
+                    decimals: ctx.accounts.quote_mint.decimals,
+                    token_program: ctx.accounts.quote_token_program.to_account_info(),
+                },
                 quote_paid,
-                ctx.accounts.quote_mint.decimals,
                 signer_seeds,
             )?;
         }
@@ -271,6 +296,7 @@ fn ensure_seller_ata<'info>(
     seller: Pubkey,
     seller_account: Option<&AccountInfo<'info>>,
     mint: AccountInfo<'info>,
+    token_program: &Interface<'info, TokenInterface>,
 ) -> Result<()> {
     if ata.data_is_empty() {
         let seller_account =
@@ -283,57 +309,62 @@ fn ensure_seller_ata<'info>(
                 authority: seller_account.clone(),
                 mint: mint.clone(),
                 system_program: ctx.accounts.system_program.to_account_info(),
-                token_program: ctx.accounts.token_program.to_account_info(),
+                token_program: token_program.to_account_info(),
             },
         ))?;
     }
-    validate_seller_ata(ata, seller, mint.key())
+    validate_seller_ata(ata, seller, mint.key(), token_program)
+}
+
+struct SeriesTransfer<'info> {
+    source: AccountInfo<'info>,
+    mint: AccountInfo<'info>,
+    destination: AccountInfo<'info>,
+    decimals: u8,
+    token_program: AccountInfo<'info>,
 }
 
 fn transfer_from_series<'info>(
     ctx: &Context<'info, SettleSellersBatch<'info>>,
-    source: AccountInfo<'info>,
-    mint: AccountInfo<'info>,
-    destination: AccountInfo<'info>,
+    transfer: SeriesTransfer<'info>,
     amount: u64,
-    decimals: u8,
     signer_seeds: &[&[u8]],
 ) -> Result<()> {
-    token::transfer_checked(
+    token_interface::transfer_checked(
         CpiContext::new_with_signer(
-            token::ID,
+            transfer.token_program.key(),
             TransferChecked {
-                from: source,
-                mint,
-                to: destination,
+                from: transfer.source,
+                mint: transfer.mint,
+                to: transfer.destination,
                 authority: ctx.accounts.series.to_account_info(),
             },
             &[signer_seeds],
         ),
         amount,
-        decimals,
+        transfer.decimals,
     )
 }
 
-fn validate_seller_ata(account_info: &AccountInfo, owner: Pubkey, mint: Pubkey) -> Result<()> {
-    require_keys_eq!(
-        account_info.key(),
-        get_associated_token_address(&owner, &mint),
-        OptionsError::InvalidSellerPayoutAccount
-    );
-    require_keys_eq!(
-        *account_info.owner,
-        token::ID,
-        OptionsError::InvalidSellerPayoutAccount
-    );
-    let data = account_info.try_borrow_data()?;
-    let mut data_slice: &[u8] = data.as_ref();
-    let account = TokenAccount::try_deserialize(&mut data_slice)?;
-    require!(
-        account.owner == owner && account.mint == mint,
-        OptionsError::InvalidSellerPayoutAccount
-    );
-    Ok(())
+fn validate_seller_ata(
+    account_info: &AccountInfo,
+    owner: Pubkey,
+    mint: Pubkey,
+    token_program: &Interface<TokenInterface>,
+) -> Result<()> {
+    token_compat::validate_associated_token_account_address(
+        &account_info.key(),
+        &owner,
+        &mint,
+        &token_program.key(),
+    )?;
+    token_compat::validate_token_account_with_owner_and_mint_for_error(
+        account_info,
+        owner,
+        mint,
+        token_program,
+        OptionsError::InvalidSellerPayoutAccount,
+    )
 }
 
 #[derive(Accounts)]
@@ -341,10 +372,20 @@ pub struct SettleSellersBatch<'info> {
     #[account(mut)]
     pub settler: Signer<'info>,
     pub market: Box<Account<'info, Market>>,
-    #[account(address = market.base_mint)]
-    pub base_mint: Box<Account<'info, Mint>>,
-    #[account(address = market.quote_mint)]
-    pub quote_mint: Box<Account<'info, Mint>>,
+    pub base_token_program: Interface<'info, TokenInterface>,
+    pub quote_token_program: Interface<'info, TokenInterface>,
+    #[account(
+        address = market.base_mint,
+        constraint = *base_mint.to_account_info().owner == base_token_program.key()
+            @ OptionsError::InvalidMintTokenProgram,
+    )]
+    pub base_mint: Box<InterfaceAccount<'info, Mint>>,
+    #[account(
+        address = market.quote_mint,
+        constraint = *quote_mint.to_account_info().owner == quote_token_program.key()
+            @ OptionsError::InvalidMintTokenProgram,
+    )]
+    pub quote_mint: Box<InterfaceAccount<'info, Mint>>,
     #[account(
         mut,
         has_one = market @ OptionsError::SeriesMarketMismatch,
@@ -362,15 +403,16 @@ pub struct SettleSellersBatch<'info> {
         mut,
         associated_token::mint = base_mint,
         associated_token::authority = series,
+        associated_token::token_program = base_token_program,
     )]
-    pub base_collateral_vault: Box<Account<'info, TokenAccount>>,
+    pub base_collateral_vault: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(
         mut,
         associated_token::mint = quote_mint,
         associated_token::authority = series,
+        associated_token::token_program = quote_token_program,
     )]
-    pub quote_collateral_vault: Box<Account<'info, TokenAccount>>,
-    pub token_program: Program<'info, Token>,
+    pub quote_collateral_vault: Box<InterfaceAccount<'info, TokenAccount>>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
 }

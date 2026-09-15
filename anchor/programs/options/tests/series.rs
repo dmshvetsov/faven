@@ -1358,12 +1358,13 @@ fn settle_instruction(
     let accounts = accounts::SettleSellersBatch {
         settler,
         market,
+        base_token_program: TOKEN_PROGRAM_ID,
+        quote_token_program: TOKEN_PROGRAM_ID,
         base_mint,
         quote_mint,
         series,
         base_collateral_vault: get_associated_token_address(&series, &base_mint),
         quote_collateral_vault: get_associated_token_address(&series, &quote_mint),
-        token_program: TOKEN_PROGRAM_ID,
         associated_token_program: ASSOCIATED_TOKEN_PROGRAM_ID,
         system_program: anchor_lang::system_program::ID,
     };
