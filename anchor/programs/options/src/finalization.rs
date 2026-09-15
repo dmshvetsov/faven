@@ -1,17 +1,18 @@
 use anchor_lang::prelude::*;
-use anchor_spl::{associated_token::get_associated_token_address, token::TokenAccount};
+use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
 use crate::{
     errors::OptionsError,
     events::ExpiryPriceFinalized,
     state::{current_time_ms, FinalizationMethod, Market, Series, SeriesState},
+    token_compat,
 };
 
 pub const MAX_FINALIZATION_SERIES: usize = 16;
 
 pub(crate) struct FinalizationSeries<'info> {
     pub series: Account<'info, Series>,
-    pub quote_collateral_vault: Account<'info, TokenAccount>,
+    pub quote_collateral_vault: InterfaceAccount<'info, TokenAccount>,
 }
 
 pub(crate) fn load_finalization_series<'info>(
@@ -52,7 +53,7 @@ pub(crate) fn load_finalization_series<'info>(
         .map(|pair| {
             Ok(FinalizationSeries {
                 series: Account::try_from(&pair[0])?,
-                quote_collateral_vault: Account::try_from(&pair[1])?,
+                quote_collateral_vault: InterfaceAccount::try_from(&pair[1])?,
             })
         })
         .collect()
@@ -68,6 +69,8 @@ pub(crate) fn persist_finalized_series(series_accounts: &[FinalizationSeries]) -
 pub(crate) fn finalize_series(
     market_key: Pubkey,
     market: &Market,
+    quote_mint: &InterfaceAccount<'_, Mint>,
+    quote_token_program: &Interface<'_, TokenInterface>,
     series_accounts: &mut [FinalizationSeries],
     normalized_price: u64,
     method: FinalizationMethod,
@@ -102,14 +105,16 @@ pub(crate) fn finalize_series(
     for finalization in series_accounts.iter_mut() {
         let series = &mut finalization.series;
         let quote_collateral_vault = &finalization.quote_collateral_vault;
-        require_keys_eq!(
-            quote_collateral_vault.key(),
-            get_associated_token_address(&series.key(), &market.quote_mint),
-            OptionsError::InvalidSettlementPhase
-        );
+        token_compat::validate_associated_token_account_address(
+            &quote_collateral_vault.key(),
+            &series.key(),
+            &quote_mint.key(),
+            &quote_token_program.key(),
+        )?;
+        token_compat::validate_token_account(quote_collateral_vault, quote_token_program)?;
         require!(
             quote_collateral_vault.owner == series.key()
-                && quote_collateral_vault.mint == market.quote_mint,
+                && quote_collateral_vault.mint == quote_mint.key(),
             OptionsError::InvalidSettlementPhase
         );
         series.total_quote_amount = quote_collateral_vault.amount;

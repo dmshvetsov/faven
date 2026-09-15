@@ -1272,11 +1272,20 @@ fn buyer_and_seller_can_create_a_put_series_while_underwriting() {
 fn finalize_unverified_instruction(
     operator: Pubkey,
     market: Pubkey,
+    base_mint: Pubkey,
+    quote_mint: Pubkey,
     series: Pubkey,
     quote_collateral_vault: Pubkey,
     price: u64,
 ) -> Instruction {
-    let accounts = accounts::FinalizePythUnverifiedSeries { operator, market };
+    let accounts = accounts::FinalizePythUnverifiedSeries {
+        operator,
+        market,
+        base_token_program: TOKEN_PROGRAM_ID,
+        quote_token_program: TOKEN_PROGRAM_ID,
+        base_mint,
+        quote_mint,
+    };
     let mut account_metas = accounts.to_account_metas(None);
     account_metas.push(AccountMeta::new(series, false));
     account_metas.push(AccountMeta::new_readonly(quote_collateral_vault, false));
@@ -1502,6 +1511,8 @@ fn assert_fresh_series_lifecycle(is_call: bool, exercise: bool) {
         &[finalize_unverified_instruction(
             operator.pubkey(),
             market,
+            base_mint,
+            quote_mint,
             series,
             get_associated_token_address(&series, &quote_mint),
             price,

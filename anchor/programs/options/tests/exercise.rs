@@ -424,6 +424,10 @@ fn finalize_unverified_instruction(fixture: &ExerciseFixture) -> Instruction {
     let accounts = accounts::FinalizePythUnverifiedSeries {
         operator: fixture.operator.pubkey(),
         market: fixture.market,
+        base_token_program: fixture.base_token_program,
+        quote_token_program: fixture.quote_token_program,
+        base_mint: fixture.base_mint,
+        quote_mint: fixture.quote_mint,
     };
     let mut account_metas = accounts.to_account_metas(None);
     account_metas.push(solana_sdk::instruction::AccountMeta::new(

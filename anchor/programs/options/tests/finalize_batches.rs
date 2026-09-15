@@ -93,6 +93,7 @@ struct BatchFixture {
     svm: LiteSVM,
     operator: Keypair,
     market: Pubkey,
+    base_mint: Pubkey,
     quote_mint: Pubkey,
     series: Vec<Pubkey>,
 }
@@ -109,8 +110,10 @@ fn batch_fixture(series_count: usize) -> BatchFixture {
     svm.set_sysvar(&clock);
     let operator = Keypair::new();
     let market = Pubkey::new_unique();
+    let base_mint = Pubkey::new_unique();
     let quote_mint = Pubkey::new_unique();
     svm.airdrop(&operator.pubkey(), 1_000_000_000).unwrap();
+    add_mint(&mut svm, base_mint);
     add_mint(&mut svm, quote_mint);
     store_account(
         &mut svm,
@@ -122,7 +125,7 @@ fn batch_fixture(series_count: usize) -> BatchFixture {
             operator: operator.pubkey(),
             paused: false,
             quote_mint: quote_mint,
-            base_mint: Pubkey::new_unique(),
+            base_mint,
             min_fee: 0,
             min_operational_fee_bps: 0,
             max_operational_fee_bps: 0,
@@ -161,6 +164,7 @@ fn batch_fixture(series_count: usize) -> BatchFixture {
         svm,
         operator,
         market,
+        base_mint,
         quote_mint,
         series,
     }
@@ -170,6 +174,10 @@ fn submit(fixture: &mut BatchFixture, series: &[Pubkey]) -> bool {
     let accounts = accounts::FinalizePythUnverifiedSeries {
         operator: fixture.operator.pubkey(),
         market: fixture.market,
+        base_token_program: TOKEN_PROGRAM_ID,
+        quote_token_program: TOKEN_PROGRAM_ID,
+        base_mint: fixture.base_mint,
+        quote_mint: fixture.quote_mint,
     };
     let mut account_metas = accounts.to_account_metas(None);
     for key in series {
