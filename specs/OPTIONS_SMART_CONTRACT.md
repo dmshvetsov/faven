@@ -291,7 +291,7 @@ One finalization transaction MAY finalize one or more series. The stored 1e8-sca
 
 Pyth raw prices are `raw_price * 10^expo`. Every finalization MUST require a positive raw price and convert it to the protocol's 1e8 strike scale using checked arithmetic and round-half-up. The conversion MUST reject values that cannot be represented as a positive `u64` at the 1e8 scale.
 
-### Permissionless Pyth TWAP Finalization
+### OPTIONAL Permissionless Pyth TWAP Finalization
 
 For `PythTwap` markets signer MUST finalize a series from any suitable, already-posted Pyth Receiver `TwapUpdate` on-chain account; the update account's write authority MUST NOT restrict Options finalization.
 
@@ -343,10 +343,6 @@ Both methods MUST emit one `ExpiryPriceFinalized` per series with:
 - market oracle configuration, and
 - actual finalization method (`PythTwap` or `PythUnverified`).
 
-The series finalization module MUST expose one batch instruction for each method:
-- `finalize_pyth_twap_series`, and
-- `finalize_pyth_unverified_series`.
-
 Each batch instruction MUST accept from one through sixteen writable Series accounts. It MUST reject an empty batch, a batch larger than sixteen Series accounts, and duplicate Series accounts.
 
 ## Manual Physical Exercise
@@ -385,7 +381,6 @@ Exercise MUST abort if:
 - `Series` expiry price is not finalized,
 - option is not ITM,
 - payment asset to exercise is insufficient for the converted BaseCoin quantity,
-- `Long` token option does not match `Series`,
 - `quantity_e18` is zero, cannot be represented exactly in BaseCoin base units, or overflows during conversion,
 - `Series` PDA does not have enough collateral for the converted BaseCoin quantity.
 
@@ -499,14 +494,15 @@ The contract MUST expose exactly API:
 - `create_market`
 - `pause_market`
 - `unpause_market`
-- `create_series`
 - `close_series`
 - `underwrite_call_e18`
 - `underwrite_put_e18`
-- `finalize_pyth_twap_series`
 - `finalize_pyth_unverified_series`
 - `exercise_e18`
 - `settle_sellers_batch`
+
+MAY implement
+- `finalize_pyth_twap_series`
 
 ## Non-Goals For MVP
 

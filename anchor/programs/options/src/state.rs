@@ -1,7 +1,5 @@
 use anchor_lang::prelude::*;
 
-pub const PYTH_RECEIVER_PROGRAM_ID: Pubkey = pubkey!("rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ");
-
 pub const PYTH_TWAP_SEED: &[u8] = b"PythTwap";
 pub const SERIES_SEED: &[u8] = b"option_series";
 pub const LONG_MINT_SEED: &[u8] = b"option_series_mint";

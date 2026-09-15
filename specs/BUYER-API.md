@@ -331,7 +331,7 @@ type SeriesExpiryPriceNotification = {
   params: {
     seriesAddress: string // finalized Series public key
     expiryPrice: string   // USD expiry price, 1e8 fixed-point
-    method: "pythTwap" | "pythUnverified"
+    method: "pyth1HourEma" | "pythUnverified"
     slot: number          // finalized Solana transaction slot
     signature: string     // finalized Solana transaction signature
   }

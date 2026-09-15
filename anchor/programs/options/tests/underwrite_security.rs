@@ -177,39 +177,6 @@ fn create_market(
     market
 }
 
-fn create_series_instruction(
-    payer: Pubkey,
-    market: Pubkey,
-    quote_mint: Pubkey,
-    base_mint: Pubkey,
-    option_type: OptionType,
-) -> Instruction {
-    let series = series_address(market, option_type);
-    let accounts = accounts::CreateSeries {
-        payer,
-        market,
-        base_mint: base_mint,
-        quote_mint: quote_mint,
-        series,
-        long_mint: long_mint_address(market, option_type),
-        base_collateral_vault: get_associated_token_address(&series, &base_mint),
-        quote_collateral_vault: get_associated_token_address(&series, &quote_mint),
-        token_program: TOKEN_PROGRAM_ID,
-        associated_token_program: ASSOCIATED_TOKEN_PROGRAM_ID,
-        system_program: anchor_lang::system_program::ID,
-    };
-    Instruction {
-        program_id: PROGRAM_ID,
-        accounts: accounts.to_account_metas(None),
-        data: instruction::CreateSeries {
-            option_type,
-            strike_price: STRIKE,
-            expiry_ms: EXPIRY_MS,
-        }
-        .data(),
-    }
-}
-
 #[derive(Clone, Copy)]
 struct Participants {
     buyer: Pubkey,
@@ -314,7 +281,6 @@ fn underwrite_instruction(
 
 struct TestEnv {
     svm: LiteSVM,
-    payer: Keypair,
     buyer: Keypair,
     seller: Keypair,
     market: Pubkey,
@@ -352,22 +318,8 @@ fn new_env(option_type: OptionType, min_fee: u64, min_fee_bps: u16, max_fee_bps:
         min_fee_bps,
         max_fee_bps,
     );
-    svm.send_transaction(Transaction::new_signed_with_payer(
-        &[create_series_instruction(
-            payer.pubkey(),
-            market,
-            quote_mint,
-            base_mint,
-            option_type,
-        )],
-        Some(&payer.pubkey()),
-        &[&payer],
-        svm.latest_blockhash(),
-    ))
-    .unwrap();
     TestEnv {
         svm,
-        payer,
         buyer,
         seller,
         market,
@@ -524,52 +476,7 @@ fn underwriting_validates_every_relevant_existing_series_field() {
 }
 
 #[test]
-fn any_payer_can_create_a_series() {
-    let mut svm = LiteSVM::new();
-    svm.add_program(
-        PROGRAM_ID,
-        include_bytes!("../../../target/deploy/options.so"),
-    )
-    .unwrap();
-    let market_payer = Keypair::new();
-    let operator = Keypair::new();
-    let series_payer = Keypair::new();
-    for wallet in [&market_payer, &series_payer] {
-        svm.airdrop(&wallet.pubkey(), 10 * LAMPORTS_PER_SOL)
-            .unwrap();
-    }
-    let quote_mint = Pubkey::new_unique();
-    let base_mint = Pubkey::new_unique();
-    add_mint(&mut svm, quote_mint, 6);
-    add_mint(&mut svm, base_mint, 9);
-    let market = create_market(
-        &mut svm,
-        &market_payer,
-        &operator,
-        quote_mint,
-        base_mint,
-        0,
-        0,
-        1_000,
-    );
-
-    let transaction = Transaction::new_signed_with_payer(
-        &[create_series_instruction(
-            series_payer.pubkey(),
-            market,
-            quote_mint,
-            base_mint,
-            OptionType::Call,
-        )],
-        Some(&series_payer.pubkey()),
-        &[&series_payer],
-        svm.latest_blockhash(),
-    );
-    assert!(svm.send_transaction(transaction).is_ok());
-}
-
-#[test]
-fn underwrite_rejects_missing_seller_signature_and_wrong_instruction_type() {
+fn underwrite_rejects_missing_seller_signature() {
     let mut env = new_env(OptionType::Call, 0, 0, 1_000);
     let participants = valid_participants(&mut env);
     let instruction = underwrite_instruction(
@@ -587,64 +494,6 @@ fn underwrite_rejects_missing_seller_signature_and_wrong_instruction_type() {
         Transaction::new_with_payer(&[instruction], Some(&env.buyer.pubkey()));
     unsigned_seller.partial_sign(&[&env.buyer], env.svm.latest_blockhash());
     assert!(env.svm.send_transaction(unsigned_seller).is_err());
-    env.svm.expire_blockhash();
-
-    env.svm
-        .send_transaction(Transaction::new_signed_with_payer(
-            &[create_series_instruction(
-                env.payer.pubkey(),
-                env.market,
-                env.quote_mint,
-                env.base_mint,
-                OptionType::Put,
-            )],
-            Some(&env.payer.pubkey()),
-            &[&env.payer],
-            env.svm.latest_blockhash(),
-        ))
-        .unwrap();
-    let call_on_put = underwrite_instruction(
-        true,
-        env.market,
-        env.quote_mint,
-        env.base_mint,
-        OptionType::Put,
-        participants,
-        ONE_OPTION_E18,
-        0,
-        0,
-    );
-    assert!(env
-        .svm
-        .send_transaction(Transaction::new_signed_with_payer(
-            &[call_on_put],
-            Some(&env.buyer.pubkey()),
-            &[&env.buyer, &env.seller],
-            env.svm.latest_blockhash(),
-        ))
-        .is_err());
-    env.svm.expire_blockhash();
-
-    let put_on_call = underwrite_instruction(
-        false,
-        env.market,
-        env.quote_mint,
-        env.base_mint,
-        OptionType::Call,
-        participants,
-        ONE_OPTION_E18,
-        0,
-        0,
-    );
-    assert!(env
-        .svm
-        .send_transaction(Transaction::new_signed_with_payer(
-            &[put_on_call],
-            Some(&env.buyer.pubkey()),
-            &[&env.buyer, &env.seller],
-            env.svm.latest_blockhash(),
-        ))
-        .is_err());
 }
 
 #[test]

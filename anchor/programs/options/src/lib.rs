@@ -10,16 +10,14 @@ pub mod state;
 
 pub(crate) use instructions::__client_accounts_close_series;
 pub(crate) use instructions::__client_accounts_create_market;
-pub(crate) use instructions::__client_accounts_create_series;
 pub(crate) use instructions::__client_accounts_exercise;
-pub(crate) use instructions::__client_accounts_finalize_pyth_twap_series;
 pub(crate) use instructions::__client_accounts_finalize_pyth_unverified_series;
 pub(crate) use instructions::__client_accounts_settle_sellers_batch;
 pub(crate) use instructions::__client_accounts_underwrite_call;
 pub(crate) use instructions::__client_accounts_underwrite_put;
 pub use instructions::{
-    CloseSeries, CreateMarket, CreateSeries, Exercise, FinalizePythTwapSeries,
-    FinalizePythUnverifiedSeries, SettleSellersBatch, UnderwriteCall, UnderwritePut,
+    CloseSeries, CreateMarket, Exercise, FinalizePythUnverifiedSeries, SettleSellersBatch,
+    UnderwriteCall, UnderwritePut,
 };
 pub use state::{OptionType, OracleConfig};
 
@@ -43,15 +41,6 @@ pub mod options {
             min_operational_fee_bps,
             max_operational_fee_bps,
         )
-    }
-
-    pub fn create_series(
-        ctx: Context<CreateSeries>,
-        option_type: OptionType,
-        strike_price: u64,
-        expiry_ms: u64,
-    ) -> Result<()> {
-        instructions::create_series(ctx, option_type, strike_price, expiry_ms)
     }
 
     pub fn underwrite_call_e18(
@@ -113,9 +102,5 @@ pub mod options {
         publish_time: i64,
     ) -> Result<()> {
         instructions::finalize_pyth_unverified_series(ctx, id, price, conf, expo, publish_time)
-    }
-
-    pub fn finalize_pyth_twap_series(ctx: Context<FinalizePythTwapSeries>) -> Result<()> {
-        instructions::finalize_pyth_twap_series(ctx)
     }
 }

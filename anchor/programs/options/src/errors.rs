@@ -54,12 +54,6 @@ pub enum OptionsError {
     FinalizationTooEarly,
     #[msg("All finalized series must have the same expiry")]
     PriceFinalizationSeriesExpiryMismatch,
-    #[msg("Pyth TWAP feed does not match the market")]
-    PythTwapFeedMismatch,
-    #[msg("Pyth TWAP window does not match the series expiry")]
-    PythTwapWindowMismatch,
-    #[msg("Pyth TWAP does not have sufficient coverage")]
-    InsufficientPythTwapCoverage,
     #[msg("Finalization requires at least one series")]
     EmptyFinalizationBatch,
     #[msg("Finalization supports at most sixteen series")]
