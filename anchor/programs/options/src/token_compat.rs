@@ -1,6 +1,8 @@
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::program_pack::Pack;
 use anchor_spl::{
     associated_token::get_associated_token_address_with_program_id,
+    token::spl_token,
     token_interface::{Mint, TokenAccount, TokenInterface},
 };
 use spl_token_2022_interface::{
@@ -44,7 +46,7 @@ pub(crate) fn validate_series_creation_mint(
     mint: &InterfaceAccount<'_, Mint>,
     token_program: &Interface<'_, TokenInterface>,
 ) -> Result<()> {
-    validate_mint_token_program(mint, token_program)?;
+    validate_mint_transfer_allowed(mint, token_program)?;
     if token_program.key() != spl_token_2022_interface::id() {
         return Ok(());
     }
@@ -58,6 +60,21 @@ pub(crate) fn validate_series_creation_mint(
             OptionsError::OperationBlockedByMintIssuer
         );
     }
+    Ok(())
+}
+
+pub(crate) fn validate_mint_transfer_allowed(
+    mint: &InterfaceAccount<'_, Mint>,
+    token_program: &Interface<'_, TokenInterface>,
+) -> Result<()> {
+    validate_mint_token_program(mint, token_program)?;
+    if token_program.key() != spl_token_2022_interface::id() {
+        return Ok(());
+    }
+    let mint_info = mint.to_account_info();
+    let data = mint_info.try_borrow_data()?;
+    let state = StateWithExtensions::<Token2022Mint>::unpack(&data)
+        .map_err(|_| error!(OptionsError::InvalidMintExtensions))?;
     if let Ok(pausable) = state.get_extension::<PausableConfig>() {
         require!(
             !bool::from(pausable.paused),
@@ -85,8 +102,39 @@ pub(crate) fn validate_token_account(
     account: &InterfaceAccount<'_, TokenAccount>,
     token_program: &Interface<'_, TokenInterface>,
 ) -> Result<()> {
+    validate_token_account_info(&account.to_account_info(), token_program)
+}
+
+pub(crate) fn validate_token_account_with_owner_and_mint(
+    account: &AccountInfo<'_>,
+    expected_owner: Pubkey,
+    expected_mint: Pubkey,
+    token_program: &Interface<'_, TokenInterface>,
+) -> Result<()> {
+    validate_token_account_info(account, token_program)?;
+    let data = account.try_borrow_data()?;
+    let (owner, mint) = if token_program.key() == spl_token_2022_interface::id() {
+        let state = StateWithExtensions::<Token2022Account>::unpack(&data)
+            .map_err(|_| error!(OptionsError::UnsupportedTokenAccountExtension))?;
+        (state.base.owner, state.base.mint)
+    } else {
+        let account = spl_token::state::Account::unpack(&data)
+            .map_err(|_| error!(OptionsError::InvalidTokenAccountProgram))?;
+        (account.owner, account.mint)
+    };
+    require!(
+        owner == expected_owner && mint == expected_mint,
+        OptionsError::InvalidExerciseTokenAccount
+    );
+    Ok(())
+}
+
+fn validate_token_account_info(
+    account: &AccountInfo<'_>,
+    token_program: &Interface<'_, TokenInterface>,
+) -> Result<()> {
     require_keys_eq!(
-        *account.to_account_info().owner,
+        *account.owner,
         token_program.key(),
         OptionsError::InvalidTokenAccountProgram
     );
@@ -94,8 +142,7 @@ pub(crate) fn validate_token_account(
         return Ok(());
     }
 
-    let account_info = account.to_account_info();
-    let data = account_info.try_borrow_data()?;
+    let data = account.try_borrow_data()?;
     let state = StateWithExtensions::<Token2022Account>::unpack(&data)
         .map_err(|_| error!(OptionsError::UnsupportedTokenAccountExtension))?;
     require!(

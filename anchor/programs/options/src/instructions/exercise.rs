@@ -1,7 +1,8 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{
-    associated_token::{self, get_associated_token_address, AssociatedToken},
-    token::{self, Burn, Mint, Token, TokenAccount, TransferChecked},
+    associated_token::{self, AssociatedToken},
+    token::{self, Burn, Mint as LongMint, Token, TokenAccount as LongTokenAccount},
+    token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked},
 };
 
 use crate::{
@@ -11,12 +12,29 @@ use crate::{
     state::{
         current_time_ms, Market, OptionType, Series, SeriesState, LONG_MINT_SEED, SERIES_SEED,
     },
+    token_compat,
 };
 
 pub fn exercise_e18(ctx: Context<Exercise>, quantity_e18: u128) -> Result<()> {
     let market = &ctx.accounts.market;
     let series = &ctx.accounts.series;
     require!(!market.paused, OptionsError::MarketPaused);
+    token_compat::validate_mint_transfer_allowed(
+        &ctx.accounts.base_mint,
+        &ctx.accounts.base_token_program,
+    )?;
+    token_compat::validate_mint_transfer_allowed(
+        &ctx.accounts.quote_mint,
+        &ctx.accounts.quote_token_program,
+    )?;
+    token_compat::validate_token_account(
+        &ctx.accounts.base_collateral_vault,
+        &ctx.accounts.base_token_program,
+    )?;
+    token_compat::validate_token_account(
+        &ctx.accounts.quote_collateral_vault,
+        &ctx.accounts.quote_token_program,
+    )?;
     require!(quantity_e18 > 0, OptionsError::ZeroQuantity);
     let base_mint_scale = crate::math::token_scale(market.base_mint_decimals)?;
     let quantity = crate::math::e18_to_token_decimals(quantity_e18, base_mint_scale)?;
@@ -85,6 +103,15 @@ pub fn exercise_e18(ctx: Context<Exercise>, quantity_e18: u128) -> Result<()> {
             && ctx.accounts.holder_payment_source.mint == payment_mint,
         OptionsError::InvalidExerciseTokenAccount
     );
+    let payment_token_program = if payment_mint == market.base_mint {
+        &ctx.accounts.base_token_program
+    } else {
+        &ctx.accounts.quote_token_program
+    };
+    token_compat::validate_token_account(
+        &ctx.accounts.holder_payment_source,
+        payment_token_program,
+    )?;
     require!(
         ctx.accounts.holder_payment_source.amount >= input_amount,
         OptionsError::InsufficientHolderPayment
@@ -94,12 +121,17 @@ pub fn exercise_e18(ctx: Context<Exercise>, quantity_e18: u128) -> Result<()> {
         OptionsError::InsufficientSeriesCollateral
     );
 
-    let expected_receipt = get_associated_token_address(&ctx.accounts.holder.key(), &receipt_mint);
-    require_keys_eq!(
-        ctx.accounts.holder_receipt_ata.key(),
-        expected_receipt,
-        OptionsError::InvalidExerciseTokenAccount
-    );
+    let receipt_token_program = if receipt_mint == market.base_mint {
+        &ctx.accounts.base_token_program
+    } else {
+        &ctx.accounts.quote_token_program
+    };
+    token_compat::validate_associated_token_account_address(
+        &ctx.accounts.holder_receipt_ata.key(),
+        &ctx.accounts.holder.key(),
+        &receipt_mint,
+        &receipt_token_program.key(),
+    )?;
     if ctx.accounts.holder_receipt_ata.data_is_empty() {
         associated_token::create(CpiContext::new(
             associated_token::ID,
@@ -113,19 +145,20 @@ pub fn exercise_e18(ctx: Context<Exercise>, quantity_e18: u128) -> Result<()> {
                     ctx.accounts.quote_mint.to_account_info()
                 },
                 system_program: ctx.accounts.system_program.to_account_info(),
-                token_program: ctx.accounts.token_program.to_account_info(),
+                token_program: receipt_token_program.to_account_info(),
             },
         ))?;
     }
-    validate_token_account(
+    token_compat::validate_token_account_with_owner_and_mint(
         &ctx.accounts.holder_receipt_ata.to_account_info(),
         ctx.accounts.holder.key(),
         receipt_mint,
+        receipt_token_program,
     )?;
 
     token::burn(
         CpiContext::new(
-            token::ID,
+            ctx.accounts.long_token_program.key(),
             Burn {
                 mint: ctx.accounts.long_mint.to_account_info(),
                 from: ctx.accounts.holder_long_source.to_account_info(),
@@ -139,7 +172,7 @@ pub fn exercise_e18(ctx: Context<Exercise>, quantity_e18: u128) -> Result<()> {
     } else {
         ctx.accounts.quote_mint.to_account_info()
     };
-    transfer_checked(
+    transfer_tokens(
         ctx.accounts.holder_payment_source.to_account_info(),
         payment_mint_account,
         payment_vault.to_account_info(),
@@ -150,6 +183,7 @@ pub fn exercise_e18(ctx: Context<Exercise>, quantity_e18: u128) -> Result<()> {
         } else {
             ctx.accounts.quote_mint.decimals
         },
+        payment_token_program,
     )?;
 
     let option_marker = [series.option_type.marker()];
@@ -170,9 +204,9 @@ pub fn exercise_e18(ctx: Context<Exercise>, quantity_e18: u128) -> Result<()> {
     } else {
         ctx.accounts.quote_mint.to_account_info()
     };
-    token::transfer_checked(
+    token_interface::transfer_checked(
         CpiContext::new_with_signer(
-            token::ID,
+            receipt_token_program.key(),
             TransferChecked {
                 from: output_vault.to_account_info(),
                 mint: receipt_mint_account,
@@ -212,37 +246,18 @@ pub fn exercise_e18(ctx: Context<Exercise>, quantity_e18: u128) -> Result<()> {
     Ok(())
 }
 
-fn validate_token_account(
-    account_info: &AccountInfo,
-    expected_owner: Pubkey,
-    expected_mint: Pubkey,
-) -> Result<()> {
-    require_keys_eq!(
-        *account_info.owner,
-        token::ID,
-        OptionsError::InvalidExerciseTokenAccount
-    );
-    let data = account_info.try_borrow_data()?;
-    let mut data_slice: &[u8] = data.as_ref();
-    let account = TokenAccount::try_deserialize(&mut data_slice)?;
-    require!(
-        account.owner == expected_owner && account.mint == expected_mint,
-        OptionsError::InvalidExerciseTokenAccount
-    );
-    Ok(())
-}
-
-fn transfer_checked<'info>(
+fn transfer_tokens<'info>(
     from: AccountInfo<'info>,
     mint: AccountInfo<'info>,
     to: AccountInfo<'info>,
     authority: AccountInfo<'info>,
     amount: u64,
     decimals: u8,
+    token_program: &Interface<'info, TokenInterface>,
 ) -> Result<()> {
-    token::transfer_checked(
+    token_interface::transfer_checked(
         CpiContext::new(
-            token::ID,
+            token_program.key(),
             TransferChecked {
                 from,
                 mint,
@@ -260,10 +275,21 @@ pub struct Exercise<'info> {
     #[account(mut)]
     pub holder: Signer<'info>,
     pub market: Box<Account<'info, Market>>,
-    #[account(address = market.base_mint)]
-    pub base_mint: Box<Account<'info, Mint>>,
-    #[account(address = market.quote_mint)]
-    pub quote_mint: Box<Account<'info, Mint>>,
+    pub long_token_program: Program<'info, Token>,
+    pub base_token_program: Interface<'info, TokenInterface>,
+    pub quote_token_program: Interface<'info, TokenInterface>,
+    #[account(
+        address = market.base_mint,
+        constraint = *base_mint.to_account_info().owner == base_token_program.key()
+            @ OptionsError::InvalidMintTokenProgram,
+    )]
+    pub base_mint: Box<InterfaceAccount<'info, Mint>>,
+    #[account(
+        address = market.quote_mint,
+        constraint = *quote_mint.to_account_info().owner == quote_token_program.key()
+            @ OptionsError::InvalidMintTokenProgram,
+    )]
+    pub quote_mint: Box<InterfaceAccount<'info, Mint>>,
     #[account(
         mut,
         has_one = market @ OptionsError::SeriesMarketMismatch,
@@ -288,15 +314,15 @@ pub struct Exercise<'info> {
         ],
         bump,
     )]
-    pub long_mint: Box<Account<'info, Mint>>,
+    pub long_mint: Box<Account<'info, LongMint>>,
     #[account(
         mut,
         constraint = holder_long_source.owner == holder.key() @ OptionsError::InvalidExerciseTokenAccount,
         constraint = holder_long_source.mint == long_mint.key() @ OptionsError::InvalidExerciseTokenAccount,
     )]
-    pub holder_long_source: Box<Account<'info, TokenAccount>>,
+    pub holder_long_source: Box<Account<'info, LongTokenAccount>>,
     #[account(mut)]
-    pub holder_payment_source: Box<Account<'info, TokenAccount>>,
+    pub holder_payment_source: Box<InterfaceAccount<'info, TokenAccount>>,
     /// CHECK: The handler derives, creates when needed, and validates the holder's ATA.
     #[account(mut)]
     pub holder_receipt_ata: UncheckedAccount<'info>,
@@ -304,15 +330,16 @@ pub struct Exercise<'info> {
         mut,
         associated_token::mint = base_mint,
         associated_token::authority = series,
+        associated_token::token_program = base_token_program,
     )]
-    pub base_collateral_vault: Box<Account<'info, TokenAccount>>,
+    pub base_collateral_vault: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(
         mut,
         associated_token::mint = quote_mint,
         associated_token::authority = series,
+        associated_token::token_program = quote_token_program,
     )]
-    pub quote_collateral_vault: Box<Account<'info, TokenAccount>>,
-    pub token_program: Program<'info, Token>,
+    pub quote_collateral_vault: Box<InterfaceAccount<'info, TokenAccount>>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
 }
