@@ -90,7 +90,7 @@ describe("price finalization backfill", () => {
         params: {
           seriesAddress: SERIES,
           expiryPrice: "6000000000",
-          method: "pythTwap",
+          method: "pythUnverified",
           slot: 123,
           signature: SIGNATURE,
         },
@@ -109,7 +109,7 @@ describe("price finalization backfill", () => {
       finalized_at_ms: 1_735_689_600_000,
       finalized_slot: 123,
       finalization_signature: SIGNATURE,
-      finalization_method: "pythTwap",
+      finalization_method: "pythUnverified",
     });
     maker.close();
   });
@@ -179,7 +179,7 @@ describe("price finalization backfill", () => {
         "6100000000",
         124,
         "6".repeat(88),
-        "pythTwap"
+        "pythUnverified"
       )
       .run();
     vi.stubGlobal("fetch", solanaRpcFetch());
@@ -212,7 +212,7 @@ describe("price finalization backfill", () => {
     ).resolves.toEqual({
       expiry_price: "6000000000",
       finalized_slot: 123,
-      finalization_method: "pythTwap",
+      finalization_method: "pythUnverified",
     });
   });
 
@@ -327,8 +327,8 @@ function solanaRpcFetch(): typeof fetch {
               instructions: [
                 {
                   programIdIndex: 5,
-                  accounts: [0, 1, 2, 3, 4],
-                  data: instructionData("finalize_pyth_twap_series"),
+                  accounts: [0, 1, 3, 4],
+                  data: unverifiedInstructionData(),
                 },
               ],
             },
@@ -416,10 +416,16 @@ function nextPersistedPriceFinalizationNotification(
   });
 }
 
-function instructionData(name: string): string {
-  return getBase58Decoder().decode(
-    createHash("sha256").update(`global:${name}`).digest().subarray(0, 8)
+function unverifiedInstructionData(): string {
+  const data = new Uint8Array(68);
+  data.set(
+    createHash("sha256")
+      .update("global:finalize_pyth_unverified_series")
+      .digest()
+      .subarray(0, 8)
   );
+  data.fill(1, 8);
+  return getBase58Decoder().decode(data);
 }
 
 function eventData(seriesAddress: string, price: bigint): string {
@@ -432,7 +438,7 @@ function eventData(seriesAddress: string, price: bigint): string {
   );
   data.set(getBase58Encoder().encode(seriesAddress), 8);
   new DataView(data.buffer).setBigUint64(40, price, true);
-  data[48] = 0;
+  data[81] = 1;
   return Buffer.from(data).toString("base64");
 }
 
