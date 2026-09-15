@@ -10,6 +10,8 @@ const OPTIONS_PROGRAM = "FAVENgBXzD9K9qYHKRF5RFRJeT4Qa2EV4EoTycki5gGT";
 const MARKET = "So11111111111111111111111111111111111111112";
 const SERIES = "Stake11111111111111111111111111111111111111";
 const QUOTE_MINT = "SysvarC1ock11111111111111111111111111111111";
+const BASE_MINT = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 const OPERATOR = "11111111111111111111111111111111";
 const FEED_ID =
   "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d";
@@ -21,7 +23,7 @@ describe("price finalization discovery", () => {
     const malformed = seriesAccount(1_735_689_600_000n);
     malformed[41] = 9;
     const debug = vi.spyOn(console, "debug").mockImplementation(() => {});
-    const call = vi.fn(async (method: string) => {
+    const call = vi.fn(async (method: string, params: unknown) => {
       if (method === "getProgramAccounts") {
         return [
           { pubkey: SERIES, account: account(malformed) },
@@ -32,7 +34,7 @@ describe("price finalization discovery", () => {
         ];
       }
       if (method === "getMultipleAccounts") {
-        return { value: [account(marketAccount())] };
+        return multipleAccounts(params);
       }
       throw new Error(`Unexpected RPC method: ${method}`);
     });
@@ -52,7 +54,7 @@ describe("price finalization discovery", () => {
     const malformed = marketAccount();
     malformed[8] = 1;
     const debug = vi.spyOn(console, "debug").mockImplementation(() => {});
-    const call = vi.fn(async (method: string) => {
+    const call = vi.fn(async (method: string, params: unknown) => {
       if (method === "getProgramAccounts") {
         return [
           {
@@ -62,7 +64,7 @@ describe("price finalization discovery", () => {
         ];
       }
       if (method === "getMultipleAccounts") {
-        return { value: [account(malformed)] };
+        return multipleAccounts(params, malformed);
       }
       throw new Error(`Unexpected RPC method: ${method}`);
     });
@@ -79,7 +81,7 @@ describe("price finalization discovery", () => {
   });
 
   it("groups open expired Series by Market and expiry with the market Pyth feed", async () => {
-    const call = vi.fn(async (method: string) => {
+    const call = vi.fn(async (method: string, params: unknown) => {
       if (method === "getProgramAccounts") {
         return [
           {
@@ -93,7 +95,7 @@ describe("price finalization discovery", () => {
         ];
       }
       if (method === "getMultipleAccounts") {
-        return { value: [account(marketAccount())] };
+        return multipleAccounts(params);
       }
       throw new Error(`Unexpected RPC method: ${method}`);
     });
@@ -109,6 +111,9 @@ describe("price finalization discovery", () => {
         marketOperator: OPERATOR,
         expiryMs: 1_735_689_600_000,
         pythFeedId: FEED_ID,
+        baseTokenProgram: TOKEN_PROGRAM,
+        quoteTokenProgram: TOKEN_PROGRAM,
+        baseMint: BASE_MINT,
         quoteMint: QUOTE_MINT,
         series: [{ seriesAddress: SERIES }],
       },
@@ -175,7 +180,23 @@ function marketAccount(): Uint8Array {
   data.set(addressBytes(OPERATOR), 43);
   data[75] = 0;
   data.set(addressBytes(QUOTE_MINT), 76);
+  data.set(addressBytes(BASE_MINT), 108);
   return data;
+}
+
+function multipleAccounts(params: unknown, malformedMarket?: Uint8Array) {
+  if (!Array.isArray(params) || !Array.isArray(params[0])) {
+    throw new Error("Unexpected getMultipleAccounts params");
+  }
+  const addresses = params[0];
+  if (addresses[0] === MARKET) {
+    return { value: [account(malformedMarket ?? marketAccount())] };
+  }
+  return { value: addresses.map(() => mintAccount()) };
+}
+
+function mintAccount() {
+  return { owner: TOKEN_PROGRAM, executable: false };
 }
 
 function addressBytes(value: string): Uint8Array {

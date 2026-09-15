@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   decodeFinalizedPriceFinalizations,
   createPythTwapPriceFinalizationTransaction,
+  createPythUnverifiedPriceFinalizationTransaction,
   fetchSeriesBackfill,
 } from "../src/index.js";
 
@@ -153,6 +154,38 @@ describe("price-finalization SDK", () => {
       new Uint8Array([43, 32, 59, 241, 94, 80, 21, 32])
     );
     expect(message.instructions[0]?.accountIndices).toHaveLength(5);
+  });
+
+  it("places mint and token-program accounts before unverified Series-vault pairs", () => {
+    const transaction = createPythUnverifiedPriceFinalizationTransaction({
+      feePayer: address("11111111111111111111111111111111"),
+      operator: address("11111111111111111111111111111111"),
+      market: address(MARKET),
+      baseTokenProgram: address(BASE_MINT),
+      quoteTokenProgram: address(QUOTE_MINT),
+      baseMint: address(SERIES),
+      quoteMint: address("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
+      series: [
+        {
+          seriesAddress: address(MARKET),
+          quoteCollateralVault: address(
+            "Stake11111111111111111111111111111111111111"
+          ),
+        },
+      ],
+      feedId: new Uint8Array(32),
+      price: 6_000_000_000n,
+      confidence: 1n,
+      exponent: -8,
+      publishTime: 1_735_689_600n,
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 100n,
+    });
+
+    const message = getCompiledTransactionMessageDecoder().decode(
+      new Uint8Array(transaction.messageBytes)
+    );
+    expect(message.instructions[0]?.accountIndices).toHaveLength(8);
   });
 
   it("rejects a transaction that is not finalized yet", async () => {

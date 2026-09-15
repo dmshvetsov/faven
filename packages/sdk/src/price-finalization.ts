@@ -400,7 +400,7 @@ async function finalizationSeries(
         ? { method: "pythTwap" as const, leadingAccounts: 3 }
         : equalBytes(data.slice(0, 8), unverifiedDiscriminator) &&
             data.length === 68
-          ? { method: "pythUnverified" as const, leadingAccounts: 2 }
+          ? { method: "pythUnverified" as const, leadingAccounts: 6 }
           : null;
     if (method === null) continue;
     const seriesIndexes = instruction.accounts.slice(method.leadingAccounts);

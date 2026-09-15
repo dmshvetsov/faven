@@ -267,6 +267,10 @@ async function simulateFinalizationChunks(
       feePayer: operator.address,
       operator: operator.address,
       market: plan.group.marketAddress,
+      baseTokenProgram: plan.group.baseTokenProgram,
+      quoteTokenProgram: plan.group.quoteTokenProgram,
+      baseMint: plan.group.baseMint,
+      quoteMint: plan.group.quoteMint,
       series,
       feedId: new Uint8Array(Buffer.from(plan.group.pythFeedId, "hex")),
       price: plan.price,
@@ -310,6 +314,10 @@ async function sendAndSyncFinalizations(input: {
           feePayer: input.operator.address,
           operator: input.operator.address,
           market: input.plan.group.marketAddress,
+          baseTokenProgram: input.plan.group.baseTokenProgram,
+          quoteTokenProgram: input.plan.group.quoteTokenProgram,
+          baseMint: input.plan.group.baseMint,
+          quoteMint: input.plan.group.quoteMint,
           series,
           feedId: new Uint8Array(
             Buffer.from(input.plan.group.pythFeedId, "hex")

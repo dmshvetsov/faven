@@ -27,6 +27,9 @@ export interface EligiblePriceFinalizationGroup {
   readonly expiryMs: number;
   /** Hexadecimal Pyth feed ID as stored in the on-chain Market. */
   readonly pythFeedId: string;
+  readonly baseTokenProgram: Address;
+  readonly quoteTokenProgram: Address;
+  readonly baseMint: Address;
   readonly quoteMint: Address;
   readonly series: readonly { readonly seriesAddress: Address }[];
 }
@@ -74,6 +77,7 @@ export async function discoverEligiblePriceFinalizationGroups(input: {
   const markets = await fetchMarkets(input.rpc, [
     ...new Set(eligibleSeries.map((series) => series.marketAddress)),
   ]);
+  const tokenPrograms = await fetchMintTokenPrograms(input.rpc, markets);
   const groups = new Map<
     string,
     {
@@ -99,16 +103,27 @@ export async function discoverEligiblePriceFinalizationGroups(input: {
     }
   }
   return [...groups.values()]
-    .map(({ market, expiryMs, series }) => ({
-      marketAddress: market.address,
-      marketOperator: market.operator,
-      expiryMs,
-      pythFeedId: Buffer.from(market.feedId).toString("hex"),
-      quoteMint: market.quoteMint,
-      series: series.sort((left, right) =>
-        left.seriesAddress.localeCompare(right.seriesAddress)
-      ),
-    }))
+    .flatMap(({ market, expiryMs, series }) => {
+      const baseTokenProgram = tokenPrograms.get(market.baseMint);
+      const quoteTokenProgram = tokenPrograms.get(market.quoteMint);
+      if (baseTokenProgram === undefined || quoteTokenProgram === undefined) {
+        logInvalidLayout("market", market.address);
+        return [];
+      }
+      return {
+        marketAddress: market.address,
+        marketOperator: market.operator,
+        expiryMs,
+        pythFeedId: Buffer.from(market.feedId).toString("hex"),
+        baseTokenProgram,
+        quoteTokenProgram,
+        baseMint: market.baseMint,
+        quoteMint: market.quoteMint,
+        series: series.sort((left, right) =>
+          left.seriesAddress.localeCompare(right.seriesAddress)
+        ),
+      };
+    })
     .sort(
       (left, right) =>
         left.expiryMs - right.expiryMs ||
@@ -129,6 +144,7 @@ interface DecodedMarket {
   readonly operator: Address;
   readonly feedId: Uint8Array;
   readonly paused: boolean;
+  readonly baseMint: Address;
   readonly quoteMint: Address;
 }
 
@@ -156,6 +172,45 @@ async function fetchMarkets(
     if (market !== null) markets.set(marketAddress, market);
   }
   return markets;
+}
+
+async function fetchMintTokenPrograms(
+  rpc: SolanaRpcTransport,
+  markets: ReadonlyMap<Address, DecodedMarket>
+): Promise<ReadonlyMap<Address, Address>> {
+  const mintAddresses = [
+    ...new Set(
+      [...markets.values()].flatMap(({ baseMint, quoteMint }) => [
+        baseMint,
+        quoteMint,
+      ])
+    ),
+  ];
+  const response = await rpc.call("getMultipleAccounts", [
+    mintAddresses,
+    { commitment: "confirmed", encoding: "base64" },
+  ]);
+  if (!isRecord(response) || !Array.isArray(response.value)) {
+    throw new Error("RPC returned an invalid mint account response.");
+  }
+  if (response.value.length !== mintAddresses.length) {
+    throw new Error("RPC returned an incomplete mint account response.");
+  }
+  const tokenPrograms = new Map<Address, Address>();
+  for (const [index, value] of response.value.entries()) {
+    const mintAddress = mintAddresses[index];
+    if (
+      mintAddress === undefined ||
+      !isRecord(value) ||
+      typeof value.owner !== "string" ||
+      value.executable !== false
+    ) {
+      continue;
+    }
+    const tokenProgram = parseAddress(value.owner);
+    if (tokenProgram !== null) tokenPrograms.set(mintAddress, tokenProgram);
+  }
+  return tokenPrograms;
 }
 
 function parseProgramAccounts(value: unknown): readonly {
@@ -249,6 +304,7 @@ function parseMarketAccount(
     operator: getAddressDecoder().decode(data.slice(43, 75)),
     paused: data[75] === 1,
     quoteMint: getAddressDecoder().decode(data.slice(76, 108)),
+    baseMint: getAddressDecoder().decode(data.slice(108, 140)),
   };
 }
 

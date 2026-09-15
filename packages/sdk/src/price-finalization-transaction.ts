@@ -39,6 +39,10 @@ export interface PythTwapFinalizationTransactionInput extends FinalizationTransa
 
 export interface PythUnverifiedFinalizationTransactionInput extends FinalizationTransactionInput {
   readonly operator: Address;
+  readonly baseTokenProgram: Address;
+  readonly quoteTokenProgram: Address;
+  readonly baseMint: Address;
+  readonly quoteMint: Address;
   readonly feedId: Uint8Array;
   readonly price: bigint;
   readonly confidence: bigint;
@@ -82,6 +86,10 @@ export function createPythUnverifiedPriceFinalizationTransaction(
           accounts: [
             readonlySigner(input.operator),
             readonly(input.market),
+            readonly(input.baseTokenProgram),
+            readonly(input.quoteTokenProgram),
+            readonly(input.baseMint),
+            readonly(input.quoteMint),
             ...series,
           ],
         },
