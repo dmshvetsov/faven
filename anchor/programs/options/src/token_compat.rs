@@ -46,7 +46,7 @@ pub(crate) fn validate_series_creation_mint(
     mint: &InterfaceAccount<'_, Mint>,
     token_program: &Interface<'_, TokenInterface>,
 ) -> Result<()> {
-    validate_mint_transfer_allowed(mint, token_program)?;
+    validate_mint_token_program(mint, token_program)?;
     if token_program.key() != spl_token_2022_interface::id() {
         return Ok(());
     }

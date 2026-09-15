@@ -278,6 +278,45 @@ fn interface_underwrite_call_instruction(
     }
 }
 
+fn interface_underwrite_put_instruction(
+    accounts: InterfaceUnderwriteCallAccounts,
+    strike: u64,
+) -> Instruction {
+    Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new_readonly(accounts.buyer, true),
+            AccountMeta::new(accounts.seller, true),
+            AccountMeta::new_readonly(accounts.market, false),
+            AccountMeta::new_readonly(TOKEN_PROGRAM_ID, false),
+            AccountMeta::new_readonly(accounts.base_token_program, false),
+            AccountMeta::new_readonly(accounts.quote_token_program, false),
+            AccountMeta::new_readonly(accounts.base_mint, false),
+            AccountMeta::new_readonly(accounts.quote_mint, false),
+            AccountMeta::new(accounts.series, false),
+            AccountMeta::new(accounts.long_mint, false),
+            AccountMeta::new(accounts.buyer_long_ata, false),
+            AccountMeta::new(accounts.buyer_quote_source, false),
+            AccountMeta::new(accounts.seller_base_source, false),
+            AccountMeta::new_readonly(accounts.fee_recipient, false),
+            AccountMeta::new(accounts.fee_recipient_quote_ata, false),
+            AccountMeta::new(accounts.seller_vault, false),
+            AccountMeta::new(accounts.quote_collateral_vault, false),
+            AccountMeta::new(accounts.base_collateral_vault, false),
+            AccountMeta::new_readonly(ASSOCIATED_TOKEN_PROGRAM_ID, false),
+            AccountMeta::new_readonly(anchor_lang::system_program::ID, false),
+        ],
+        data: instruction::UnderwritePutE18 {
+            expiry_ms: EXPIRY_MS,
+            strike_price_e8: strike,
+            quantity_e18: ONE_OPTION_E18,
+            premium_e18: 0,
+            operational_fee_bps: 0,
+        }
+        .data(),
+    }
+}
+
 fn assert_call_series_token_program_pair(base_token_program: Pubkey, quote_token_program: Pubkey) {
     assert_call_series_with_supplied_token_programs(
         base_token_program,
@@ -702,6 +741,135 @@ fn underwriting_reports_an_issuer_frozen_required_account() {
 #[test]
 fn underwriting_reports_an_issuer_paused_mint() {
     assert_token_2022_base_underwriting_failure(Token2022BaseFailure::PausedMint);
+}
+
+#[test]
+fn existing_put_underwriting_reports_a_paused_base_mint() {
+    let mut svm = new_svm();
+    let payer = Keypair::new();
+    let operator = Keypair::new();
+    let buyer = Keypair::new();
+    let seller = Keypair::new();
+    let fee_recipient = Pubkey::new_unique();
+    let quote_mint = Pubkey::new_unique();
+    let base_mint = Pubkey::new_unique();
+    let token_2022_program = spl_token_2022_interface::id();
+    for wallet in [&payer, &buyer, &seller] {
+        svm.airdrop(&wallet.pubkey(), 10 * LAMPORTS_PER_SOL)
+            .unwrap();
+    }
+    add_mint(&mut svm, quote_mint, 6);
+    add_token_2022_mint_with_extension(&mut svm, base_mint, 9, ExtensionType::Pausable, &[0; 33]);
+    let market = market_address(&operator.pubkey(), &quote_mint, &base_mint);
+    let create_market = accounts::CreateMarket {
+        payer: payer.pubkey(),
+        operator: operator.pubkey(),
+        quote_mint,
+        base_mint,
+        market,
+        quote_token_program: TOKEN_PROGRAM_ID,
+        base_token_program: token_2022_program,
+        system_program: anchor_lang::system_program::ID,
+    };
+    svm.send_transaction(Transaction::new_signed_with_payer(
+        &[Instruction {
+            program_id: PROGRAM_ID,
+            accounts: create_market.to_account_metas(None),
+            data: instruction::CreateMarket {
+                oracle_config: OracleConfig::PythTwap { feed_id: [1; 32] },
+                min_fee: 0,
+                min_operational_fee_bps: 0,
+                max_operational_fee_bps: 1_000,
+            }
+            .data(),
+        }],
+        Some(&payer.pubkey()),
+        &[&payer, &operator],
+        svm.latest_blockhash(),
+    ))
+    .unwrap();
+
+    let buyer_quote_source = Pubkey::new_unique();
+    let seller_quote_account = Pubkey::new_unique();
+    add_token_account(
+        &mut svm,
+        buyer_quote_source,
+        quote_mint,
+        buyer.pubkey(),
+        2_000_000,
+    );
+    add_token_account(
+        &mut svm,
+        seller_quote_account,
+        quote_mint,
+        seller.pubkey(),
+        10_000_000,
+    );
+    let strike = 350_000_000;
+    let series = series_address(&market, OptionType::Put.marker(), strike, EXPIRY_MS);
+    let underwrite = interface_underwrite_put_instruction(
+        InterfaceUnderwriteCallAccounts {
+            buyer: buyer.pubkey(),
+            seller: seller.pubkey(),
+            market,
+            base_mint,
+            quote_mint,
+            series,
+            long_mint: long_mint_address(&market, OptionType::Put.marker(), strike, EXPIRY_MS),
+            buyer_long_ata: get_associated_token_address(
+                &buyer.pubkey(),
+                &long_mint_address(&market, OptionType::Put.marker(), strike, EXPIRY_MS),
+            ),
+            buyer_quote_source,
+            seller_base_source: seller_quote_account,
+            seller_quote_destination: Pubkey::default(),
+            fee_recipient,
+            fee_recipient_quote_ata: get_associated_token_address(&fee_recipient, &quote_mint),
+            seller_vault: seller_vault_address(
+                &market,
+                OptionType::Put.marker(),
+                strike,
+                EXPIRY_MS,
+                &seller.pubkey(),
+            ),
+            base_collateral_vault: get_associated_token_address_with_program_id(
+                &series,
+                &base_mint,
+                &token_2022_program,
+            ),
+            quote_collateral_vault: get_associated_token_address(&series, &quote_mint),
+            base_token_program: token_2022_program,
+            quote_token_program: TOKEN_PROGRAM_ID,
+        },
+        strike,
+    );
+    svm.send_transaction(Transaction::new_signed_with_payer(
+        &[first_underwrite_compute_budget(), underwrite.clone()],
+        Some(&buyer.pubkey()),
+        &[&buyer, &seller],
+        svm.latest_blockhash(),
+    ))
+    .unwrap();
+
+    let mut mint = svm.get_account(&base_mint).unwrap();
+    mint.data[202] = 1;
+    svm.set_account(base_mint, mint).unwrap();
+    let error = svm
+        .send_transaction(Transaction::new_signed_with_payer(
+            &[underwrite],
+            Some(&buyer.pubkey()),
+            &[&buyer, &seller],
+            svm.latest_blockhash(),
+        ))
+        .unwrap_err();
+    assert!(
+        error
+            .meta
+            .logs
+            .iter()
+            .any(|log| log.contains("OperationBlockedByMintIssuer")),
+        "{error:?}"
+    );
 }
 
 #[test]

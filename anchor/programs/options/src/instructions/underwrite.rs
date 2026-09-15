@@ -166,8 +166,8 @@ fn validate_underwriting_mints(
     quote_mint: &InterfaceAccount<'_, Mint>,
     quote_token_program: &Interface<'_, TokenInterface>,
 ) -> Result<()> {
-    token_compat::validate_mint_token_program(base_mint, base_token_program)?;
-    token_compat::validate_mint_token_program(quote_mint, quote_token_program)?;
+    token_compat::validate_mint_transfer_allowed(base_mint, base_token_program)?;
+    token_compat::validate_mint_transfer_allowed(quote_mint, quote_token_program)?;
     if series_initialization == SeriesInitialization::Created {
         token_compat::validate_series_creation_mint(base_mint, base_token_program)?;
         token_compat::validate_series_creation_mint(quote_mint, quote_token_program)?;
