@@ -24,6 +24,9 @@ const LEGACY_MINT_SIZE = 82;
 export const LEGACY_TOKEN_PROGRAM = address(
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
 );
+export const TOKEN_2022_PROGRAM = address(
+  "TokenzQdYxWz8Yk7VxMtqV1s1BU1q55b1q2Yo1rrbE"
+);
 
 export interface SolanaCliConfig {
   readonly rpcEndpoint: string;
@@ -134,10 +137,15 @@ export async function fetchMint(
   const account = accountInfoValue(result);
   if (account === null)
     throw new Error("Mint account does not exist on this network.");
-  if (account.owner !== LEGACY_TOKEN_PROGRAM)
-    throw new Error("Mint must use the legacy SPL Token program.");
-  if (account.executable || account.data.length !== LEGACY_MINT_SIZE)
-    throw new Error("Account is not a legacy SPL Token mint.");
+  if (
+    account.owner !== LEGACY_TOKEN_PROGRAM &&
+    account.owner !== TOKEN_2022_PROGRAM
+  ) {
+    throw new Error("Mint must use the SPL Token or Token-2022 program.");
+  }
+  if (account.executable || account.data.length < LEGACY_MINT_SIZE) {
+    throw new Error("Account is not an SPL Token mint.");
+  }
 
   const isInitialized = account.data[45];
   if (isInitialized !== 0 && isInitialized !== 1)

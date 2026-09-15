@@ -26,7 +26,6 @@ import {
 import { PYTH_SOLANA_FEEDS } from "../pyth-feeds.js";
 import {
   fetchMint,
-  LEGACY_TOKEN_PROGRAM,
   loadSolanaCliConfig,
   loadSolanaKeypair,
   loadSolanaRpcClient,
@@ -50,7 +49,9 @@ interface PreparedMarket {
   readonly feedId: Uint8Array;
   readonly feedIdHex: string;
   readonly quoteMint: Address;
+  readonly quoteTokenProgram: Address;
   readonly baseMint: Address;
+  readonly baseTokenProgram: Address;
   readonly minFee: bigint;
   readonly minOperationalFeeBps: number;
   readonly maxOperationalFeeBps: number;
@@ -135,7 +136,9 @@ export const createMarketCommand: CliCommand = {
       feedId,
       feedIdHex: Buffer.from(feedId).toString("hex"),
       quoteMint,
+      quoteTokenProgram: quoteMintDetails.tokenProgram,
       baseMint,
+      baseTokenProgram: baseMintDetails.tokenProgram,
       minFee,
       minOperationalFeeBps,
       maxOperationalFeeBps,
@@ -317,8 +320,8 @@ function parseBps(value: string): number {
 }
 
 function validateMarketMint(mint: SolanaMint, name: string): void {
-  if (mint.tokenProgram !== LEGACY_TOKEN_PROGRAM || !mint.isInitialized) {
-    throw new Error(`${name} is not an initialized legacy SPL Token mint.`);
+  if (!mint.isInitialized) {
+    throw new Error(`${name} is not an initialized SPL Token mint.`);
   }
   if (mint.decimals > MAX_MINT_DECIMALS) {
     throw new Error(
@@ -450,7 +453,8 @@ function createMarketInstruction(market: PreparedMarket) {
       readonly(market.quoteMint),
       readonly(market.baseMint),
       writable(market.market),
-      readonly(LEGACY_TOKEN_PROGRAM),
+      readonly(market.quoteTokenProgram),
+      readonly(market.baseTokenProgram),
       readonly(SYSTEM_PROGRAM),
     ],
   };
