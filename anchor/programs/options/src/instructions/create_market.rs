@@ -1,10 +1,11 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{Mint, Token};
+use anchor_spl::token_interface::{Mint, TokenInterface};
 
 use crate::{
     errors::OptionsError,
     events::MarketCreated,
     state::{Market, OracleConfig},
+    token_compat::validate_market_mint,
 };
 
 pub fn create_market(
@@ -14,6 +15,8 @@ pub fn create_market(
     min_operational_fee_bps: u16,
     max_operational_fee_bps: u16,
 ) -> Result<()> {
+    validate_market_mint(&ctx.accounts.quote_mint, &ctx.accounts.quote_token_program)?;
+    validate_market_mint(&ctx.accounts.base_mint, &ctx.accounts.base_token_program)?;
     require!(
         ctx.accounts.quote_mint.key() != ctx.accounts.base_mint.key(),
         OptionsError::CoinMintsMustDiffer
@@ -64,8 +67,8 @@ pub struct CreateMarket<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
     pub operator: Signer<'info>,
-    pub quote_mint: Account<'info, Mint>,
-    pub base_mint: Account<'info, Mint>,
+    pub quote_mint: InterfaceAccount<'info, Mint>,
+    pub base_mint: InterfaceAccount<'info, Mint>,
     #[account(
         init,
         payer = payer,
@@ -74,6 +77,7 @@ pub struct CreateMarket<'info> {
         bump,
     )]
     pub market: Account<'info, Market>,
-    pub token_program: Program<'info, Token>,
+    pub quote_token_program: Interface<'info, TokenInterface>,
+    pub base_token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
 }

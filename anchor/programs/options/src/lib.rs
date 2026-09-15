@@ -7,6 +7,7 @@ pub mod instructions;
 pub mod math;
 pub mod options_rules;
 pub mod state;
+mod token_compat;
 
 pub(crate) use instructions::__client_accounts_close_series;
 pub(crate) use instructions::__client_accounts_create_market;

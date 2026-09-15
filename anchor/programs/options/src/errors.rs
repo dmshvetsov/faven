@@ -108,4 +108,12 @@ pub enum OptionsError {
     SeriesExerciseWindowMismatch,
     #[msg("Series open-state accounting is invalid")]
     InvalidOpenSeriesAccounting,
+    #[msg("The supplied token program does not own this mint")]
+    InvalidMintTokenProgram,
+    #[msg("Token-2022 mint data or extensions are invalid")]
+    InvalidMintExtensions,
+    #[msg("This Token-2022 mint extension is not supported")]
+    UnsupportedMintExtension,
+    #[msg("The token issuer currently blocks this operation")]
+    OperationBlockedByMintIssuer,
 }

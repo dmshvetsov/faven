@@ -8,6 +8,7 @@ use solana_sdk::{
     transaction::Transaction,
 };
 use spl_token::state::Mint;
+use spl_token_2022_interface::{extension::ExtensionType, state::Mint as Token2022Mint};
 
 const LAMPORTS_PER_SOL: u64 = 1_000_000_000;
 
@@ -27,6 +28,52 @@ fn add_mint(svm: &mut LiteSVM, mint_key: Pubkey, decimals: u8, owner: Pubkey) {
             lamports: 1_000_000,
             data,
             owner,
+            executable: false,
+            rent_epoch: 0,
+        },
+    )
+    .unwrap();
+}
+
+fn add_token_2022_mint_with_extension(
+    svm: &mut LiteSVM,
+    mint_key: Pubkey,
+    decimals: u8,
+    extension_type: ExtensionType,
+    extension_value: Option<&[u8]>,
+) {
+    const BASE_ACCOUNT_AND_TYPE_LENGTH: usize = 166;
+    const TLV_HEADER_LENGTH: usize = 4;
+    let extension_length = extension_value.map_or_else(
+        || {
+            ExtensionType::try_calculate_account_len::<Token2022Mint>(&[extension_type]).unwrap()
+                - BASE_ACCOUNT_AND_TYPE_LENGTH
+                - TLV_HEADER_LENGTH
+        },
+        <[u8]>::len,
+    );
+    let mut data = vec![0; BASE_ACCOUNT_AND_TYPE_LENGTH + TLV_HEADER_LENGTH + extension_length];
+    Token2022Mint::pack(
+        Token2022Mint {
+            decimals,
+            is_initialized: true,
+            ..Token2022Mint::default()
+        },
+        &mut data[..Token2022Mint::LEN],
+    )
+    .unwrap();
+    data[165] = 1;
+    data[166..168].copy_from_slice(&u16::from(extension_type).to_le_bytes());
+    data[168..170].copy_from_slice(&u16::try_from(extension_length).unwrap().to_le_bytes());
+    if let Some(value) = extension_value {
+        data[170..].copy_from_slice(value);
+    }
+    svm.set_account(
+        mint_key,
+        Account {
+            lamports: 1_000_000,
+            data,
+            owner: spl_token_2022_interface::id(),
             executable: false,
             rent_epoch: 0,
         },
@@ -54,22 +101,26 @@ fn market_address(
     .0
 }
 
+#[allow(clippy::too_many_arguments)]
 fn create_market_instruction(
     payer: Pubkey,
     operator: Pubkey,
     quote_mint: Pubkey,
     base_mint: Pubkey,
     oracle_config: OracleConfig,
+    quote_token_program: Pubkey,
+    base_token_program: Pubkey,
     min_operational_fee_bps: u16,
     max_operational_fee_bps: u16,
 ) -> Instruction {
     let accounts = accounts::CreateMarket {
         payer,
         operator,
-        quote_mint: quote_mint,
-        base_mint: base_mint,
+        quote_mint,
+        base_mint,
         market: market_address(&operator, &quote_mint, &base_mint, &oracle_config.feed_id()),
-        token_program: TOKEN_PROGRAM_ID,
+        quote_token_program,
+        base_token_program,
         system_program: anchor_lang::system_program::ID,
     };
     Instruction {
@@ -95,59 +146,88 @@ fn new_svm() -> LiteSVM {
     svm
 }
 
+#[allow(clippy::too_many_arguments)]
 fn fund_and_add_mints(
     svm: &mut LiteSVM,
     payer: &Keypair,
     quote_mint: Pubkey,
     quote_decimals: u8,
+    quote_token_program: Pubkey,
     base_mint: Pubkey,
     base_decimals: u8,
+    base_token_program: Pubkey,
 ) {
     svm.airdrop(&payer.pubkey(), 10 * LAMPORTS_PER_SOL).unwrap();
-    add_mint(svm, quote_mint, quote_decimals, TOKEN_PROGRAM_ID);
-    add_mint(svm, base_mint, base_decimals, TOKEN_PROGRAM_ID);
+    add_mint(svm, quote_mint, quote_decimals, quote_token_program);
+    add_mint(svm, base_mint, base_decimals, base_token_program);
 }
 
 #[test]
-fn user_can_create_a_market_with_spl_mints() {
-    let mut svm = new_svm();
-    let payer = Keypair::new();
-    let operator = Keypair::new();
-    let quote_mint = Pubkey::new_unique();
-    let base_mint = Pubkey::new_unique();
-    let oracle_config = OracleConfig::PythTwap { feed_id: [7; 32] };
-    let market = market_address(&operator.pubkey(), &quote_mint, &base_mint, &[7; 32]);
-    fund_and_add_mints(&mut svm, &payer, quote_mint, 6, base_mint, 9);
+fn user_can_create_a_market_for_every_supported_token_program_pair() {
+    let token_2022_program = spl_token_2022_interface::id();
+    for (case, quote_token_program, base_token_program) in [
+        (0, TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID),
+        (1, TOKEN_PROGRAM_ID, token_2022_program),
+        (2, token_2022_program, TOKEN_PROGRAM_ID),
+        (3, token_2022_program, token_2022_program),
+    ] {
+        let mut svm = new_svm();
+        let payer = Keypair::new();
+        let operator = Keypair::new();
+        let quote_mint = Pubkey::new_unique();
+        let base_mint = Pubkey::new_unique();
+        let oracle_config = OracleConfig::PythTwap {
+            feed_id: [case + 7; 32],
+        };
+        let market = market_address(
+            &operator.pubkey(),
+            &quote_mint,
+            &base_mint,
+            &oracle_config.feed_id(),
+        );
+        fund_and_add_mints(
+            &mut svm,
+            &payer,
+            quote_mint,
+            6,
+            quote_token_program,
+            base_mint,
+            9,
+            base_token_program,
+        );
 
-    let instruction = create_market_instruction(
-        payer.pubkey(),
-        operator.pubkey(),
-        quote_mint,
-        base_mint,
-        oracle_config,
-        10,
-        100,
-    );
-    let transaction = Transaction::new_signed_with_payer(
-        &[instruction],
-        Some(&payer.pubkey()),
-        &[&payer, &operator],
-        svm.latest_blockhash(),
-    );
-    assert!(svm.send_transaction(transaction).is_ok());
+        let instruction = create_market_instruction(
+            payer.pubkey(),
+            operator.pubkey(),
+            quote_mint,
+            base_mint,
+            oracle_config,
+            quote_token_program,
+            base_token_program,
+            10,
+            100,
+        );
+        let transaction = Transaction::new_signed_with_payer(
+            &[instruction],
+            Some(&payer.pubkey()),
+            &[&payer, &operator],
+            svm.latest_blockhash(),
+        );
+        assert!(svm.send_transaction(transaction).is_ok());
 
-    let account = svm.get_account(&market).unwrap();
-    let stored = Market::try_deserialize(&mut account.data.as_slice()).unwrap();
-    assert_eq!(stored.oracle_config, oracle_config);
-    assert_eq!(stored.operator, operator.pubkey());
-    assert_eq!(stored.quote_mint, quote_mint);
-    assert_eq!(stored.base_mint, base_mint);
-    assert_eq!(stored.quote_mint_decimals, 6);
-    assert_eq!(stored.base_mint_decimals, 9);
-    assert_eq!(stored.min_fee, 500);
-    assert_eq!(stored.min_operational_fee_bps, 10);
-    assert_eq!(stored.max_operational_fee_bps, 100);
-    assert!(!stored.paused);
+        let account = svm.get_account(&market).unwrap();
+        let stored = Market::try_deserialize(&mut account.data.as_slice()).unwrap();
+        assert_eq!(stored.oracle_config, oracle_config);
+        assert_eq!(stored.operator, operator.pubkey());
+        assert_eq!(stored.quote_mint, quote_mint);
+        assert_eq!(stored.base_mint, base_mint);
+        assert_eq!(stored.quote_mint_decimals, 6);
+        assert_eq!(stored.base_mint_decimals, 9);
+        assert_eq!(stored.min_fee, 500);
+        assert_eq!(stored.min_operational_fee_bps, 10);
+        assert_eq!(stored.max_operational_fee_bps, 100);
+        assert!(!stored.paused);
+    }
 }
 
 #[test]
@@ -158,7 +238,16 @@ fn user_cannot_create_a_market_with_invalid_fee_configuration() {
         let operator = Keypair::new();
         let quote_mint = Pubkey::new_unique();
         let base_mint = Pubkey::new_unique();
-        fund_and_add_mints(&mut svm, &payer, quote_mint, 6, base_mint, 9);
+        fund_and_add_mints(
+            &mut svm,
+            &payer,
+            quote_mint,
+            6,
+            TOKEN_PROGRAM_ID,
+            base_mint,
+            9,
+            TOKEN_PROGRAM_ID,
+        );
         let instruction = create_market_instruction(
             payer.pubkey(),
             operator.pubkey(),
@@ -167,6 +256,8 @@ fn user_cannot_create_a_market_with_invalid_fee_configuration() {
             OracleConfig::PythTwap {
                 feed_id: [feed_id; 32],
             },
+            TOKEN_PROGRAM_ID,
+            TOKEN_PROGRAM_ID,
             min_bps,
             max_bps,
         );
@@ -178,6 +269,208 @@ fn user_cannot_create_a_market_with_invalid_fee_configuration() {
         );
         assert!(svm.send_transaction(transaction).is_err());
     }
+}
+
+#[test]
+fn user_cannot_create_a_market_with_a_transfer_fee_mint() {
+    let mut svm = new_svm();
+    let payer = Keypair::new();
+    let operator = Keypair::new();
+    let quote_mint = Pubkey::new_unique();
+    let base_mint = Pubkey::new_unique();
+    svm.airdrop(&payer.pubkey(), 10 * LAMPORTS_PER_SOL).unwrap();
+    add_token_2022_mint_with_extension(
+        &mut svm,
+        quote_mint,
+        6,
+        ExtensionType::TransferFeeConfig,
+        None,
+    );
+    add_mint(&mut svm, base_mint, 9, TOKEN_PROGRAM_ID);
+
+    let instruction = create_market_instruction(
+        payer.pubkey(),
+        operator.pubkey(),
+        quote_mint,
+        base_mint,
+        OracleConfig::PythTwap { feed_id: [30; 32] },
+        spl_token_2022_interface::id(),
+        TOKEN_PROGRAM_ID,
+        0,
+        0,
+    );
+    let transaction = Transaction::new_signed_with_payer(
+        &[instruction],
+        Some(&payer.pubkey()),
+        &[&payer, &operator],
+        svm.latest_blockhash(),
+    );
+    assert!(svm.send_transaction(transaction).is_err());
+}
+
+#[test]
+fn user_can_create_a_market_with_reviewed_token_2022_mint_extensions() {
+    let initialized = [1_u8];
+    let token_metadata = [0_u8; 80];
+    for (case, extension_type, extension_value) in [
+        (40, ExtensionType::MetadataPointer, None),
+        (
+            41,
+            ExtensionType::TokenMetadata,
+            Some(token_metadata.as_slice()),
+        ),
+        (42, ExtensionType::PermanentDelegate, None),
+        (43, ExtensionType::ConfidentialTransferMint, None),
+        (44, ExtensionType::Pausable, None),
+        (45, ExtensionType::ScaledUiAmount, None),
+        (
+            46,
+            ExtensionType::DefaultAccountState,
+            Some(initialized.as_slice()),
+        ),
+    ] {
+        let mut svm = new_svm();
+        let payer = Keypair::new();
+        let operator = Keypair::new();
+        let quote_mint = Pubkey::new_unique();
+        let base_mint = Pubkey::new_unique();
+        svm.airdrop(&payer.pubkey(), 10 * LAMPORTS_PER_SOL).unwrap();
+        add_token_2022_mint_with_extension(
+            &mut svm,
+            quote_mint,
+            6,
+            extension_type,
+            extension_value,
+        );
+        add_mint(&mut svm, base_mint, 9, TOKEN_PROGRAM_ID);
+
+        let instruction = create_market_instruction(
+            payer.pubkey(),
+            operator.pubkey(),
+            quote_mint,
+            base_mint,
+            OracleConfig::PythTwap {
+                feed_id: [case; 32],
+            },
+            spl_token_2022_interface::id(),
+            TOKEN_PROGRAM_ID,
+            0,
+            0,
+        );
+        let transaction = Transaction::new_signed_with_payer(
+            &[instruction],
+            Some(&payer.pubkey()),
+            &[&payer, &operator],
+            svm.latest_blockhash(),
+        );
+        assert!(svm.send_transaction(transaction).is_ok());
+    }
+}
+
+#[test]
+fn user_cannot_create_a_market_with_frozen_default_accounts() {
+    let mut svm = new_svm();
+    let payer = Keypair::new();
+    let operator = Keypair::new();
+    let quote_mint = Pubkey::new_unique();
+    let base_mint = Pubkey::new_unique();
+    svm.airdrop(&payer.pubkey(), 10 * LAMPORTS_PER_SOL).unwrap();
+    add_token_2022_mint_with_extension(
+        &mut svm,
+        quote_mint,
+        6,
+        ExtensionType::DefaultAccountState,
+        Some(&[2]),
+    );
+    add_mint(&mut svm, base_mint, 9, TOKEN_PROGRAM_ID);
+
+    let instruction = create_market_instruction(
+        payer.pubkey(),
+        operator.pubkey(),
+        quote_mint,
+        base_mint,
+        OracleConfig::PythTwap { feed_id: [47; 32] },
+        spl_token_2022_interface::id(),
+        TOKEN_PROGRAM_ID,
+        0,
+        0,
+    );
+    let transaction = Transaction::new_signed_with_payer(
+        &[instruction],
+        Some(&payer.pubkey()),
+        &[&payer, &operator],
+        svm.latest_blockhash(),
+    );
+    assert!(svm.send_transaction(transaction).is_err());
+}
+
+#[test]
+fn user_cannot_create_a_market_with_unreviewed_mint_extensions() {
+    for (case, extension_type) in [
+        (48, ExtensionType::TransferHook),
+        (49, ExtensionType::MintCloseAuthority),
+    ] {
+        let mut svm = new_svm();
+        let payer = Keypair::new();
+        let operator = Keypair::new();
+        let quote_mint = Pubkey::new_unique();
+        let base_mint = Pubkey::new_unique();
+        svm.airdrop(&payer.pubkey(), 10 * LAMPORTS_PER_SOL).unwrap();
+        add_token_2022_mint_with_extension(&mut svm, quote_mint, 6, extension_type, None);
+        add_mint(&mut svm, base_mint, 9, TOKEN_PROGRAM_ID);
+
+        let instruction = create_market_instruction(
+            payer.pubkey(),
+            operator.pubkey(),
+            quote_mint,
+            base_mint,
+            OracleConfig::PythTwap {
+                feed_id: [case; 32],
+            },
+            spl_token_2022_interface::id(),
+            TOKEN_PROGRAM_ID,
+            0,
+            0,
+        );
+        let transaction = Transaction::new_signed_with_payer(
+            &[instruction],
+            Some(&payer.pubkey()),
+            &[&payer, &operator],
+            svm.latest_blockhash(),
+        );
+        assert!(svm.send_transaction(transaction).is_err());
+    }
+}
+
+#[test]
+fn user_cannot_pair_a_mint_with_the_wrong_token_program() {
+    let mut svm = new_svm();
+    let payer = Keypair::new();
+    let operator = Keypair::new();
+    let quote_mint = Pubkey::new_unique();
+    let base_mint = Pubkey::new_unique();
+    svm.airdrop(&payer.pubkey(), 10 * LAMPORTS_PER_SOL).unwrap();
+    add_mint(&mut svm, quote_mint, 6, spl_token_2022_interface::id());
+    add_mint(&mut svm, base_mint, 9, TOKEN_PROGRAM_ID);
+
+    let instruction = create_market_instruction(
+        payer.pubkey(),
+        operator.pubkey(),
+        quote_mint,
+        base_mint,
+        OracleConfig::PythTwap { feed_id: [50; 32] },
+        TOKEN_PROGRAM_ID,
+        TOKEN_PROGRAM_ID,
+        0,
+        0,
+    );
+    let transaction = Transaction::new_signed_with_payer(
+        &[instruction],
+        Some(&payer.pubkey()),
+        &[&payer, &operator],
+        svm.latest_blockhash(),
+    );
+    assert!(svm.send_transaction(transaction).is_err());
 }
 
 #[test]
@@ -204,6 +497,8 @@ fn user_cannot_create_a_market_with_invalid_mints() {
             quote_mint,
             base_mint,
             OracleConfig::PythTwap { feed_id: [10; 32] },
+            TOKEN_PROGRAM_ID,
+            TOKEN_PROGRAM_ID,
             0,
             0,
         );
@@ -233,6 +528,8 @@ fn user_cannot_create_a_market_with_a_non_spl_token_mint() {
         quote_mint,
         base_mint,
         OracleConfig::PythTwap { feed_id: [11; 32] },
+        TOKEN_PROGRAM_ID,
+        TOKEN_PROGRAM_ID,
         0,
         0,
     );
@@ -253,7 +550,16 @@ fn user_cannot_create_the_same_market_twice() {
     let quote_mint = Pubkey::new_unique();
     let base_mint = Pubkey::new_unique();
     let oracle_config = OracleConfig::PythTwap { feed_id: [12; 32] };
-    fund_and_add_mints(&mut svm, &payer, quote_mint, 6, base_mint, 9);
+    fund_and_add_mints(
+        &mut svm,
+        &payer,
+        quote_mint,
+        6,
+        TOKEN_PROGRAM_ID,
+        base_mint,
+        9,
+        TOKEN_PROGRAM_ID,
+    );
     for expected_success in [true, false] {
         let instruction = create_market_instruction(
             payer.pubkey(),
@@ -261,6 +567,8 @@ fn user_cannot_create_the_same_market_twice() {
             quote_mint,
             base_mint,
             oracle_config,
+            TOKEN_PROGRAM_ID,
+            TOKEN_PROGRAM_ID,
             0,
             0,
         );
@@ -281,13 +589,24 @@ fn user_cannot_create_a_market_without_required_signatures() {
     let operator = Keypair::new();
     let quote_mint = Pubkey::new_unique();
     let base_mint = Pubkey::new_unique();
-    fund_and_add_mints(&mut svm, &payer, quote_mint, 6, base_mint, 9);
+    fund_and_add_mints(
+        &mut svm,
+        &payer,
+        quote_mint,
+        6,
+        TOKEN_PROGRAM_ID,
+        base_mint,
+        9,
+        TOKEN_PROGRAM_ID,
+    );
     let instruction = create_market_instruction(
         payer.pubkey(),
         operator.pubkey(),
         quote_mint,
         base_mint,
         OracleConfig::PythTwap { feed_id: [13; 32] },
+        TOKEN_PROGRAM_ID,
+        TOKEN_PROGRAM_ID,
         0,
         0,
     );
@@ -304,7 +623,16 @@ fn user_cannot_create_a_market_without_the_payer_signature() {
     let operator = Keypair::new();
     let quote_mint = Pubkey::new_unique();
     let base_mint = Pubkey::new_unique();
-    fund_and_add_mints(&mut svm, &payer, quote_mint, 6, base_mint, 9);
+    fund_and_add_mints(
+        &mut svm,
+        &payer,
+        quote_mint,
+        6,
+        TOKEN_PROGRAM_ID,
+        base_mint,
+        9,
+        TOKEN_PROGRAM_ID,
+    );
     svm.airdrop(&transaction_payer.pubkey(), 10 * LAMPORTS_PER_SOL)
         .unwrap();
     let instruction = create_market_instruction(
@@ -313,6 +641,8 @@ fn user_cannot_create_a_market_without_the_payer_signature() {
         quote_mint,
         base_mint,
         OracleConfig::PythTwap { feed_id: [14; 32] },
+        TOKEN_PROGRAM_ID,
+        TOKEN_PROGRAM_ID,
         0,
         0,
     );

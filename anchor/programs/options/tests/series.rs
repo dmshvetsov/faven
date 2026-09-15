@@ -188,7 +188,8 @@ fn create_market(
         quote_mint: quote_mint,
         base_mint: base_mint,
         market,
-        token_program: TOKEN_PROGRAM_ID,
+        quote_token_program: TOKEN_PROGRAM_ID,
+        base_token_program: TOKEN_PROGRAM_ID,
         system_program: anchor_lang::system_program::ID,
     };
     let instruction = Instruction {
