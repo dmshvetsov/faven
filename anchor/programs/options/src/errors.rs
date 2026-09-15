@@ -116,4 +116,10 @@ pub enum OptionsError {
     UnsupportedMintExtension,
     #[msg("The token issuer currently blocks this operation")]
     OperationBlockedByMintIssuer,
+    #[msg("The supplied token program does not own this token account")]
+    InvalidTokenAccountProgram,
+    #[msg("This Token-2022 token-account extension is not supported")]
+    UnsupportedTokenAccountExtension,
+    #[msg("The supplied associated token account address is invalid")]
+    InvalidAssociatedTokenAccount,
 }

@@ -1,6 +1,9 @@
 use anchor_lang::{AccountDeserialize, AccountSerialize, Event, InstructionData, ToAccountMetas};
 use anchor_spl::{
-    associated_token::{get_associated_token_address, ID as ASSOCIATED_TOKEN_PROGRAM_ID},
+    associated_token::{
+        get_associated_token_address, get_associated_token_address_with_program_id,
+        ID as ASSOCIATED_TOKEN_PROGRAM_ID,
+    },
     token::{spl_token, ID as TOKEN_PROGRAM_ID},
 };
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -23,6 +26,10 @@ use solana_sdk::{
     transaction::Transaction,
 };
 use spl_token::state::{Account as SplTokenAccount, AccountState, Mint};
+use spl_token_2022_interface::{
+    extension::{ExtensionType, StateWithExtensions},
+    state::{Account as Token2022Account, Mint as Token2022Mint},
+};
 
 const LAMPORTS_PER_SOL: u64 = 1_000_000_000;
 const EXPIRY_MS: u64 = 2_000_000_000_000;
@@ -47,6 +54,10 @@ fn deterministic_bytes(value: u32) -> [u8; 32] {
 }
 
 fn add_mint(svm: &mut LiteSVM, mint_key: Pubkey, decimals: u8) {
+    add_mint_for_program(svm, mint_key, decimals, TOKEN_PROGRAM_ID);
+}
+
+fn add_mint_for_program(svm: &mut LiteSVM, mint_key: Pubkey, decimals: u8, program_id: Pubkey) {
     let mint = Mint {
         mint_authority: solana_sdk::program_option::COption::None,
         supply: 0,
@@ -61,7 +72,44 @@ fn add_mint(svm: &mut LiteSVM, mint_key: Pubkey, decimals: u8) {
         Account {
             lamports: 1_000_000,
             data,
-            owner: TOKEN_PROGRAM_ID,
+            owner: program_id,
+            executable: false,
+            rent_epoch: 0,
+        },
+    )
+    .unwrap();
+}
+
+fn add_token_2022_mint_with_extension(
+    svm: &mut LiteSVM,
+    mint_key: Pubkey,
+    decimals: u8,
+    extension_type: ExtensionType,
+    extension_value: &[u8],
+) {
+    const BASE_ACCOUNT_AND_TYPE_LENGTH: usize = 166;
+    const TLV_HEADER_LENGTH: usize = 4;
+    let mut data =
+        vec![0; BASE_ACCOUNT_AND_TYPE_LENGTH + TLV_HEADER_LENGTH + extension_value.len()];
+    Token2022Mint::pack(
+        Token2022Mint {
+            decimals,
+            is_initialized: true,
+            ..Token2022Mint::default()
+        },
+        &mut data[..Token2022Mint::LEN],
+    )
+    .unwrap();
+    data[165] = 1;
+    data[166..168].copy_from_slice(&u16::from(extension_type).to_le_bytes());
+    data[168..170].copy_from_slice(&u16::try_from(extension_value.len()).unwrap().to_le_bytes());
+    data[170..].copy_from_slice(extension_value);
+    svm.set_account(
+        mint_key,
+        Account {
+            lamports: 1_000_000,
+            data,
+            owner: spl_token_2022_interface::id(),
             executable: false,
             rent_epoch: 0,
         },
@@ -70,12 +118,44 @@ fn add_mint(svm: &mut LiteSVM, mint_key: Pubkey, decimals: u8) {
 }
 
 fn add_token_account(svm: &mut LiteSVM, key: Pubkey, mint: Pubkey, owner: Pubkey, amount: u64) {
+    add_token_account_for_program(svm, key, mint, owner, amount, TOKEN_PROGRAM_ID);
+}
+
+fn add_token_account_for_program(
+    svm: &mut LiteSVM,
+    key: Pubkey,
+    mint: Pubkey,
+    owner: Pubkey,
+    amount: u64,
+    program_id: Pubkey,
+) {
+    add_token_account_for_program_with_state(
+        svm,
+        key,
+        mint,
+        owner,
+        amount,
+        program_id,
+        AccountState::Initialized,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn add_token_account_for_program_with_state(
+    svm: &mut LiteSVM,
+    key: Pubkey,
+    mint: Pubkey,
+    owner: Pubkey,
+    amount: u64,
+    program_id: Pubkey,
+    state: AccountState,
+) {
     let token_account = SplTokenAccount {
         mint,
         owner,
         amount,
         delegate: solana_sdk::program_option::COption::None,
-        state: AccountState::Initialized,
+        state,
         is_native: solana_sdk::program_option::COption::None,
         delegated_amount: 0,
         close_authority: solana_sdk::program_option::COption::None,
@@ -87,12 +167,555 @@ fn add_token_account(svm: &mut LiteSVM, key: Pubkey, mint: Pubkey, owner: Pubkey
         Account {
             lamports: 1_000_000,
             data,
-            owner: TOKEN_PROGRAM_ID,
+            owner: program_id,
             executable: false,
             rent_epoch: 0,
         },
     )
     .unwrap();
+}
+
+fn add_token_2022_account_with_extension(
+    svm: &mut LiteSVM,
+    key: Pubkey,
+    mint: Pubkey,
+    owner: Pubkey,
+    amount: u64,
+    extension_type: ExtensionType,
+) {
+    const BASE_ACCOUNT_AND_TYPE_LENGTH: usize = 166;
+    const TLV_HEADER_LENGTH: usize = 4;
+    let account_length =
+        ExtensionType::try_calculate_account_len::<Token2022Account>(&[extension_type]).unwrap();
+    let extension_length = account_length - BASE_ACCOUNT_AND_TYPE_LENGTH - TLV_HEADER_LENGTH;
+    let token_account = SplTokenAccount {
+        mint,
+        owner,
+        amount,
+        delegate: solana_sdk::program_option::COption::None,
+        state: AccountState::Initialized,
+        is_native: solana_sdk::program_option::COption::None,
+        delegated_amount: 0,
+        close_authority: solana_sdk::program_option::COption::None,
+    };
+    let mut data = vec![0; account_length];
+    SplTokenAccount::pack(token_account, &mut data[..SplTokenAccount::LEN]).unwrap();
+    data[165] = 2;
+    data[166..168].copy_from_slice(&u16::from(extension_type).to_le_bytes());
+    data[168..170].copy_from_slice(&u16::try_from(extension_length).unwrap().to_le_bytes());
+    svm.set_account(
+        key,
+        Account {
+            lamports: 1_000_000,
+            data,
+            owner: spl_token_2022_interface::id(),
+            executable: false,
+            rent_epoch: 0,
+        },
+    )
+    .unwrap();
+}
+
+#[derive(Clone, Copy)]
+struct InterfaceUnderwriteCallAccounts {
+    buyer: Pubkey,
+    seller: Pubkey,
+    market: Pubkey,
+    base_mint: Pubkey,
+    quote_mint: Pubkey,
+    series: Pubkey,
+    long_mint: Pubkey,
+    buyer_long_ata: Pubkey,
+    buyer_quote_source: Pubkey,
+    seller_base_source: Pubkey,
+    seller_quote_destination: Pubkey,
+    fee_recipient: Pubkey,
+    fee_recipient_quote_ata: Pubkey,
+    seller_vault: Pubkey,
+    base_collateral_vault: Pubkey,
+    quote_collateral_vault: Pubkey,
+    base_token_program: Pubkey,
+    quote_token_program: Pubkey,
+}
+
+fn interface_underwrite_call_instruction(
+    accounts: InterfaceUnderwriteCallAccounts,
+    strike: u64,
+) -> Instruction {
+    Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new_readonly(accounts.buyer, true),
+            AccountMeta::new(accounts.seller, true),
+            AccountMeta::new_readonly(accounts.market, false),
+            AccountMeta::new_readonly(TOKEN_PROGRAM_ID, false),
+            AccountMeta::new_readonly(accounts.base_token_program, false),
+            AccountMeta::new_readonly(accounts.quote_token_program, false),
+            AccountMeta::new_readonly(accounts.base_mint, false),
+            AccountMeta::new_readonly(accounts.quote_mint, false),
+            AccountMeta::new(accounts.series, false),
+            AccountMeta::new(accounts.long_mint, false),
+            AccountMeta::new(accounts.buyer_long_ata, false),
+            AccountMeta::new(accounts.buyer_quote_source, false),
+            AccountMeta::new(accounts.seller_base_source, false),
+            AccountMeta::new(accounts.seller_quote_destination, false),
+            AccountMeta::new_readonly(accounts.fee_recipient, false),
+            AccountMeta::new(accounts.fee_recipient_quote_ata, false),
+            AccountMeta::new(accounts.seller_vault, false),
+            AccountMeta::new(accounts.base_collateral_vault, false),
+            AccountMeta::new(accounts.quote_collateral_vault, false),
+            AccountMeta::new_readonly(ASSOCIATED_TOKEN_PROGRAM_ID, false),
+            AccountMeta::new_readonly(anchor_lang::system_program::ID, false),
+        ],
+        data: instruction::UnderwriteCallE18 {
+            expiry_ms: EXPIRY_MS,
+            strike_price_e8: strike,
+            quantity_e18: ONE_OPTION_E18,
+            premium_e18: ONE_QUOTE_E18,
+            operational_fee_bps: 0,
+        }
+        .data(),
+    }
+}
+
+fn assert_call_series_token_program_pair(base_token_program: Pubkey, quote_token_program: Pubkey) {
+    assert_call_series_with_supplied_token_programs(
+        base_token_program,
+        quote_token_program,
+        base_token_program,
+        quote_token_program,
+        None,
+    );
+}
+
+fn assert_call_series_with_supplied_token_programs(
+    base_token_program: Pubkey,
+    quote_token_program: Pubkey,
+    supplied_base_token_program: Pubkey,
+    supplied_quote_token_program: Pubkey,
+    expected_error: Option<&str>,
+) {
+    let mut svm = new_svm();
+    let payer = Keypair::new();
+    let operator = Keypair::new();
+    let buyer = Keypair::new();
+    let seller = Keypair::new();
+    let fee_recipient = Pubkey::new_unique();
+    let quote_mint = Pubkey::new_unique();
+    let base_mint = Pubkey::new_unique();
+    for wallet in [&payer, &buyer, &seller] {
+        svm.airdrop(&wallet.pubkey(), 10 * LAMPORTS_PER_SOL)
+            .unwrap();
+    }
+    add_mint_for_program(&mut svm, quote_mint, 6, quote_token_program);
+    add_mint_for_program(&mut svm, base_mint, 9, base_token_program);
+    let market = market_address(&operator.pubkey(), &quote_mint, &base_mint);
+    let create_market = accounts::CreateMarket {
+        payer: payer.pubkey(),
+        operator: operator.pubkey(),
+        quote_mint,
+        base_mint,
+        market,
+        quote_token_program,
+        base_token_program,
+        system_program: anchor_lang::system_program::ID,
+    };
+    let create_market = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: create_market.to_account_metas(None),
+        data: instruction::CreateMarket {
+            oracle_config: OracleConfig::PythTwap { feed_id: [1; 32] },
+            min_fee: 0,
+            min_operational_fee_bps: 0,
+            max_operational_fee_bps: 1_000,
+        }
+        .data(),
+    };
+    svm.send_transaction(Transaction::new_signed_with_payer(
+        &[create_market],
+        Some(&payer.pubkey()),
+        &[&payer, &operator],
+        svm.latest_blockhash(),
+    ))
+    .unwrap();
+
+    let buyer_quote_source = Pubkey::new_unique();
+    let seller_base_source = Pubkey::new_unique();
+    add_token_account_for_program(
+        &mut svm,
+        buyer_quote_source,
+        quote_mint,
+        buyer.pubkey(),
+        1_000_000,
+        quote_token_program,
+    );
+    add_token_account_for_program(
+        &mut svm,
+        seller_base_source,
+        base_mint,
+        seller.pubkey(),
+        1_000_000_000,
+        base_token_program,
+    );
+    let seller_quote_destination = get_associated_token_address_with_program_id(
+        &seller.pubkey(),
+        &quote_mint,
+        &quote_token_program,
+    );
+    add_token_account_for_program(
+        &mut svm,
+        seller_quote_destination,
+        quote_mint,
+        seller.pubkey(),
+        0,
+        quote_token_program,
+    );
+
+    let strike = 350_000_000;
+    let series = series_address(&market, OptionType::Call.marker(), strike, EXPIRY_MS);
+    let long_mint = long_mint_address(&market, OptionType::Call.marker(), strike, EXPIRY_MS);
+    let buyer_long_ata = get_associated_token_address(&buyer.pubkey(), &long_mint);
+    let base_collateral_vault = get_associated_token_address_with_program_id(
+        &series,
+        &base_mint,
+        &supplied_base_token_program,
+    );
+    let quote_collateral_vault = get_associated_token_address_with_program_id(
+        &series,
+        &quote_mint,
+        &supplied_quote_token_program,
+    );
+    let fee_recipient_quote_ata = get_associated_token_address_with_program_id(
+        &fee_recipient,
+        &quote_mint,
+        &quote_token_program,
+    );
+    let seller_vault = seller_vault_address(
+        &market,
+        OptionType::Call.marker(),
+        strike,
+        EXPIRY_MS,
+        &seller.pubkey(),
+    );
+    if supplied_base_token_program != base_token_program {
+        add_token_account_for_program(
+            &mut svm,
+            base_collateral_vault,
+            base_mint,
+            series,
+            0,
+            supplied_base_token_program,
+        );
+        let mut collateral = svm.get_account(&base_collateral_vault).unwrap();
+        collateral.lamports = 10_000_000;
+        svm.set_account(base_collateral_vault, collateral).unwrap();
+    }
+    let underwrite = interface_underwrite_call_instruction(
+        InterfaceUnderwriteCallAccounts {
+            buyer: buyer.pubkey(),
+            seller: seller.pubkey(),
+            market,
+            base_mint,
+            quote_mint,
+            series,
+            long_mint,
+            buyer_long_ata,
+            buyer_quote_source,
+            seller_base_source,
+            seller_quote_destination,
+            fee_recipient,
+            fee_recipient_quote_ata,
+            seller_vault,
+            base_collateral_vault,
+            quote_collateral_vault,
+            base_token_program: supplied_base_token_program,
+            quote_token_program: supplied_quote_token_program,
+        },
+        strike,
+    );
+    let result = svm.send_transaction(Transaction::new_signed_with_payer(
+        &[first_underwrite_compute_budget(), underwrite],
+        Some(&buyer.pubkey()),
+        &[&buyer, &seller],
+        svm.latest_blockhash(),
+    ));
+    if let Some(expected_error) = expected_error {
+        let error = result.unwrap_err();
+        assert!(
+            error
+                .meta
+                .logs
+                .iter()
+                .any(|log| log.contains(expected_error)),
+            "{error:?}"
+        );
+        return;
+    }
+    assert!(result.is_ok(), "{result:?}");
+    assert_eq!(svm.get_account(&long_mint).unwrap().owner, TOKEN_PROGRAM_ID);
+    assert_eq!(
+        svm.get_account(&buyer_long_ata).unwrap().owner,
+        TOKEN_PROGRAM_ID
+    );
+    assert_eq!(token_amount(&svm, &buyer_long_ata), 1_000_000_000);
+    let series_account = svm.get_account(&series).unwrap();
+    let created_series = Series::try_deserialize(&mut series_account.data.as_slice()).unwrap();
+    assert_eq!(created_series.option_type, OptionType::Call);
+    assert_eq!(created_series.total_contracts_quantity, 1_000_000_000);
+    let collateral = svm.get_account(&base_collateral_vault).unwrap();
+    assert_eq!(collateral.owner, base_token_program);
+    let collateral_amount = if base_token_program == spl_token_2022_interface::id() {
+        StateWithExtensions::<Token2022Account>::unpack(&collateral.data)
+            .unwrap()
+            .base
+            .amount
+    } else {
+        SplTokenAccount::unpack(&collateral.data).unwrap().amount
+    };
+    assert_eq!(collateral_amount, 1_000_000_000);
+}
+
+#[test]
+fn buyer_and_seller_can_create_a_call_series_with_token_2022_base_coin() {
+    assert_call_series_token_program_pair(spl_token_2022_interface::id(), TOKEN_PROGRAM_ID);
+}
+
+#[test]
+fn buyer_and_seller_can_create_call_series_for_the_other_token_program_pairs() {
+    let token_2022_program = spl_token_2022_interface::id();
+    for (base_token_program, quote_token_program) in [
+        (TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID),
+        (TOKEN_PROGRAM_ID, token_2022_program),
+        (token_2022_program, token_2022_program),
+    ] {
+        assert_call_series_token_program_pair(base_token_program, quote_token_program);
+    }
+}
+
+#[test]
+fn underwriting_rejects_a_mint_paired_with_the_wrong_token_program() {
+    assert_call_series_with_supplied_token_programs(
+        spl_token_2022_interface::id(),
+        TOKEN_PROGRAM_ID,
+        TOKEN_PROGRAM_ID,
+        TOKEN_PROGRAM_ID,
+        Some("InvalidMintTokenProgram"),
+    );
+}
+
+#[derive(Clone, Copy)]
+enum Token2022BaseFailure {
+    FrozenDefault,
+    FrozenAccount,
+    PausedMint,
+    UnsupportedAccountExtension(ExtensionType),
+}
+
+fn assert_token_2022_base_underwriting_failure(case: Token2022BaseFailure) {
+    let mut svm = new_svm();
+    let payer = Keypair::new();
+    let operator = Keypair::new();
+    let buyer = Keypair::new();
+    let seller = Keypair::new();
+    let fee_recipient = Pubkey::new_unique();
+    let quote_mint = Pubkey::new_unique();
+    let base_mint = Pubkey::new_unique();
+    let token_2022_program = spl_token_2022_interface::id();
+    for wallet in [&payer, &buyer, &seller] {
+        svm.airdrop(&wallet.pubkey(), 10 * LAMPORTS_PER_SOL)
+            .unwrap();
+    }
+    add_mint(&mut svm, quote_mint, 6);
+    match case {
+        Token2022BaseFailure::FrozenDefault => add_token_2022_mint_with_extension(
+            &mut svm,
+            base_mint,
+            9,
+            ExtensionType::DefaultAccountState,
+            &[AccountState::Initialized as u8],
+        ),
+        Token2022BaseFailure::PausedMint => add_token_2022_mint_with_extension(
+            &mut svm,
+            base_mint,
+            9,
+            ExtensionType::Pausable,
+            &[0; 33],
+        ),
+        _ => add_mint_for_program(&mut svm, base_mint, 9, token_2022_program),
+    }
+    let market = market_address(&operator.pubkey(), &quote_mint, &base_mint);
+    let create_market = accounts::CreateMarket {
+        payer: payer.pubkey(),
+        operator: operator.pubkey(),
+        quote_mint,
+        base_mint,
+        market,
+        quote_token_program: TOKEN_PROGRAM_ID,
+        base_token_program: token_2022_program,
+        system_program: anchor_lang::system_program::ID,
+    };
+    svm.send_transaction(Transaction::new_signed_with_payer(
+        &[Instruction {
+            program_id: PROGRAM_ID,
+            accounts: create_market.to_account_metas(None),
+            data: instruction::CreateMarket {
+                oracle_config: OracleConfig::PythTwap { feed_id: [1; 32] },
+                min_fee: 0,
+                min_operational_fee_bps: 0,
+                max_operational_fee_bps: 1_000,
+            }
+            .data(),
+        }],
+        Some(&payer.pubkey()),
+        &[&payer, &operator],
+        svm.latest_blockhash(),
+    ))
+    .unwrap();
+    if matches!(case, Token2022BaseFailure::FrozenDefault) {
+        let mut mint = svm.get_account(&base_mint).unwrap();
+        mint.data[170] = AccountState::Frozen as u8;
+        svm.set_account(base_mint, mint).unwrap();
+    } else if matches!(case, Token2022BaseFailure::PausedMint) {
+        let mut mint = svm.get_account(&base_mint).unwrap();
+        mint.data[202] = 1;
+        svm.set_account(base_mint, mint).unwrap();
+    }
+
+    let buyer_quote_source = Pubkey::new_unique();
+    let seller_base_source = Pubkey::new_unique();
+    add_token_account(
+        &mut svm,
+        buyer_quote_source,
+        quote_mint,
+        buyer.pubkey(),
+        1_000_000,
+    );
+    match case {
+        Token2022BaseFailure::UnsupportedAccountExtension(extension_type) => {
+            add_token_2022_account_with_extension(
+                &mut svm,
+                seller_base_source,
+                base_mint,
+                seller.pubkey(),
+                1_000_000_000,
+                extension_type,
+            );
+        }
+        Token2022BaseFailure::FrozenDefault | Token2022BaseFailure::PausedMint => {
+            add_token_account_for_program(
+                &mut svm,
+                seller_base_source,
+                base_mint,
+                seller.pubkey(),
+                1_000_000_000,
+                token_2022_program,
+            )
+        }
+        Token2022BaseFailure::FrozenAccount => add_token_account_for_program_with_state(
+            &mut svm,
+            seller_base_source,
+            base_mint,
+            seller.pubkey(),
+            1_000_000_000,
+            token_2022_program,
+            AccountState::Frozen,
+        ),
+    }
+    let seller_quote_destination = get_associated_token_address(&seller.pubkey(), &quote_mint);
+    add_token_account(
+        &mut svm,
+        seller_quote_destination,
+        quote_mint,
+        seller.pubkey(),
+        0,
+    );
+    let strike = 350_000_000;
+    let series = series_address(&market, OptionType::Call.marker(), strike, EXPIRY_MS);
+    let long_mint = long_mint_address(&market, OptionType::Call.marker(), strike, EXPIRY_MS);
+    let underwrite = interface_underwrite_call_instruction(
+        InterfaceUnderwriteCallAccounts {
+            buyer: buyer.pubkey(),
+            seller: seller.pubkey(),
+            market,
+            base_mint,
+            quote_mint,
+            series,
+            long_mint,
+            buyer_long_ata: get_associated_token_address(&buyer.pubkey(), &long_mint),
+            buyer_quote_source,
+            seller_base_source,
+            seller_quote_destination,
+            fee_recipient,
+            fee_recipient_quote_ata: get_associated_token_address(&fee_recipient, &quote_mint),
+            seller_vault: seller_vault_address(
+                &market,
+                OptionType::Call.marker(),
+                strike,
+                EXPIRY_MS,
+                &seller.pubkey(),
+            ),
+            base_collateral_vault: get_associated_token_address_with_program_id(
+                &series,
+                &base_mint,
+                &token_2022_program,
+            ),
+            quote_collateral_vault: get_associated_token_address(&series, &quote_mint),
+            base_token_program: token_2022_program,
+            quote_token_program: TOKEN_PROGRAM_ID,
+        },
+        strike,
+    );
+    let error = svm
+        .send_transaction(Transaction::new_signed_with_payer(
+            &[first_underwrite_compute_budget(), underwrite],
+            Some(&buyer.pubkey()),
+            &[&buyer, &seller],
+            svm.latest_blockhash(),
+        ))
+        .unwrap_err();
+    let expected_error = match case {
+        Token2022BaseFailure::FrozenDefault
+        | Token2022BaseFailure::FrozenAccount
+        | Token2022BaseFailure::PausedMint => "OperationBlockedByMintIssuer",
+        Token2022BaseFailure::UnsupportedAccountExtension(_) => "UnsupportedTokenAccountExtension",
+    };
+    assert!(
+        error
+            .meta
+            .logs
+            .iter()
+            .any(|log| log.contains(expected_error)),
+        "{error:?}"
+    );
+}
+
+#[test]
+fn underwriting_created_series_rechecks_frozen_default_account_state() {
+    assert_token_2022_base_underwriting_failure(Token2022BaseFailure::FrozenDefault);
+}
+
+#[test]
+fn underwriting_reports_an_issuer_frozen_required_account() {
+    assert_token_2022_base_underwriting_failure(Token2022BaseFailure::FrozenAccount);
+}
+
+#[test]
+fn underwriting_reports_an_issuer_paused_mint() {
+    assert_token_2022_base_underwriting_failure(Token2022BaseFailure::PausedMint);
+}
+
+#[test]
+fn underwriting_rejects_unsupported_token_2022_account_extensions() {
+    for extension_type in [
+        ExtensionType::CpiGuard,
+        ExtensionType::ConfidentialTransferAccount,
+        ExtensionType::MemoTransfer,
+        ExtensionType::TransferFeeAmount,
+    ] {
+        assert_token_2022_base_underwriting_failure(
+            Token2022BaseFailure::UnsupportedAccountExtension(extension_type),
+        );
+    }
 }
 
 fn token_amount(svm: &LiteSVM, key: &Pubkey) -> u64 {
@@ -263,7 +886,9 @@ fn underwrite_instruction(
             ),
             base_collateral_vault: get_associated_token_address(&series, &base_mint),
             quote_collateral_vault: get_associated_token_address(&series, &quote_mint),
-            token_program: TOKEN_PROGRAM_ID,
+            long_token_program: TOKEN_PROGRAM_ID,
+            base_token_program: TOKEN_PROGRAM_ID,
+            quote_token_program: TOKEN_PROGRAM_ID,
             associated_token_program: ASSOCIATED_TOKEN_PROGRAM_ID,
             system_program: anchor_lang::system_program::ID,
         }
@@ -294,7 +919,9 @@ fn underwrite_instruction(
             ),
             quote_collateral_vault: get_associated_token_address(&series, &quote_mint),
             base_collateral_vault: get_associated_token_address(&series, &base_mint),
-            token_program: TOKEN_PROGRAM_ID,
+            long_token_program: TOKEN_PROGRAM_ID,
+            base_token_program: TOKEN_PROGRAM_ID,
+            quote_token_program: TOKEN_PROGRAM_ID,
             associated_token_program: ASSOCIATED_TOKEN_PROGRAM_ID,
             system_program: anchor_lang::system_program::ID,
         }

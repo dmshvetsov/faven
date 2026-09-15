@@ -1,7 +1,8 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
-    token::{self, Mint, MintTo, Token, TokenAccount, TransferChecked},
+    token::{self, Mint as LongMint, MintTo, Token, TokenAccount as LongTokenAccount},
+    token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked},
 };
 
 use crate::{
@@ -13,6 +14,7 @@ use crate::{
         Market, OptionType, SellerVault, Series, SeriesState, EXERCISE_WINDOW_MS, LONG_MINT_SEED,
         SELLER_VAULT_SEED, SERIES_SEED,
     },
+    token_compat,
 };
 
 pub fn underwrite_call_e18(
@@ -23,12 +25,34 @@ pub fn underwrite_call_e18(
     premium_e18: u128,
     operational_fee_bps: u16,
 ) -> Result<()> {
-    ensure_series(
+    let series_initialization = ensure_series(
         ctx.accounts.series.as_mut(),
         ctx.accounts.market.key(),
         OptionType::Call,
         expiry_ms,
         strike_price_e8,
+    )?;
+    validate_underwriting_mints(
+        series_initialization,
+        &ctx.accounts.base_mint,
+        &ctx.accounts.base_token_program,
+        &ctx.accounts.quote_mint,
+        &ctx.accounts.quote_token_program,
+    )?;
+    validate_underwriting_atas(
+        ctx.accounts.buyer_long_ata.key(),
+        ctx.accounts.buyer.key(),
+        ctx.accounts.long_mint.key(),
+        ctx.accounts.long_token_program.key(),
+        ctx.accounts.base_collateral_vault.key(),
+        ctx.accounts.base_mint.key(),
+        ctx.accounts.base_token_program.key(),
+        ctx.accounts.quote_collateral_vault.key(),
+        ctx.accounts.quote_mint.key(),
+        ctx.accounts.quote_token_program.key(),
+        ctx.accounts.series.key(),
+        ctx.accounts.fee_recipient_quote_ata.key(),
+        ctx.accounts.fee_recipient.key(),
     )?;
     underwrite_e18(
         UnderwriteExecutionContext {
@@ -38,17 +62,20 @@ pub fn underwrite_call_e18(
             series: ctx.accounts.series.as_mut(),
             long_mint: ctx.accounts.long_mint.to_account_info(),
             buyer_long_ata: ctx.accounts.buyer_long_ata.to_account_info(),
-            buyer_quote_source: ctx.accounts.buyer_quote_source.to_account_info(),
-            seller_collateral_source: ctx.accounts.seller_base_source.to_account_info(),
-            seller_quote_destination: ctx.accounts.seller_quote_destination.to_account_info(),
+            long_token_program: &ctx.accounts.long_token_program,
+            buyer_quote_source: &ctx.accounts.buyer_quote_source,
+            seller_collateral_source: &ctx.accounts.seller_base_source,
+            seller_quote_destination: &ctx.accounts.seller_quote_destination,
             quote_mint: ctx.accounts.quote_mint.to_account_info(),
             quote_mint_decimals: ctx.accounts.quote_mint.decimals,
             fee_recipient: ctx.accounts.fee_recipient.to_account_info(),
-            fee_recipient_quote_ata: ctx.accounts.fee_recipient_quote_ata.to_account_info(),
+            fee_recipient_quote_ata: &ctx.accounts.fee_recipient_quote_ata,
             seller_vault: ctx.accounts.seller_vault.as_mut(),
             collateral_mint: ctx.accounts.base_mint.to_account_info(),
-            collateral_vault: ctx.accounts.base_collateral_vault.to_account_info(),
+            collateral_vault: &ctx.accounts.base_collateral_vault,
             collateral_decimals: ctx.accounts.base_mint.decimals,
+            collateral_token_program: &ctx.accounts.base_token_program,
+            quote_token_program: &ctx.accounts.quote_token_program,
             series_bump: ctx.bumps.series,
         },
         quantity_e18,
@@ -66,12 +93,34 @@ pub fn underwrite_put_e18(
     premium_e18: u128,
     operational_fee_bps: u16,
 ) -> Result<()> {
-    ensure_series(
+    let series_initialization = ensure_series(
         ctx.accounts.series.as_mut(),
         ctx.accounts.market.key(),
         OptionType::Put,
         expiry_ms,
         strike_price_e8,
+    )?;
+    validate_underwriting_mints(
+        series_initialization,
+        &ctx.accounts.base_mint,
+        &ctx.accounts.base_token_program,
+        &ctx.accounts.quote_mint,
+        &ctx.accounts.quote_token_program,
+    )?;
+    validate_underwriting_atas(
+        ctx.accounts.buyer_long_ata.key(),
+        ctx.accounts.buyer.key(),
+        ctx.accounts.long_mint.key(),
+        ctx.accounts.long_token_program.key(),
+        ctx.accounts.base_collateral_vault.key(),
+        ctx.accounts.base_mint.key(),
+        ctx.accounts.base_token_program.key(),
+        ctx.accounts.quote_collateral_vault.key(),
+        ctx.accounts.quote_mint.key(),
+        ctx.accounts.quote_token_program.key(),
+        ctx.accounts.series.key(),
+        ctx.accounts.fee_recipient_quote_ata.key(),
+        ctx.accounts.fee_recipient.key(),
     )?;
     underwrite_e18(
         UnderwriteExecutionContext {
@@ -81,17 +130,20 @@ pub fn underwrite_put_e18(
             series: ctx.accounts.series.as_mut(),
             long_mint: ctx.accounts.long_mint.to_account_info(),
             buyer_long_ata: ctx.accounts.buyer_long_ata.to_account_info(),
-            buyer_quote_source: ctx.accounts.buyer_quote_source.to_account_info(),
-            seller_collateral_source: ctx.accounts.seller_quote_account.to_account_info(),
-            seller_quote_destination: ctx.accounts.seller_quote_account.to_account_info(),
+            long_token_program: &ctx.accounts.long_token_program,
+            buyer_quote_source: &ctx.accounts.buyer_quote_source,
+            seller_collateral_source: &ctx.accounts.seller_quote_account,
+            seller_quote_destination: &ctx.accounts.seller_quote_account,
             quote_mint: ctx.accounts.quote_mint.to_account_info(),
             quote_mint_decimals: ctx.accounts.quote_mint.decimals,
             fee_recipient: ctx.accounts.fee_recipient.to_account_info(),
-            fee_recipient_quote_ata: ctx.accounts.fee_recipient_quote_ata.to_account_info(),
+            fee_recipient_quote_ata: &ctx.accounts.fee_recipient_quote_ata,
             seller_vault: ctx.accounts.seller_vault.as_mut(),
             collateral_mint: ctx.accounts.quote_mint.to_account_info(),
-            collateral_vault: ctx.accounts.quote_collateral_vault.to_account_info(),
+            collateral_vault: &ctx.accounts.quote_collateral_vault,
             collateral_decimals: ctx.accounts.quote_mint.decimals,
+            collateral_token_program: &ctx.accounts.quote_token_program,
+            quote_token_program: &ctx.accounts.quote_token_program,
             series_bump: ctx.bumps.series,
         },
         quantity_e18,
@@ -105,6 +157,64 @@ pub fn underwrite_put_e18(
 enum SeriesInitialization {
     Created,
     Existing,
+}
+
+fn validate_underwriting_mints(
+    series_initialization: SeriesInitialization,
+    base_mint: &InterfaceAccount<'_, Mint>,
+    base_token_program: &Interface<'_, TokenInterface>,
+    quote_mint: &InterfaceAccount<'_, Mint>,
+    quote_token_program: &Interface<'_, TokenInterface>,
+) -> Result<()> {
+    token_compat::validate_mint_token_program(base_mint, base_token_program)?;
+    token_compat::validate_mint_token_program(quote_mint, quote_token_program)?;
+    if series_initialization == SeriesInitialization::Created {
+        token_compat::validate_series_creation_mint(base_mint, base_token_program)?;
+        token_compat::validate_series_creation_mint(quote_mint, quote_token_program)?;
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_underwriting_atas(
+    buyer_long_ata: Pubkey,
+    buyer: Pubkey,
+    long_mint: Pubkey,
+    long_token_program: Pubkey,
+    base_collateral_vault: Pubkey,
+    base_mint: Pubkey,
+    base_token_program: Pubkey,
+    quote_collateral_vault: Pubkey,
+    quote_mint: Pubkey,
+    quote_token_program: Pubkey,
+    series: Pubkey,
+    fee_recipient_quote_ata: Pubkey,
+    fee_recipient: Pubkey,
+) -> Result<()> {
+    token_compat::validate_associated_token_account_address(
+        &buyer_long_ata,
+        &buyer,
+        &long_mint,
+        &long_token_program,
+    )?;
+    token_compat::validate_associated_token_account_address(
+        &base_collateral_vault,
+        &series,
+        &base_mint,
+        &base_token_program,
+    )?;
+    token_compat::validate_associated_token_account_address(
+        &quote_collateral_vault,
+        &series,
+        &quote_mint,
+        &quote_token_program,
+    )?;
+    token_compat::validate_associated_token_account_address(
+        &fee_recipient_quote_ata,
+        &fee_recipient,
+        &quote_mint,
+        &quote_token_program,
+    )
 }
 
 fn ensure_series(
@@ -185,17 +295,20 @@ struct UnderwriteExecutionContext<'a, 'info> {
     series: &'a mut Account<'info, Series>,
     long_mint: AccountInfo<'info>,
     buyer_long_ata: AccountInfo<'info>,
-    buyer_quote_source: AccountInfo<'info>,
-    seller_collateral_source: AccountInfo<'info>,
-    seller_quote_destination: AccountInfo<'info>,
+    long_token_program: &'a Program<'info, Token>,
+    buyer_quote_source: &'a InterfaceAccount<'info, TokenAccount>,
+    seller_collateral_source: &'a InterfaceAccount<'info, TokenAccount>,
+    seller_quote_destination: &'a InterfaceAccount<'info, TokenAccount>,
     quote_mint: AccountInfo<'info>,
     quote_mint_decimals: u8,
     fee_recipient: AccountInfo<'info>,
-    fee_recipient_quote_ata: AccountInfo<'info>,
+    fee_recipient_quote_ata: &'a InterfaceAccount<'info, TokenAccount>,
     seller_vault: &'a mut Account<'info, SellerVault>,
     collateral_mint: AccountInfo<'info>,
-    collateral_vault: AccountInfo<'info>,
+    collateral_vault: &'a InterfaceAccount<'info, TokenAccount>,
     collateral_decimals: u8,
+    collateral_token_program: &'a Interface<'info, TokenInterface>,
+    quote_token_program: &'a Interface<'info, TokenInterface>,
     series_bump: u8,
 }
 
@@ -258,32 +371,56 @@ fn underwrite_e18(
         OptionsError::InvalidSellerVault
     );
 
-    transfer_tokens(
+    token_compat::validate_token_account(
         accounts.seller_collateral_source,
-        accounts.collateral_mint,
+        accounts.collateral_token_program,
+    )?;
+    token_compat::validate_token_account(
         accounts.collateral_vault,
+        accounts.collateral_token_program,
+    )?;
+    token_compat::validate_token_account(
+        accounts.buyer_quote_source,
+        accounts.quote_token_program,
+    )?;
+    token_compat::validate_token_account(
+        accounts.seller_quote_destination,
+        accounts.quote_token_program,
+    )?;
+    token_compat::validate_token_account(
+        accounts.fee_recipient_quote_ata,
+        accounts.quote_token_program,
+    )?;
+
+    transfer_tokens(
+        accounts.seller_collateral_source.to_account_info(),
+        accounts.collateral_mint,
+        accounts.collateral_vault.to_account_info(),
         accounts.seller.to_account_info(),
         collateral,
         accounts.collateral_decimals,
+        accounts.collateral_token_program,
     )?;
     if seller_premium > 0 {
         transfer_tokens(
-            accounts.buyer_quote_source.clone(),
+            accounts.buyer_quote_source.to_account_info(),
             accounts.quote_mint.clone(),
-            accounts.seller_quote_destination,
+            accounts.seller_quote_destination.to_account_info(),
             accounts.buyer.to_account_info(),
             seller_premium,
             accounts.quote_mint_decimals,
+            accounts.quote_token_program,
         )?;
     }
     if fee > 0 {
         transfer_tokens(
-            accounts.buyer_quote_source,
+            accounts.buyer_quote_source.to_account_info(),
             accounts.quote_mint.clone(),
-            accounts.fee_recipient_quote_ata,
+            accounts.fee_recipient_quote_ata.to_account_info(),
             accounts.buyer.to_account_info(),
             fee,
             accounts.quote_mint_decimals,
+            accounts.quote_token_program,
         )?;
     }
 
@@ -304,7 +441,7 @@ fn underwrite_e18(
     let long_mint = accounts.long_mint.key();
     token::mint_to(
         CpiContext::new_with_signer(
-            token::ID,
+            accounts.long_token_program.key(),
             MintTo {
                 mint: accounts.long_mint,
                 to: accounts.buyer_long_ata,
@@ -350,10 +487,11 @@ fn transfer_tokens<'info>(
     authority: AccountInfo<'info>,
     amount: u64,
     decimals: u8,
+    token_program: &Interface<'info, TokenInterface>,
 ) -> Result<()> {
-    token::transfer_checked(
+    token_interface::transfer_checked(
         CpiContext::new(
-            token::ID,
+            token_program.key(),
             TransferChecked {
                 from,
                 mint,
@@ -373,10 +511,21 @@ pub struct UnderwriteCall<'info> {
     #[account(mut)]
     pub seller: Signer<'info>,
     pub market: Box<Account<'info, Market>>,
-    #[account(address = market.base_mint)]
-    pub base_mint: Box<Account<'info, Mint>>,
-    #[account(address = market.quote_mint)]
-    pub quote_mint: Box<Account<'info, Mint>>,
+    pub long_token_program: Program<'info, Token>,
+    pub base_token_program: Interface<'info, TokenInterface>,
+    pub quote_token_program: Interface<'info, TokenInterface>,
+    #[account(
+        address = market.base_mint,
+        constraint = *base_mint.to_account_info().owner == base_token_program.key()
+            @ OptionsError::InvalidMintTokenProgram,
+    )]
+    pub base_mint: Box<InterfaceAccount<'info, Mint>>,
+    #[account(
+        address = market.quote_mint,
+        constraint = *quote_mint.to_account_info().owner == quote_token_program.key()
+            @ OptionsError::InvalidMintTokenProgram,
+    )]
+    pub quote_mint: Box<InterfaceAccount<'info, Mint>>,
     #[account(
         init_if_needed,
         payer = seller,
@@ -404,33 +553,35 @@ pub struct UnderwriteCall<'info> {
         bump,
         mint::decimals = base_mint.decimals,
         mint::authority = series,
+        mint::token_program = long_token_program,
     )]
-    pub long_mint: Box<Account<'info, Mint>>,
+    pub long_mint: Box<Account<'info, LongMint>>,
     #[account(
         init_if_needed,
         payer = seller,
         associated_token::mint = long_mint,
         associated_token::authority = buyer,
+        associated_token::token_program = long_token_program,
     )]
-    pub buyer_long_ata: Box<Account<'info, TokenAccount>>,
+    pub buyer_long_ata: Box<Account<'info, LongTokenAccount>>,
     #[account(
         mut,
         constraint = buyer_quote_source.owner == buyer.key() @ OptionsError::InvalidFundingAccount,
         constraint = buyer_quote_source.mint == market.quote_mint @ OptionsError::InvalidFundingAccount,
     )]
-    pub buyer_quote_source: Box<Account<'info, TokenAccount>>,
+    pub buyer_quote_source: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(
         mut,
         constraint = seller_base_source.owner == seller.key() @ OptionsError::InvalidFundingAccount,
         constraint = seller_base_source.mint == market.base_mint @ OptionsError::InvalidFundingAccount,
     )]
-    pub seller_base_source: Box<Account<'info, TokenAccount>>,
+    pub seller_base_source: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(
         mut,
         constraint = seller_quote_destination.owner == seller.key() @ OptionsError::InvalidFundingAccount,
         constraint = seller_quote_destination.mint == market.quote_mint @ OptionsError::InvalidFundingAccount,
     )]
-    pub seller_quote_destination: Box<Account<'info, TokenAccount>>,
+    pub seller_quote_destination: Box<InterfaceAccount<'info, TokenAccount>>,
     /// CHECK: Any wallet may receive the operational fee.
     pub fee_recipient: UncheckedAccount<'info>,
     #[account(
@@ -438,8 +589,9 @@ pub struct UnderwriteCall<'info> {
         payer = seller,
         associated_token::mint = quote_mint,
         associated_token::authority = fee_recipient,
+        associated_token::token_program = quote_token_program,
     )]
-    pub fee_recipient_quote_ata: Box<Account<'info, TokenAccount>>,
+    pub fee_recipient_quote_ata: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(
         init_if_needed,
         payer = seller,
@@ -460,16 +612,17 @@ pub struct UnderwriteCall<'info> {
         payer = seller,
         associated_token::mint = base_mint,
         associated_token::authority = series,
+        associated_token::token_program = base_token_program,
     )]
-    pub base_collateral_vault: Box<Account<'info, TokenAccount>>,
+    pub base_collateral_vault: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(
         init_if_needed,
         payer = seller,
         associated_token::mint = quote_mint,
         associated_token::authority = series,
+        associated_token::token_program = quote_token_program,
     )]
-    pub quote_collateral_vault: Box<Account<'info, TokenAccount>>,
-    pub token_program: Program<'info, Token>,
+    pub quote_collateral_vault: Box<InterfaceAccount<'info, TokenAccount>>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
 }
@@ -481,10 +634,21 @@ pub struct UnderwritePut<'info> {
     #[account(mut)]
     pub seller: Signer<'info>,
     pub market: Box<Account<'info, Market>>,
-    #[account(address = market.base_mint)]
-    pub base_mint: Box<Account<'info, Mint>>,
-    #[account(address = market.quote_mint)]
-    pub quote_mint: Box<Account<'info, Mint>>,
+    pub long_token_program: Program<'info, Token>,
+    pub base_token_program: Interface<'info, TokenInterface>,
+    pub quote_token_program: Interface<'info, TokenInterface>,
+    #[account(
+        address = market.base_mint,
+        constraint = *base_mint.to_account_info().owner == base_token_program.key()
+            @ OptionsError::InvalidMintTokenProgram,
+    )]
+    pub base_mint: Box<InterfaceAccount<'info, Mint>>,
+    #[account(
+        address = market.quote_mint,
+        constraint = *quote_mint.to_account_info().owner == quote_token_program.key()
+            @ OptionsError::InvalidMintTokenProgram,
+    )]
+    pub quote_mint: Box<InterfaceAccount<'info, Mint>>,
     #[account(
         init_if_needed,
         payer = seller,
@@ -512,27 +676,29 @@ pub struct UnderwritePut<'info> {
         bump,
         mint::decimals = base_mint.decimals,
         mint::authority = series,
+        mint::token_program = long_token_program,
     )]
-    pub long_mint: Box<Account<'info, Mint>>,
+    pub long_mint: Box<Account<'info, LongMint>>,
     #[account(
         init_if_needed,
         payer = seller,
         associated_token::mint = long_mint,
         associated_token::authority = buyer,
+        associated_token::token_program = long_token_program,
     )]
-    pub buyer_long_ata: Box<Account<'info, TokenAccount>>,
+    pub buyer_long_ata: Box<Account<'info, LongTokenAccount>>,
     #[account(
         mut,
         constraint = buyer_quote_source.owner == buyer.key() @ OptionsError::InvalidFundingAccount,
         constraint = buyer_quote_source.mint == market.quote_mint @ OptionsError::InvalidFundingAccount,
     )]
-    pub buyer_quote_source: Box<Account<'info, TokenAccount>>,
+    pub buyer_quote_source: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(
         mut,
         constraint = seller_quote_account.owner == seller.key() @ OptionsError::InvalidFundingAccount,
         constraint = seller_quote_account.mint == market.quote_mint @ OptionsError::InvalidFundingAccount,
     )]
-    pub seller_quote_account: Box<Account<'info, TokenAccount>>,
+    pub seller_quote_account: Box<InterfaceAccount<'info, TokenAccount>>,
     /// CHECK: Any wallet may receive the operational fee.
     pub fee_recipient: UncheckedAccount<'info>,
     #[account(
@@ -540,8 +706,9 @@ pub struct UnderwritePut<'info> {
         payer = seller,
         associated_token::mint = quote_mint,
         associated_token::authority = fee_recipient,
+        associated_token::token_program = quote_token_program,
     )]
-    pub fee_recipient_quote_ata: Box<Account<'info, TokenAccount>>,
+    pub fee_recipient_quote_ata: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(
         init_if_needed,
         payer = seller,
@@ -562,16 +729,17 @@ pub struct UnderwritePut<'info> {
         payer = seller,
         associated_token::mint = quote_mint,
         associated_token::authority = series,
+        associated_token::token_program = quote_token_program,
     )]
-    pub quote_collateral_vault: Box<Account<'info, TokenAccount>>,
+    pub quote_collateral_vault: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(
         init_if_needed,
         payer = seller,
         associated_token::mint = base_mint,
         associated_token::authority = series,
+        associated_token::token_program = base_token_program,
     )]
-    pub base_collateral_vault: Box<Account<'info, TokenAccount>>,
-    pub token_program: Program<'info, Token>,
+    pub base_collateral_vault: Box<InterfaceAccount<'info, TokenAccount>>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
 }
