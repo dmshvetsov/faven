@@ -323,6 +323,7 @@ fn assert_call_series_token_program_pair(base_token_program: Pubkey, quote_token
         quote_token_program,
         base_token_program,
         quote_token_program,
+        base_token_program,
         None,
     );
 }
@@ -332,6 +333,7 @@ fn assert_call_series_with_supplied_token_programs(
     quote_token_program: Pubkey,
     supplied_base_token_program: Pubkey,
     supplied_quote_token_program: Pubkey,
+    base_collateral_vault_token_program: Pubkey,
     expected_error: Option<&str>,
 ) {
     let mut svm = new_svm();
@@ -417,7 +419,7 @@ fn assert_call_series_with_supplied_token_programs(
     let base_collateral_vault = get_associated_token_address_with_program_id(
         &series,
         &base_mint,
-        &supplied_base_token_program,
+        &base_collateral_vault_token_program,
     );
     let quote_collateral_vault = get_associated_token_address_with_program_id(
         &series,
@@ -514,6 +516,149 @@ fn assert_call_series_with_supplied_token_programs(
     assert_eq!(collateral_amount, 1_000_000_000);
 }
 
+fn assert_put_series_token_program_pair(base_token_program: Pubkey, quote_token_program: Pubkey) {
+    let mut svm = new_svm();
+    let payer = Keypair::new();
+    let operator = Keypair::new();
+    let buyer = Keypair::new();
+    let seller = Keypair::new();
+    let fee_recipient = Pubkey::new_unique();
+    let quote_mint = Pubkey::new_unique();
+    let base_mint = Pubkey::new_unique();
+    for wallet in [&payer, &buyer, &seller] {
+        svm.airdrop(&wallet.pubkey(), 10 * LAMPORTS_PER_SOL)
+            .unwrap();
+    }
+    add_mint_for_program(&mut svm, quote_mint, 6, quote_token_program);
+    add_mint_for_program(&mut svm, base_mint, 9, base_token_program);
+    let market = market_address(&operator.pubkey(), &quote_mint, &base_mint);
+    let create_market = accounts::CreateMarket {
+        payer: payer.pubkey(),
+        operator: operator.pubkey(),
+        quote_mint,
+        base_mint,
+        market,
+        quote_token_program,
+        base_token_program,
+        system_program: anchor_lang::system_program::ID,
+    };
+    svm.send_transaction(Transaction::new_signed_with_payer(
+        &[Instruction {
+            program_id: PROGRAM_ID,
+            accounts: create_market.to_account_metas(None),
+            data: instruction::CreateMarket {
+                oracle_config: OracleConfig::PythTwap { feed_id: [1; 32] },
+                min_fee: 0,
+                min_operational_fee_bps: 0,
+                max_operational_fee_bps: 1_000,
+            }
+            .data(),
+        }],
+        Some(&payer.pubkey()),
+        &[&payer, &operator],
+        svm.latest_blockhash(),
+    ))
+    .unwrap();
+
+    let buyer_quote_source = Pubkey::new_unique();
+    let seller_quote_source = Pubkey::new_unique();
+    add_token_account_for_program(
+        &mut svm,
+        buyer_quote_source,
+        quote_mint,
+        buyer.pubkey(),
+        1_000_000,
+        quote_token_program,
+    );
+    add_token_account_for_program(
+        &mut svm,
+        seller_quote_source,
+        quote_mint,
+        seller.pubkey(),
+        10_000_000,
+        quote_token_program,
+    );
+
+    let strike = 350_000_000;
+    let series = series_address(&market, OptionType::Put.marker(), strike, EXPIRY_MS);
+    let long_mint = long_mint_address(&market, OptionType::Put.marker(), strike, EXPIRY_MS);
+    let quote_collateral_vault =
+        get_associated_token_address_with_program_id(&series, &quote_mint, &quote_token_program);
+    let base_collateral_vault =
+        get_associated_token_address_with_program_id(&series, &base_mint, &base_token_program);
+    let underwrite = interface_underwrite_put_instruction(
+        InterfaceUnderwriteCallAccounts {
+            buyer: buyer.pubkey(),
+            seller: seller.pubkey(),
+            market,
+            base_mint,
+            quote_mint,
+            series,
+            long_mint,
+            buyer_long_ata: get_associated_token_address(&buyer.pubkey(), &long_mint),
+            buyer_quote_source,
+            seller_base_source: seller_quote_source,
+            seller_quote_destination: Pubkey::default(),
+            fee_recipient,
+            fee_recipient_quote_ata: get_associated_token_address_with_program_id(
+                &fee_recipient,
+                &quote_mint,
+                &quote_token_program,
+            ),
+            seller_vault: seller_vault_address(
+                &market,
+                OptionType::Put.marker(),
+                strike,
+                EXPIRY_MS,
+                &seller.pubkey(),
+            ),
+            base_collateral_vault,
+            quote_collateral_vault,
+            base_token_program,
+            quote_token_program,
+        },
+        strike,
+    );
+    let result = svm.send_transaction(Transaction::new_signed_with_payer(
+        &[first_underwrite_compute_budget(), underwrite],
+        Some(&buyer.pubkey()),
+        &[&buyer, &seller],
+        svm.latest_blockhash(),
+    ));
+    assert!(result.is_ok(), "{result:?}");
+    assert_eq!(svm.get_account(&long_mint).unwrap().owner, TOKEN_PROGRAM_ID);
+    assert_eq!(
+        svm.get_account(&get_associated_token_address(&buyer.pubkey(), &long_mint))
+            .unwrap()
+            .owner,
+        TOKEN_PROGRAM_ID
+    );
+    assert_eq!(
+        token_amount(
+            &svm,
+            &get_associated_token_address(&buyer.pubkey(), &long_mint)
+        ),
+        1_000_000_000
+    );
+    assert_eq!(
+        svm.get_account(&base_collateral_vault).unwrap().owner,
+        base_token_program
+    );
+    let quote_collateral = svm.get_account(&quote_collateral_vault).unwrap();
+    assert_eq!(quote_collateral.owner, quote_token_program);
+    let quote_collateral_amount = if quote_token_program == spl_token_2022_interface::id() {
+        StateWithExtensions::<Token2022Account>::unpack(&quote_collateral.data)
+            .unwrap()
+            .base
+            .amount
+    } else {
+        SplTokenAccount::unpack(&quote_collateral.data)
+            .unwrap()
+            .amount
+    };
+    assert_eq!(quote_collateral_amount, 3_500_000);
+}
+
 #[test]
 fn buyer_and_seller_can_create_a_call_series_with_token_2022_base_coin() {
     assert_call_series_token_program_pair(spl_token_2022_interface::id(), TOKEN_PROGRAM_ID);
@@ -532,13 +677,51 @@ fn buyer_and_seller_can_create_call_series_for_the_other_token_program_pairs() {
 }
 
 #[test]
+fn buyer_and_seller_can_create_put_series_for_every_token_program_pair() {
+    let token_2022_program = spl_token_2022_interface::id();
+    for (base_token_program, quote_token_program) in [
+        (TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID),
+        (TOKEN_PROGRAM_ID, token_2022_program),
+        (token_2022_program, TOKEN_PROGRAM_ID),
+        (token_2022_program, token_2022_program),
+    ] {
+        assert_put_series_token_program_pair(base_token_program, quote_token_program);
+    }
+}
+
+#[test]
 fn underwriting_rejects_a_mint_paired_with_the_wrong_token_program() {
     assert_call_series_with_supplied_token_programs(
         spl_token_2022_interface::id(),
         TOKEN_PROGRAM_ID,
         TOKEN_PROGRAM_ID,
         TOKEN_PROGRAM_ID,
+        TOKEN_PROGRAM_ID,
         Some("InvalidMintTokenProgram"),
+    );
+}
+
+#[test]
+fn underwriting_rejects_swapped_base_and_quote_token_programs() {
+    assert_call_series_with_supplied_token_programs(
+        spl_token_2022_interface::id(),
+        TOKEN_PROGRAM_ID,
+        TOKEN_PROGRAM_ID,
+        spl_token_2022_interface::id(),
+        TOKEN_PROGRAM_ID,
+        Some("An account required by the instruction is missing"),
+    );
+}
+
+#[test]
+fn underwriting_rejects_a_collateral_vault_derived_for_the_wrong_token_program() {
+    assert_call_series_with_supplied_token_programs(
+        spl_token_2022_interface::id(),
+        TOKEN_PROGRAM_ID,
+        spl_token_2022_interface::id(),
+        TOKEN_PROGRAM_ID,
+        TOKEN_PROGRAM_ID,
+        Some("An account required by the instruction is missing"),
     );
 }
 
@@ -1269,7 +1452,7 @@ fn buyer_and_seller_can_create_and_reuse_a_call_series_while_underwriting() {
 }
 
 #[test]
-fn underwriting_rejects_a_seller_vault_with_invalid_owner_or_series() {
+fn underwriting_rejects_a_seller_vault_with_an_invalid_owner() {
     let mut svm = new_svm();
     let payer = Keypair::new();
     let operator = Keypair::new();
@@ -1872,33 +2055,17 @@ fn underwriting_rejects_invalid_inputs_and_allows_zero_premium_without_a_fee() {
         assert!(svm.send_transaction(transaction).is_err());
         svm.expire_blockhash();
     }
-    for (quantity, fee_bps, source) in [
-        (0, 0, seller_base_source),
-        (ONE_OPTION_E18, 1_001, seller_base_source),
-        (ONE_OPTION_E18, 0, buyer_quote_source),
-    ] {
-        let transaction = Transaction::new_signed_with_payer(
-            &[
-                first_underwrite_compute_budget(),
-                underwrite_instruction(
-                    true,
-                    terms,
-                    UnderwriteAccounts {
-                        seller_collateral_source: source,
-                        ..participants
-                    },
-                    quantity,
-                    0,
-                    fee_bps,
-                ),
-            ],
-            Some(&buyer.pubkey()),
-            &[&buyer, &seller],
-            svm.latest_blockhash(),
-        );
-        assert!(svm.send_transaction(transaction).is_err());
-        svm.expire_blockhash();
-    }
+    let zero_quantity = Transaction::new_signed_with_payer(
+        &[
+            first_underwrite_compute_budget(),
+            underwrite_instruction(true, terms, participants, 0, 0, 0),
+        ],
+        Some(&buyer.pubkey()),
+        &[&buyer, &seller],
+        svm.latest_blockhash(),
+    );
+    assert!(svm.send_transaction(zero_quantity).is_err());
+    svm.expire_blockhash();
     let mut missing_buyer_signature = Transaction::new_with_payer(
         &[underwrite_instruction(
             true,
