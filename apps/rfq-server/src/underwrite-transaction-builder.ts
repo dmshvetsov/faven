@@ -21,7 +21,9 @@ const COMPUTE_BUDGET_PROGRAM = address(
   "ComputeBudget111111111111111111111111111111"
 );
 const SYSTEM_PROGRAM = address("11111111111111111111111111111111");
-const TOKEN_PROGRAM = address("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+const LONG_TOKEN_PROGRAM = address(
+  "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+);
 const UNDERWRITE_CALL_DISCRIMINATOR = [
   0x7e, 0xf6, 0x59, 0xa5, 0x6a, 0xaa, 0x78, 0x93,
 ];
@@ -90,7 +92,9 @@ async function deriveAccounts(input: UnderwriteTransactionInput) {
   const programAddress = address(input.market.optionsProgramId);
   const market = address(input.market.marketAddress);
   const baseMint = address(input.market.baseMint);
+  const baseTokenProgram = address(input.market.baseTokenProgram);
   const quoteMint = address(input.market.quoteMint);
+  const quoteTokenProgram = address(input.market.quoteTokenProgram);
   const seller = address(input.seller);
   const buyer = address(input.maker);
   const buyerQuoteSource = address(input.buyerQuoteSource);
@@ -110,16 +114,18 @@ async function deriveAccounts(input: UnderwriteTransactionInput) {
     baseCollateralVault,
     quoteCollateralVault,
   ] = await Promise.all([
-    deriveAta(buyer, longMint),
-    deriveAta(feeRecipient, quoteMint),
-    deriveAta(series, baseMint),
-    deriveAta(series, quoteMint),
+    deriveAta(buyer, longMint, LONG_TOKEN_PROGRAM),
+    deriveAta(feeRecipient, quoteMint, quoteTokenProgram),
+    deriveAta(series, baseMint, baseTokenProgram),
+    deriveAta(series, quoteMint, quoteTokenProgram),
   ]);
   return {
     programAddress,
     market,
     baseMint,
+    baseTokenProgram,
     quoteMint,
+    quoteTokenProgram,
     seller,
     buyer,
     buyerQuoteSource,
@@ -166,6 +172,9 @@ function underwriteInstruction(
       readonlySigner(accounts.buyer),
       writableSigner(accounts.seller),
       readonly(accounts.market),
+      readonly(LONG_TOKEN_PROGRAM),
+      readonly(accounts.baseTokenProgram),
+      readonly(accounts.quoteTokenProgram),
       readonly(accounts.baseMint),
       readonly(accounts.quoteMint),
       writable(accounts.series),
@@ -190,7 +199,6 @@ function underwriteInstruction(
             writable(accounts.baseCollateralVault),
             writable(accounts.quoteCollateralVault),
           ]),
-      readonly(TOKEN_PROGRAM),
       readonly(ASSOCIATED_TOKEN_PROGRAM),
       readonly(SYSTEM_PROGRAM),
     ],
@@ -260,13 +268,14 @@ async function deriveSellerVault(
 
 async function deriveAta(
   owner: ReturnType<typeof address>,
-  mint: ReturnType<typeof address>
+  mint: ReturnType<typeof address>,
+  tokenProgram: ReturnType<typeof address>
 ) {
   const [ata] = await getProgramDerivedAddress({
     programAddress: ASSOCIATED_TOKEN_PROGRAM,
     seeds: [
       getAddressEncoder().encode(owner),
-      getAddressEncoder().encode(TOKEN_PROGRAM),
+      getAddressEncoder().encode(tokenProgram),
       getAddressEncoder().encode(mint),
     ],
   });

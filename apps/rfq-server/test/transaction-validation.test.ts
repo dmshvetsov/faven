@@ -28,6 +28,12 @@ const UNDERWRITE_CALL_E18_DISCRIMINATOR = new Uint8Array([
 const UNDERWRITE_PUT_E18_DISCRIMINATOR = new Uint8Array([
   172, 14, 246, 27, 28, 39, 229, 225,
 ]);
+const LEGACY_TOKEN_PROGRAM = address(
+  "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+);
+const TOKEN_2022_PROGRAM = address(
+  "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+);
 const MARKET = configuredMarket(
   "localdevelopment:devnet",
   "wSoLCzXHe214cjx7CFjP1axzXyqLkEwq5Xf873hy1JP"
@@ -36,34 +42,92 @@ const MARKET = configuredMarket(
 if (MARKET === null) throw new Error("test market is missing");
 
 describe("final underwrite transaction validation", () => {
-  it("encodes the exact canonical e18 and e8 instruction values", async () => {
+  it("builds validated call and put transactions for every base and quote token-program pair", async () => {
     const seller = await generateKeyPairSigner();
-    const variants: readonly [boolean, Uint8Array][] = [
-      [false, UNDERWRITE_CALL_E18_DISCRIMINATOR],
-      [true, UNDERWRITE_PUT_E18_DISCRIMINATOR],
+    const variants: readonly [
+      boolean,
+      Uint8Array,
+      ReturnType<typeof address>,
+      ReturnType<typeof address>,
+    ][] = [
+      [
+        false,
+        UNDERWRITE_CALL_E18_DISCRIMINATOR,
+        LEGACY_TOKEN_PROGRAM,
+        LEGACY_TOKEN_PROGRAM,
+      ],
+      [
+        true,
+        UNDERWRITE_PUT_E18_DISCRIMINATOR,
+        LEGACY_TOKEN_PROGRAM,
+        LEGACY_TOKEN_PROGRAM,
+      ],
+      [
+        false,
+        UNDERWRITE_CALL_E18_DISCRIMINATOR,
+        TOKEN_2022_PROGRAM,
+        LEGACY_TOKEN_PROGRAM,
+      ],
+      [
+        true,
+        UNDERWRITE_PUT_E18_DISCRIMINATOR,
+        TOKEN_2022_PROGRAM,
+        LEGACY_TOKEN_PROGRAM,
+      ],
+      [
+        false,
+        UNDERWRITE_CALL_E18_DISCRIMINATOR,
+        LEGACY_TOKEN_PROGRAM,
+        TOKEN_2022_PROGRAM,
+      ],
+      [
+        true,
+        UNDERWRITE_PUT_E18_DISCRIMINATOR,
+        LEGACY_TOKEN_PROGRAM,
+        TOKEN_2022_PROGRAM,
+      ],
+      [
+        false,
+        UNDERWRITE_CALL_E18_DISCRIMINATOR,
+        TOKEN_2022_PROGRAM,
+        TOKEN_2022_PROGRAM,
+      ],
+      [
+        true,
+        UNDERWRITE_PUT_E18_DISCRIMINATOR,
+        TOKEN_2022_PROGRAM,
+        TOKEN_2022_PROGRAM,
+      ],
     ];
 
-    for (const [isPut, discriminator] of variants) {
+    for (const [
+      isPut,
+      discriminator,
+      baseTokenProgram,
+      quoteTokenProgram,
+    ] of variants) {
+      const market = {
+        ...MARKET,
+        baseTokenProgram,
+        quoteTokenProgram,
+      };
+      const canonicalTransaction = await buildUnderwriteTransaction({
+        market,
+        expiry: EXPIRY_SECONDS,
+        isPut,
+        quantity: QUANTITY_E18.toString(),
+        strike: STRIKE_E8.toString(),
+        seller: seller.address,
+        sellerCollateralSource: "So11111111111111111111111111111111111111112",
+        sellerQuoteDestination: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+        maker: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+        buyerQuoteSource: "So11111111111111111111111111111111111111112",
+        premium: PREMIUM_E18.toString(),
+        blockhash: "11111111111111111111111111111111",
+        lastValidBlockHeight: 100,
+      });
       const transaction = getTransactionDecoder().decode(
-        base64Bytes(
-          await buildUnderwriteTransaction({
-            market: MARKET,
-            expiry: EXPIRY_SECONDS,
-            isPut,
-            quantity: QUANTITY_E18.toString(),
-            strike: STRIKE_E8.toString(),
-            seller: seller.address,
-            sellerCollateralSource:
-              "So11111111111111111111111111111111111111112",
-            sellerQuoteDestination:
-              "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
-            maker: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
-            buyerQuoteSource: "So11111111111111111111111111111111111111112",
-            premium: PREMIUM_E18.toString(),
-            blockhash: "11111111111111111111111111111111",
-            lastValidBlockHeight: 100,
-          })
-        )
+        base64Bytes(canonicalTransaction)
       );
       const message = getCompiledTransactionMessageDecoder().decode(
         new Uint8Array(transaction.messageBytes)
@@ -83,7 +147,7 @@ describe("final underwrite transaction validation", () => {
       expect(readU128(underwrite, 40)).toBe(PREMIUM_E18);
       expect(readU16(underwrite, 56)).toBe(MARKET.operationalFeeBps);
       expect(message.instructions[1]?.accountIndices).toHaveLength(
-        isPut ? 18 : 19
+        isPut ? 20 : 21
       );
       const underwriteAccounts = message.instructions[1]?.accountIndices;
       if (underwriteAccounts === undefined) {
@@ -96,15 +160,46 @@ describe("final underwrite transaction validation", () => {
         strike: STRIKE_E8.toString(),
       });
       const [baseVault, quoteVault] = await Promise.all([
-        deriveAta(series, address(MARKET.baseMint)),
-        deriveAta(series, address(MARKET.quoteMint)),
+        deriveAta(series, address(MARKET.baseMint), baseTokenProgram),
+        deriveAta(series, address(MARKET.quoteMint), quoteTokenProgram),
       ]);
+      const longMint = await longMintFor(market, isPut);
+      const [buyerLongAta, feeRecipientQuoteAta] = await Promise.all([
+        deriveAta(
+          address("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"),
+          longMint,
+          LEGACY_TOKEN_PROGRAM
+        ),
+        deriveAta(
+          address(MARKET.feeRecipient),
+          address(MARKET.quoteMint),
+          quoteTokenProgram
+        ),
+      ]);
+      const instructionAccounts = underwriteAccounts.map(
+        (index) => message.staticAccounts[index]
+      );
+      expect(instructionAccounts.slice(3, 8)).toEqual([
+        LEGACY_TOKEN_PROGRAM,
+        baseTokenProgram,
+        quoteTokenProgram,
+        address(MARKET.baseMint),
+        address(MARKET.quoteMint),
+      ]);
+      expect(instructionAccounts[10]).toBe(buyerLongAta);
+      expect(instructionAccounts[isPut ? 14 : 15]).toBe(feeRecipientQuoteAta);
       const vaultAccounts = underwriteAccounts
-        .slice(isPut ? 13 : 14, isPut ? 15 : 16)
+        .slice(isPut ? 16 : 17, isPut ? 18 : 19)
         .map((index) => message.staticAccounts[index]);
       expect(vaultAccounts).toEqual(
         isPut ? [quoteVault, baseVault] : [baseVault, quoteVault]
       );
+      expect(() =>
+        validateFinalUnderwriteTransaction({
+          underwriteTx: canonicalTransaction,
+          canonicalTransaction,
+        })
+      ).not.toThrow();
     }
   });
 
@@ -292,17 +387,39 @@ function bytesBase64(value: Uint8Array): string {
 
 async function deriveAta(
   owner: ReturnType<typeof address>,
-  mint: ReturnType<typeof address>
+  mint: ReturnType<typeof address>,
+  tokenProgram: ReturnType<typeof address>
 ) {
   const [ata] = await getProgramDerivedAddress({
     programAddress: address("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"),
     seeds: [
       getAddressEncoder().encode(owner),
-      getAddressEncoder().encode(
-        address("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
-      ),
+      getAddressEncoder().encode(tokenProgram),
       getAddressEncoder().encode(mint),
     ],
   });
   return ata;
+}
+
+async function longMintFor(
+  market: { readonly optionsProgramId: string; readonly marketAddress: string },
+  isPut: boolean
+): Promise<ReturnType<typeof address>> {
+  const [longMint] = await getProgramDerivedAddress({
+    programAddress: address(market.optionsProgramId),
+    seeds: [
+      new TextEncoder().encode("option_series_mint"),
+      getAddressEncoder().encode(address(market.marketAddress)),
+      new Uint8Array([isPut ? 2 : 1]),
+      u64Bytes(BigInt(EXPIRY_SECONDS) * 1_000n),
+      u64Bytes(STRIKE_E8),
+    ],
+  });
+  return longMint;
+}
+
+function u64Bytes(value: bigint): Uint8Array {
+  const bytes = new Uint8Array(8);
+  new DataView(bytes.buffer).setBigUint64(0, value, true);
+  return bytes;
 }

@@ -9,8 +9,12 @@ export interface MarketConfig {
   readonly marketAddress: string;
   readonly oracleBase: string;
   readonly baseMint: string;
+  /** SPL Token program that owns the BaseCoin mint. */
+  readonly baseTokenProgram: string;
   readonly baseMintDecimals: number;
   readonly quoteMint: string;
+  /** SPL Token program that owns the QuoteCoin mint. */
+  readonly quoteTokenProgram: string;
   /** QuoteCoin token decimals used to validate signed premium terms. */
   readonly quoteMintDecimals: number;
   readonly baseCoinSymbol: string;
@@ -84,8 +88,10 @@ const DEVNET_WSOL_MARKET: MarketConfig = {
   marketAddress: "CY7qdovcTnpA6qo3Mp1J9Zws2ZnSnM7uXLyEXWGY3EUo",
   oracleBase: "SOL", // Pyth SOLUSD
   baseMint: "wSoLCzXHe214cjx7CFjP1axzXyqLkEwq5Xf873hy1JP",
+  baseTokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
   baseMintDecimals: 9,
   quoteMint: "usdcHvyN6fvECJ1poPYkt1vztze1pQ6psC8i4cji2Ly",
+  quoteTokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
   quoteMintDecimals: 6,
   baseCoinSymbol: "twSOL",
   quoteCoinSymbol: "tUSDC",
