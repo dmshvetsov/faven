@@ -308,6 +308,7 @@ function solanaRpcFetch(): typeof fetch {
           blockTime: 1_735_689_600,
           meta: {
             err: null,
+            loadedAddresses: { writable: [], readonly: [] },
             logMessages: [
               `Program ${OPTIONS_PROGRAM} invoke [1]`,
               `Program data: ${eventData(SERIES, 6_000_000_000n)}`,
@@ -319,15 +320,17 @@ function solanaRpcFetch(): typeof fetch {
               accountKeys: [
                 "11111111111111111111111111111111",
                 MARKET,
-                "SysvarC1ock11111111111111111111111111111111",
-                SERIES,
                 "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+                BASE_MINT,
+                QUOTE_MINT,
+                SERIES,
+                "So11111111111111111111111111111111111111112",
                 OPTIONS_PROGRAM,
               ],
               instructions: [
                 {
-                  programIdIndex: 5,
-                  accounts: [0, 1, 3, 4],
+                  programIdIndex: 7,
+                  accounts: [0, 1, 2, 2, 3, 4, 5, 6],
                   data: unverifiedInstructionData(),
                 },
               ],
