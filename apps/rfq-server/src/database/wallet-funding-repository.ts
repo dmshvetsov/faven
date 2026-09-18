@@ -55,7 +55,7 @@ export class WalletFundingRepository {
 
   async markSucceeded(
     id: number,
-    transactionSignature: string,
+    transactionSignature: string | null,
     completedAtMs: number
   ): Promise<void> {
     await this.database

@@ -76,6 +76,30 @@ export class JsonSolanaRpc implements SolanaBroadcastRpc {
     throw new FundingConfirmationTimeoutError();
   }
 
+  async setSurfnetAccount(
+    publicKey: string,
+    update: { readonly lamports: bigint }
+  ): Promise<void> {
+    await this.call("surfnet_setAccount", [
+      publicKey,
+      { lamports: safeRpcInteger(update.lamports) },
+    ]);
+  }
+
+  async setSurfnetTokenAccount(input: {
+    readonly owner: string;
+    readonly mint: string;
+    readonly tokenProgram: string;
+    readonly amount: bigint;
+  }): Promise<void> {
+    await this.call("surfnet_setTokenAccount", [
+      input.owner,
+      input.mint,
+      { amount: safeRpcInteger(input.amount) },
+      input.tokenProgram,
+    ]);
+  }
+
   async confirm(signature: string): Promise<SolanaConfirmation> {
     const result = await this.call("getSignatureStatuses", [
       [signature],
@@ -146,4 +170,12 @@ function resultValue(value: unknown): Record<string, unknown> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function safeRpcInteger(value: bigint): number {
+  const converted = Number(value);
+  if (!Number.isSafeInteger(converted) || converted < 0) {
+    throw new Error("Surfnet balance must be a non-negative safe integer.");
+  }
+  return converted;
 }

@@ -7,7 +7,7 @@ import {
 import { env } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { WALLET_FUNDING_COOLDOWN_MS } from "../src/config";
+import { LOCALHOST_FUNDING, WALLET_FUNDING_COOLDOWN_MS } from "../src/config";
 import {
   fundedResponse,
   fundWallet,
@@ -49,6 +49,15 @@ describe("wallet funding", () => {
         solLamport: "25000000",
       },
     });
+    expect(fundedResponse(null, LOCALHOST_FUNDING)).toMatchObject({
+      signature: null,
+      funded: {
+        So11111111111111111111111111111111111111112: "1000000000000",
+        EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: "250000000000",
+        pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn: "1000000000000",
+        SPCXxcqXj6e5dJDVNovHN8744zkbhM2bYudU45BimGb: "1000000000000",
+      },
+    });
     expect(retryAfterSeconds(new Date(1_001), 1)).toBe(1);
     expect(retryAfterSeconds(new Date(1_002), 1)).toBe(2);
     expect(WALLET_FUNDING_COOLDOWN_MS).toBe(86_400_000);
@@ -82,6 +91,7 @@ describe("wallet funding", () => {
     await expect(
       fundWallet({
         database: env.DB,
+        cluster: "devnet",
         rpcUrl: "https://unused.example.com",
         treasuryPrivateKey: JSON.stringify([
           ...treasuryPrivateKeyBytes,
@@ -157,6 +167,7 @@ describe("wallet funding", () => {
     await expect(
       fundWallet({
         database: env.DB,
+        cluster: "devnet",
         rpcUrl: "https://solana.example",
         treasuryPrivateKey,
         walletAddress,
@@ -175,6 +186,7 @@ describe("wallet funding", () => {
     await expect(
       fundWallet({
         database: env.DB,
+        cluster: "devnet",
         rpcUrl: "https://solana.example",
         treasuryPrivateKey,
         walletAddress,
@@ -217,6 +229,7 @@ describe("wallet funding", () => {
 
     await fundWallet({
       database: env.DB,
+      cluster: "devnet",
       rpcUrl: "https://solana.example",
       treasuryPrivateKey,
       walletAddress,
@@ -229,6 +242,68 @@ describe("wallet funding", () => {
     ).resolves.toMatchObject({
       status: "failed",
       failure_reason: "transaction-failed",
+    });
+  });
+
+  it("uses Surfpool cheatcodes for localhost funding", async () => {
+    await createWalletFundingsTable();
+    const { walletAddress } = await fundingInput();
+    const requests: Array<{
+      readonly method: string;
+      readonly params: unknown;
+    }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: unknown, init: RequestInit) => {
+        const request = JSON.parse(String(init.body)) as {
+          method: string;
+          params: unknown;
+        };
+        requests.push(request);
+        return Response.json({ result: null });
+      })
+    );
+
+    await expect(
+      fundWallet({
+        database: env.DB,
+        cluster: "localhost",
+        rpcUrl: "http://127.0.0.1:8899",
+        treasuryPrivateKey: undefined,
+        walletAddress,
+      })
+    ).resolves.toMatchObject({ status: "funded", signature: null });
+
+    expect(requests.map((request) => request.method)).toEqual([
+      "surfnet_setTokenAccount",
+      "surfnet_setTokenAccount",
+      "surfnet_setTokenAccount",
+      "surfnet_setTokenAccount",
+      "surfnet_setAccount",
+    ]);
+    expect(requests[0]?.params).toEqual([
+      walletAddress,
+      "So11111111111111111111111111111111111111112",
+      { amount: 1_000_000_000_000 },
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    ]);
+    expect(requests[2]?.params).toEqual([
+      walletAddress,
+      "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn",
+      { amount: 1_000_000_000_000 },
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+    ]);
+    expect(requests[4]?.params).toEqual([
+      walletAddress,
+      { lamports: 25_000_000 },
+    ]);
+    await expect(
+      env.DB.prepare(
+        "SELECT status, transaction_signature FROM wallet_fundings"
+      ).first()
+    ).resolves.toMatchObject({
+      status: "succeeded",
+      transaction_signature: null,
     });
   });
 });

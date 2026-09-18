@@ -68,9 +68,12 @@ app.get("/health", (context) =>
 app.route("/internal/backfills", backfillsRouter);
 
 app.post("/wallet-fundings", async (context) => {
-  if (context.env.SOLANA_CLUSTER !== "devnet") {
+  if (
+    context.env.SOLANA_CLUSTER !== "devnet" &&
+    context.env.SOLANA_CLUSTER !== "localhost"
+  ) {
     console.warn(
-      `wallet-funding is called not in devnet, SOLANA_CLUSTER=${context.env.SOLANA_CLUSTER}`
+      `wallet-funding is called outside localhost or devnet, SOLANA_CLUSTER=${context.env.SOLANA_CLUSTER}`
     );
     return context.json({ error: "Not found." }, 404);
   }
@@ -80,6 +83,7 @@ app.post("/wallet-fundings", async (context) => {
   }
   const result = await fundWallet({
     database: context.env.DB,
+    cluster: context.env.SOLANA_CLUSTER,
     rpcUrl: context.env.SOLANA_RPC_URL,
     treasuryPrivateKey: context.env.FAUCET_PRIVATE_KEY,
     walletAddress,
@@ -98,7 +102,10 @@ app.post("/wallet-fundings", async (context) => {
     case "funding-unavailable":
       return context.json({ error: result.status }, 503);
     case "funded":
-      return context.json(fundedResponse(result.signature), 201);
+      return context.json(
+        fundedResponse(result.signature, result.funding),
+        201
+      );
   }
 });
 

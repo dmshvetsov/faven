@@ -1,6 +1,12 @@
 import { address, isOffCurveAddress } from "@solana/kit";
 
-import { DEVNET_FUNDING, WALLET_FUNDING_COOLDOWN_MS } from "./config";
+import {
+  DEVNET_FUNDING,
+  LOCALHOST_FUNDING,
+  WALLET_FUNDING_COOLDOWN_MS,
+  type SolanaCluster,
+  type WalletFunding,
+} from "./config";
 import { WalletFundingRepository } from "./database/wallet-funding-repository";
 import {
   FundingConfirmationTimeoutError,
@@ -17,10 +23,15 @@ export type WalletFundingResult =
   | { readonly status: "funding-in-progress" }
   | { readonly status: "wallet-cooldown-active"; readonly retryAt: Date }
   | { readonly status: "funding-unavailable" }
-  | { readonly status: "funded"; readonly signature: string };
+  | {
+      readonly status: "funded";
+      readonly signature: string | null;
+      readonly funding: readonly WalletFunding[];
+    };
 
 export async function fundWallet(input: {
   readonly database: D1Database;
+  readonly cluster: SolanaCluster;
   readonly rpcUrl: string;
   readonly treasuryPrivateKey: string | undefined;
   readonly walletAddress: string;
@@ -30,10 +41,8 @@ export async function fundWallet(input: {
     return { status: "invalid-wallet-address" };
   }
 
-  let treasury;
-  try {
-    treasury = await treasurySignerFromSecret(input.treasuryPrivateKey);
-  } catch {
+  const funding = fundingForCluster(input.cluster);
+  if (funding === null) {
     return { status: "funding-unavailable" };
   }
 
@@ -60,6 +69,19 @@ export async function fundWallet(input: {
 
   try {
     const rpc = new JsonSolanaRpc(input.rpcUrl);
+    if (input.cluster === "localhost") {
+      await fundLocalWallet(rpc, input.walletAddress, funding);
+      await repository.markSucceeded(pending.id, null, Date.now());
+      return { status: "funded", signature: null, funding };
+    }
+
+    let treasury;
+    try {
+      treasury = await treasurySignerFromSecret(input.treasuryPrivateKey);
+    } catch {
+      await repository.markFailed(pending.id, "funding-unavailable", now);
+      return { status: "funding-unavailable" };
+    }
     const latestBlockhash = await rpc.getLatestBlockhash();
     const transaction = await buildWalletFundingTransaction({
       recipient: input.walletAddress,
@@ -77,7 +99,7 @@ export async function fundWallet(input: {
       transaction.signature,
       Date.now()
     );
-    return { status: "funded", signature: transaction.signature };
+    return { status: "funded", signature: transaction.signature, funding };
   } catch (error) {
     if (!(error instanceof FundingTransactionFailedError)) {
       console.error(
@@ -104,6 +126,33 @@ export async function fundWallet(input: {
   }
 }
 
+async function fundLocalWallet(
+  rpc: JsonSolanaRpc,
+  walletAddress: string,
+  funding: readonly WalletFunding[]
+): Promise<void> {
+  for (const item of funding) {
+    if (item.kind === "spl-token") {
+      await rpc.setSurfnetTokenAccount({
+        owner: walletAddress,
+        mint: item.mint,
+        tokenProgram: item.tokenProgram,
+        amount: item.mintAmount,
+      });
+    } else {
+      await rpc.setSurfnetAccount(walletAddress, { lamports: item.lamports });
+    }
+  }
+}
+
+function fundingForCluster(
+  cluster: SolanaCluster
+): readonly WalletFunding[] | null {
+  if (cluster === "localhost") return LOCALHOST_FUNDING;
+  if (cluster === "devnet") return DEVNET_FUNDING;
+  return null;
+}
+
 async function cooldownRetryAt(
   repository: WalletFundingRepository,
   walletAddress: string
@@ -127,18 +176,21 @@ export function retryAfterSeconds(retryAt: Date, now = Date.now()): number {
   return Math.max(1, Math.ceil((retryAt.getTime() - now) / 1_000));
 }
 
-export function fundedResponse(signature: string) {
+export function fundedResponse(
+  signature: string | null,
+  funding: readonly WalletFunding[] = DEVNET_FUNDING
+) {
   return {
     signature,
     funded: {
       ...Object.fromEntries(
-        DEVNET_FUNDING.filter((funding) => funding.kind === "spl-token").map(
-          (funding) => [funding.mint, funding.mintAmount.toString()]
-        )
+        funding
+          .filter((funding) => funding.kind === "spl-token")
+          .map((funding) => [funding.mint, funding.mintAmount.toString()])
       ),
-      solLamport: DEVNET_FUNDING.find(
-        (funding) => funding.kind === "sol"
-      )?.lamports.toString(),
+      solLamport: funding
+        .find((funding) => funding.kind === "sol")
+        ?.lamports.toString(),
     },
   };
 }

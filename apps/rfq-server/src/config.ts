@@ -40,7 +40,7 @@ export interface EnvironmentConfig {
   readonly markets: readonly MarketConfig[];
 }
 
-export type DevnetFunding = DevnetSplTokenFunding | DevnetSolFunding;
+export type WalletFunding = DevnetSplTokenFunding | DevnetSolFunding;
 
 export interface DevnetSplTokenFunding {
   readonly kind: "spl-token";
@@ -55,7 +55,7 @@ export interface DevnetSolFunding {
   readonly lamports: bigint;
 }
 
-export const DEVNET_FUNDING: readonly DevnetFunding[] = [
+export const DEVNET_FUNDING: readonly WalletFunding[] = [
   {
     kind: "spl-token",
     mint: "wSoLCzXHe214cjx7CFjP1axzXyqLkEwq5Xf873hy1JP",
@@ -70,7 +70,42 @@ export const DEVNET_FUNDING: readonly DevnetFunding[] = [
     decimals: 6,
     mintAmount: 250_000_000_000n,
   },
-  { kind: "sol", lamports: 25_000_000n },
+  { kind: "sol", lamports: 50_000_000n },
+];
+
+/**
+ * Used with Sufrpool development env
+ */
+export const LOCALHOST_FUNDING: readonly WalletFunding[] = [
+  {
+    kind: "spl-token",
+    mint: "So11111111111111111111111111111111111111112",
+    tokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    decimals: 9,
+    mintAmount: 1_000_000_000_000n,
+  },
+  {
+    kind: "spl-token",
+    mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    tokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    decimals: 6,
+    mintAmount: 250_000_000_000n,
+  },
+  {
+    kind: "spl-token",
+    mint: "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn",
+    tokenProgram: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+    decimals: 6,
+    mintAmount: 1_000_000_000_000n,
+  },
+  {
+    kind: "spl-token",
+    mint: "SPCXxcqXj6e5dJDVNovHN8744zkbhM2bYudU45BimGb",
+    tokenProgram: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+    decimals: 6,
+    mintAmount: 1_000_000_000_000n,
+  },
+  { kind: "sol", lamports: 5_000_000_000n },
 ];
 
 export const WALLET_FUNDING_COOLDOWN_MS = 24 * 60 * 60 * 1_000;
@@ -104,7 +139,7 @@ const LOCALHOST_SOL_MARKET = {
     step: baseUnits(1n, 18),
     maximum: baseUnits(100n, 18),
   },
-}
+};
 const DEVNET_WSOL_MARKET: MarketConfig = {
   optionsProgramId: OPTIONS_PROGRAM_ID,
   marketAddress: "CY7qdovcTnpA6qo3Mp1J9Zws2ZnSnM7uXLyEXWGY3EUo",
