@@ -83,6 +83,28 @@ const OPTIONS_PROGRAM_ID = "FAVENgBXzD9K9qYHKRF5RFRJeT4Qa2EV4EoTycki5gGT";
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
 
+const LOCALHOST_SOL_MARKET = {
+  optionsProgramId: OPTIONS_PROGRAM_ID,
+  marketAddress: "6TkKyoNqvu9KDTCfpXFwn3o6efeVqgMyAsgtD12XAkd1",
+  oracleBase: "SOL", // Pyth SOLUSD
+  baseMint: "FkFea8rF5Pg11qctH5ypMNiyvEcz7VYjYE6q7hH5M6tc",
+  baseTokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  baseMintDecimals: 9,
+  quoteMint: "HLgnWGB7RMb5PbR62yvT3gJAZfbg8MxE2wNfPWmJwxtw",
+  quoteTokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  quoteMintDecimals: 6,
+  baseCoinSymbol: "twSOL",
+  quoteCoinSymbol: "tUSDC",
+  feeRecipient: FAVEN_TREASURY,
+  operationalFeeBps: 500,
+  minFee: 200_000_000_000_000_000n, // 0.25 usdc e18
+  exerciseWindowMs: ONE_HOUR_MS,
+  quantity: {
+    minimum: baseUnits(1n, 18),
+    step: baseUnits(1n, 18),
+    maximum: baseUnits(100n, 18),
+  },
+}
 const DEVNET_WSOL_MARKET: MarketConfig = {
   optionsProgramId: OPTIONS_PROGRAM_ID,
   marketAddress: "CY7qdovcTnpA6qo3Mp1J9Zws2ZnSnM7uXLyEXWGY3EUo",
@@ -105,22 +127,44 @@ const DEVNET_WSOL_MARKET: MarketConfig = {
     maximum: baseUnits(100n, 18),
   },
 };
+const DEVNET_Tk22_MARKET: MarketConfig = {
+  optionsProgramId: OPTIONS_PROGRAM_ID,
+  marketAddress: "TBD",
+  oracleBase: "SOL", // Pyth SOLUSD
+  baseMint: "Tk22yqDFYZq4ydpL1quxzBjCFNkkczAjSNx6uZXtBbm",
+  baseTokenProgram: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+  baseMintDecimals: 9,
+  quoteMint: "usdcHvyN6fvECJ1poPYkt1vztze1pQ6psC8i4cji2Ly",
+  quoteTokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  quoteMintDecimals: 6,
+  baseCoinSymbol: "tk22SOL",
+  quoteCoinSymbol: "tUSDC",
+  feeRecipient: FAVEN_TREASURY,
+  operationalFeeBps: 400, // 4%
+  minFee: 200_000_000_000_000_000n, // 0.2 usdc e18
+  exerciseWindowMs: ONE_HOUR_MS,
+  quantity: {
+    minimum: baseUnits(1n, 18),
+    step: baseUnits(1n, 18),
+    maximum: baseUnits(100n, 18),
+  },
+};
 
 const environmentConfig: Record<ProductEnvironment, EnvironmentConfig> = {
-  "localdevelopment:devnet": {
-    cluster: "devnet",
+  "development:localhost": {
+    cluster: "localhost",
     allowedOrigins: [LOCAL_ORIGIN],
-    markets: [DEVNET_WSOL_MARKET],
+    markets: [LOCALHOST_SOL_MARKET],
   },
   "stagingdevelopment:devnet": {
     cluster: "devnet",
     allowedOrigins: [LOCAL_ORIGIN],
-    markets: [DEVNET_WSOL_MARKET],
+    markets: [DEVNET_WSOL_MARKET, DEVNET_Tk22_MARKET],
   },
   "staging:devnet": {
     cluster: "devnet",
     allowedOrigins: [],
-    markets: [DEVNET_WSOL_MARKET],
+    markets: [DEVNET_WSOL_MARKET, DEVNET_Tk22_MARKET],
   },
   "production:mainnetbeta": {
     cluster: "mainnet-beta",

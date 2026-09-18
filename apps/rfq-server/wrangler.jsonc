@@ -40,8 +40,8 @@
   },
 
   "vars": {
-    "PRODUCT_ENVIRONMENT": "localdevelopment:devnet",
-    "SOLANA_CLUSTER": "devnet",
+    "PRODUCT_ENVIRONMENT": "development:localhost",
+    "SOLANA_CLUSTER": "localhost",
   },
 
   "env": {

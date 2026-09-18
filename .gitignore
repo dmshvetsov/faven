@@ -1,11 +1,14 @@
 # Dependencies
 node_modules
 
-# Build
+# Build and local wrangler state
 dist
 dist-ssr
 *.local
 .wrangler
+
+# Solana localhost validator
+anchor/.surfpool
 
 # Editor
 .vscode/*

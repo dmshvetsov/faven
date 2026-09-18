@@ -5,6 +5,16 @@
 
 Mint authority for all above tokens `GcSzHLa3gFdvhnLCbUXq8CDeLftrkhQezYNsc224WzfR` (Faven Devent faucet key-pair)
 
+## Setup
+
+Start Solana program development environment
+
+    $ just anchor-dev
+
+Initialized markets, fund faucets, only needed once on a fresh start
+
+    $ just anchor-dev-setup
+
 ## Rysk RFQ
 
 RFQ request

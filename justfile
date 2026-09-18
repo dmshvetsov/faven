@@ -4,6 +4,12 @@ lint: anchor-lint apps-lint
 
 format: anchor-format apps-format
 
+anchor-dev:
+    cd anchor && surfpool start --db .surfpool/faven.sqlite --watch
+
+anchor-dev-setup:
+    cd anchor && surfpool run market --env localnet --unsupervised
+
 anchor-test:
     cd anchor && cargo test
 
@@ -23,6 +29,9 @@ apps-lint:
     pnpm -F admin-cli run lint
     pnpm -F sdk run lint
 
+rfq-dev:
+    pnpm -F rfq run dev
+
 rfq-test:
     pnpm -F rfq run test
 
@@ -35,3 +44,6 @@ db-migrate-local:
 
 install-admin-cli:
     pnpm --dir apps/admin-cli run build && npm install --global --prefix "$HOME/.local" "$PWD/apps/admin-cli"
+
+[parallel]
+dev: anchor-dev rfq-dev

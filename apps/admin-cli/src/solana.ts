@@ -25,7 +25,7 @@ export const LEGACY_TOKEN_PROGRAM = address(
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
 );
 export const TOKEN_2022_PROGRAM = address(
-  "TokenzQdYxWz8Yk7VxMtqV1s1BU1q55b1q2Yo1rrbE"
+  "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
 );
 
 export interface SolanaCliConfig {

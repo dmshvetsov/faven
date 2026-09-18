@@ -1,0 +1,4 @@
+signer "operator" "svm::secret_key" {
+    description = "Pays for Market creation and becomes the immutable Market operator"
+    keypair_json = "~/.config/solana/id.json"
+}
