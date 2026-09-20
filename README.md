@@ -5,7 +5,13 @@
 
 Mint authority for all above tokens `GcSzHLa3gFdvhnLCbUXq8CDeLftrkhQezYNsc224WzfR` (Faven Devent faucet key-pair)
 
-## Setup
+## Development Setup
+
+### Requirements
+
+    $ brew install hivemind
+
+### Setup
 
 Start Solana program development environment
 
@@ -14,6 +20,10 @@ Start Solana program development environment
 Initialized markets, fund faucets, only needed once on a fresh start
 
     $ just anchor-dev-setup
+
+### Start Development Env
+
+    $ hivemind
 
 ## Rysk RFQ
 

@@ -58,3 +58,11 @@ Two consequences that drive design:
 
 - **Writability and signer status are properties of an account across the entire transaction**, not per instruction. An account writable for one instruction is write-locked for the whole transaction.
 - **Reusing an account already present in the message costs ~1 byte** in a later instruction, since only its index is stored. Packing more instructions over the same account set is nearly free on size.
+
+### v1 reorders the envelope
+
+`v1` ([SIMD-0385](https://github.com/solana-foundation/solana-improvement-documents/blob/main/proposals/0385-transaction-v1.md)) moves the signature vector to the **tail** so the version byte sits at offset zero of the serialized transaction — infrastructure identifies the format with a single byte read, no deserialization. A v1 transaction starts with `129` (`0x81`).
+
+Legacy and v0 put signatures first, so they start with a signature *count* instead; `0x80` is the v0 prefix on the **message**, not on the transaction.
+
+The four compute-budget values also move out of `ComputeBudgetProgram` instructions and into a message-level config: a `u32` bitmask at a fixed offset plus a positional value list holding only the fields the mask marks present. The values sit after the address array, so reaching them costs a length read and a popcount — but not a deserialization and scan of the instruction list, which is what pricing a v0 transaction requires. That is what makes the 4096-byte size limit affordable. See [transactions-v1.md](transactions-v1.md).

@@ -18,3 +18,15 @@ test = "cargo test"
 
 [path]
 options = "~/.config/solana/FAVENgBXzD9K9qYHKRF5RFRJeT4Qa2EV4EoTycki5gGT-program.json"
+
+# Surfpool test configuration, used with anchor test & anchor localnet commands
+[surfpool]
+startup_wait = 30000 # Time in ms to wait for Surfpool to start
+shutdown_wait = 2000 # Time in ms to wait for Surfpool to shut down
+rpc_port = 8899 # JSON RPC port
+host = "127.0.0.1" # Local IP address to bind to
+online = true # Enable online mode to clone mainnet accounts
+datasource_rpc_url = "https://api.mainnet.solana.com" # Mainnet RPC source
+slot_time = 400 # Simulated slot time in milliseconds
+log_level = "info" # Log verbosity level
+block_production_mode = "clock" # Block production mode

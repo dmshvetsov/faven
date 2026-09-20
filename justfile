@@ -4,8 +4,8 @@ lint: anchor-lint apps-lint
 
 format: anchor-format apps-format
 
-anchor-dev:
-    cd anchor && surfpool start --db .surfpool/faven.sqlite --watch
+anchor-dev *args:
+    cd anchor && surfpool start --db .surfpool/faven-local-development.sqlite --surfnet-id local-development --watch
 
 anchor-dev-setup:
     cd anchor && surfpool run market --env localnet --unsupervised

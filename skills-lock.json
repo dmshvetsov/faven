@@ -5,19 +5,19 @@
       "source": "mattpocock/skills",
       "sourceType": "github",
       "skillPath": "skills/productivity/grilling/SKILL.md",
-      "computedHash": "a16b2f661db6caf310d7e02dd0d069e597cb888873e210e66f641eae715c5f23"
+      "computedHash": "4dd886b0196bf43729d954ae326016f2bd9f5f79d892500b407c33a753362f14"
     },
     "solana-dev": {
       "source": "solana-foundation/solana-dev-skill",
       "sourceType": "github",
       "skillPath": "skills/solana-dev/SKILL.md",
-      "computedHash": "5fce71d71598f090eceea19bb2bbfddb88479c1efeb0d833e4303f08a47744cf"
+      "computedHash": "0eb862cba9fd87a4e51d2837b4d436055e20459ee0f27b05c33e059a3de3ad27"
     },
     "tdd": {
       "source": "mattpocock/skills",
       "sourceType": "github",
       "skillPath": "skills/engineering/tdd/SKILL.md",
-      "computedHash": "3ba0443442024d075ea30205faa586511d526534f7cbfcb9e6bfacbbeacec739"
+      "computedHash": "e753a5da75292bbe59d302d89566bc2c53d0e73944da2f0e944a7578883c07d0"
     }
   }
 }

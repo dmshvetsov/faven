@@ -1,11 +1,11 @@
 ---
 name: solana-dev
-description: Use when user asks to "build a Solana dapp", "write an Anchor program", "create a token", "debug Solana errors", "set up wallet connection", "test my Solana program", "fuzz my Solana program", "deploy to devnet", or "explain Solana concepts" (rent, accounts, PDAs, CPIs, etc.). Also use for program architecture questions — "how should I structure my Anchor program", "design a state machine for my program", "reduce compute units", "why is my program a throughput bottleneck", "how should I name instructions and accounts". Also use for quick on-chain lookups via public RPC + curl — "what's the balance of <wallet>", "look up transaction <sig>", "token balance for <account>", "check this address on mainnet/devnet". End-to-end Solana development playbook covering wallet connection, Anchor/Pinocchio programs, Codama client generation, Surfpool/LiteSVM/Mollusk testing, security checklists, and JSON-RPC curl lookups against public clusters. Prefers @solana/kit v7 plugin clients (createClient + .use()), wallet connection via @solana/kit-plugin-wallet + @solana/react, web3.js v3 (Kit internals, RC) as the migration target for legacy codebases, and Surfpool for local networks and integration testing.
+description: 'Use when user asks to "build a Solana dapp", "write an Anchor program", "create a token", "debug Solana errors", "set up wallet connection", "test my Solana program", "fuzz my Solana program", "deploy to devnet", "send a v1 transaction", "support larger transactions", "fix maxSupportedTransactionVersion", or "explain Solana concepts" (rent, accounts, PDAs, CPIs). Also for program architecture — state layout, reducing compute units, throughput bottlenecks, instruction naming — and quick on-chain lookups via public RPC + curl (balance, transaction, token account). End-to-end playbook: wallet connection, Anchor/Pinocchio programs, Codama clients, Surfpool/LiteSVM/Mollusk testing, security review, and the v1 transaction format (SIMD-0385, 4096-byte transactions). Prefers @solana/kit plugin clients (createClient + .use(); kit 8 for v1), @solana/kit-plugin-wallet + @solana/react for wallets, web3.js v3 (RC) as the legacy migration target, and Surfpool for local networks.'
 license: MIT
 compatibility: Requires Node.js 20.18+, Rust toolchain, Solana CLI, Anchor CLI
 metadata:
   author: Solana Foundation
-  version: "2.1.0"
+  version: "2.4.0"
 ---
 
 # Solana Development Skill (Kit-first)
@@ -15,6 +15,7 @@ Use this Skill when the user asks for:
 - Solana dApp UI work (React / Next.js)
 - Wallet connection + signing flows
 - Transaction building / sending / confirmation UX
+- Transaction v1 / larger transactions (SIMD-0385) — sending, reading, indexing
 - On-chain program development (Anchor or Pinocchio)
 - Program architecture — state layout, PDA seed conventions, naming, parallelization, cranks, vault topology
 - Client SDK generation (typed program clients)
@@ -42,6 +43,7 @@ Use this Skill when the user asks for:
   (`payer()` + `identity()`) only when fees and authority must come from different keypairs.
 - Use `@solana-program/*` program plugins (e.g., `tokenProgram()`) for fluent instruction APIs.
 - Prefer Kit types (`Address`, `Signer`, transaction message APIs, codecs).
+- **Transaction v1** (4096-byte transactions, SIMD-0385) is the one exception to the plugin-client default: `rpcTransactionPlanner` throws on `version: 1` today, so v1 needs `@solana/kit` 8 and the manual `pipe()` path. See [transactions-v1.md](references/transactions-v1.md).
 
 2) **UI: Kit plugin client + @solana/react**
 - Wallet connection via `walletSigner()` from `@solana/kit-plugin-wallet` (Wallet Standard discovery; the connected wallet fills the payer/identity roles), with React hooks from `@solana/kit-plugin-wallet/react`.
@@ -62,6 +64,7 @@ Use this Skill when the user asks for:
 5) **Testing (Surfpool-centered)**
 - Unit tests: LiteSVM (in-process, Rust/TS) or Mollusk (Rust instruction harness).
 - Integration tests: **Surfpool** — mainnet forking with lazy account cloning, 26 `surfnet_*` cheatcodes (time travel, account/token state, oracle scenarios, CU profiling), embeddable in-process via the `@solana/surfpool` SDK, and the default `anchor test` runner in Anchor 1.0+.
+- In TypeScript, boot the surfnet through the Kit plugin: `await createClient().use(surfpool())` from `@solana/surfpool/kit` installs a pre-funded payer, the RPC stack, and a typed `client.cheatcodes` — see [surfpool/kit-plugin.md](references/surfpool/kit-plugin.md).
 - Use solana-test-validator only when you need full validator runtime fidelity not emulated by Surfpool.
 
 ## Agent safety guardrails
@@ -110,13 +113,14 @@ When solving a Solana task:
 Always be explicit about:
 - cluster + RPC endpoints + websocket endpoints
 - fee payer + recent blockhash
-- compute budget + prioritization (where relevant)
+- compute budget + prioritization (where relevant) — on v1 these live in `message.config`, not ComputeBudget instructions, and unset limits are **zero**
+- transaction version — `maxSupportedTransactionVersion: 1` on every `getTransaction` / `getBlock` / `blockSubscribe` read
 - expected account owners + signers + writability
 - token program variant (SPL Token vs Token-2022) and any extensions
 
 ### 4. Add tests
 - Unit test: LiteSVM or Mollusk.
-- Integration test: Surfpool — spawn via CLI (`surfpool start --ci`) or embed with `@solana/surfpool`; use cheatcodes to set up state instead of long setup transactions.
+- Integration test: Surfpool — embed with `.use(surfpool())` from `@solana/surfpool/kit` (preferred) or spawn via CLI (`surfpool start --ci`); use cheatcodes to set up state instead of long setup transactions.
 - For "wallet UX", add mocked hook/provider tests where appropriate.
 
 ### 5. Deliverables expectations
@@ -168,6 +172,7 @@ Surfpool also ships its own MCP server (`surfpool mcp`, stdio) for driving local
 - Quick RPC lookups (curl + public endpoints): [rpc-quick-lookups.md](references/rpc-quick-lookups.md) — balance, tx, token account, account info
 - Solana Kit (@solana/kit): [kit/overview.md](references/kit/overview.md) — plugin clients, quick start, common patterns
 - Kit Plugins & Composition: [kit/plugins.md](references/kit/plugins.md) — ready-to-use clients, wallet plugin, custom composition, available plugins
+- **Transaction v1 / larger transactions (SIMD-0385):** [transactions-v1.md](references/transactions-v1.md) — feature gate check, `maxSupportedTransactionVersion: 1`, `transactionConfig`, sending with kit 8
 - Kit Advanced: [kit/advanced.md](references/kit/advanced.md) — manual transactions, direct RPC, building plugins, domain-specific clients
 - UI + wallet + hooks: [frontend.md](references/frontend.md) — app setup, wallet connection, sending, live balances
 - Kit React bindings (@solana/react): [kit/react.md](references/kit/react.md) — ClientProvider, typed useClient, data hooks, wallet hook reference
@@ -185,5 +190,6 @@ Surfpool also ships its own MCP server (`surfpool mcp`, stdio) for driving local
 - **Version compatibility:** [compatibility-matrix.md](references/compatibility-matrix.md)
 - **Common errors & fixes:** [common-errors.md](references/common-errors.md)
 - **Surfpool (local network):** [surfpool/overview.md](references/surfpool/overview.md)
+- **Surfpool Kit plugin (`@solana/surfpool/kit`):** [surfpool/kit-plugin.md](references/surfpool/kit-plugin.md) — embedded surfnet behind a Kit client, typed cheatcodes
 - **Surfpool cheatcodes:** [surfpool/cheatcodes.md](references/surfpool/cheatcodes.md)
 - **Anchor v1 migration:** [anchor/migrating-v0.32-to-v1.md](references/anchor/migrating-v0.32-to-v1.md)
