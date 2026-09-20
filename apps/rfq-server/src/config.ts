@@ -1,4 +1,8 @@
+import { inspect } from "node:util";
+
 import { baseUnits } from "./math";
+
+inspect.defaultOptions.depth = 4;
 
 export type ProductEnvironment = Env["PRODUCT_ENVIRONMENT"];
 
