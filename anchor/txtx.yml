@@ -5,7 +5,7 @@ runbooks:
   - name: deployment
     description: Deploy programs
     location: runbooks/deployment
-  - name: markets
+  - name: setup_markets
     description: Create the local Options Markets after deploying the program
     location: runbooks/markets
 environments:

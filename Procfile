@@ -1,2 +1,2 @@
-anchor: just anchor-dev --no-tui
-rfq: just rfq-dev
+localnet: just anchor-dev --no-tui
+rfq: just rfq-dev --show-interactive-dev-session

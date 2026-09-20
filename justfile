@@ -5,10 +5,10 @@ lint: anchor-lint apps-lint
 format: anchor-format apps-format
 
 anchor-dev *args:
-    cd anchor && surfpool start --db .surfpool/faven-local-development.sqlite --surfnet-id local-development --watch
+    cd anchor && source .surfpoolenv && surfpool start --db .surfpool/faven-local-development.sqlite --surfnet-id local-development --watch {{args}}
 
 anchor-dev-setup:
-    cd anchor && surfpool run market --env localnet --unsupervised
+    cd anchor && surfpool run setup_markets --env localnet --unsupervised
 
 anchor-test:
     cd anchor && cargo test
@@ -29,8 +29,8 @@ apps-lint:
     pnpm -F admin-cli run lint
     pnpm -F sdk run lint
 
-rfq-dev:
-    pnpm -F rfq run dev
+rfq-dev *args:
+    pnpm -F rfq run dev {{args}}
 
 rfq-test:
     pnpm -F rfq run test

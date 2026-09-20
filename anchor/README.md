@@ -1,5 +1,15 @@
 # Anchor Options (Financial Derivatives) Program
 
+## Setup
+
+Create .surfpoolenv file with
+
+```
+export SURFPOOL_DATASOURCE_RPC_URL=<paste mainnet RPC URL>
+```
+
+Note: Surfpool local development environment (localnet) uses Solana mainnet fork.
+
 ## Project guide
 
 - `src/libs.rs` program entrypoint, instructions specific code goes to `src/instructions/*`

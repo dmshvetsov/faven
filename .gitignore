@@ -7,8 +7,9 @@ dist-ssr
 *.local
 .wrangler
 
-# Solana localhost validator
+# Solana localhost development/testing env (validator)
 anchor/.surfpool
+anchor/.surfpoolenv
 
 # Editor
 .vscode/*
