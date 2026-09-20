@@ -120,16 +120,16 @@ const ONE_HOUR_MS = 60 * 60 * 1000;
 
 const LOCALHOST_SOL_MARKET = {
   optionsProgramId: OPTIONS_PROGRAM_ID,
-  marketAddress: "6TkKyoNqvu9KDTCfpXFwn3o6efeVqgMyAsgtD12XAkd1",
+  marketAddress: "99rh3FNKgvuWigwrsaDLMSD9cX8XWkFAdTdHqLkW3BCC",
   oracleBase: "SOL", // Pyth SOLUSD
-  baseMint: "FkFea8rF5Pg11qctH5ypMNiyvEcz7VYjYE6q7hH5M6tc",
+  baseMint: "So11111111111111111111111111111111111111112",
   baseTokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
   baseMintDecimals: 9,
-  quoteMint: "HLgnWGB7RMb5PbR62yvT3gJAZfbg8MxE2wNfPWmJwxtw",
+  quoteMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
   quoteTokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
   quoteMintDecimals: 6,
-  baseCoinSymbol: "twSOL",
-  quoteCoinSymbol: "tUSDC",
+  baseCoinSymbol: "wSOL",
+  quoteCoinSymbol: "USDC",
   feeRecipient: FAVEN_TREASURY,
   operationalFeeBps: 500,
   minFee: 200_000_000_000_000_000n, // 0.25 usdc e18
