@@ -2,7 +2,13 @@
 
 Faven API for buyers. Faven implements European options, physical settlement, fully collateralised, with Pyth oracle.
 
-Legacy SPL tokens and Token-2022 are supported for underlying (base) and quote assets. Token-2022 base and quote assets may only have follow extensions: TODO add list of allowed token-2022 extensions. Long options token implemented as legacy SPL token.
+Legacy SPL tokens and Token-2022 are supported for underlying (base) and quote assets. Long option tokens always use the legacy SPL Token program.
+
+For Token-2022 base and quote assets, supported mint extensions are Metadata Pointer, Token Metadata, Permanent Delegate, Confidential Transfer Mint, Pausable, and Scaled UI Amount:
+- Default Account State is supported only when it defaults to `Initialized`;
+- Transfer Hook is supported only when no hook program is active.
+
+Supported token-account extensions are Immutable Owner, Pausable Account, and Transfer Hook Account. Frozen accounts, paused mints, active transfer hooks, and all other extensions are rejected.
 
 Maker and buyer is used interchangeably in this document.
 
@@ -13,7 +19,7 @@ Raw bytes, such as transaction bytes, are encoded using base64. Unless otherwise
 ## WebSocket endpoints
 
 - `wss://devnet-api.faven.markets/rfqs/<asset>` Receive RFQs for `<asset>` - base token mint address, each asset separate connection
-- `wss://devnet-api.faven.markets/maker` One global socket for every market: generate underwrite transactions, submit quotes, list positions, exercise Long options tokens.
+- `wss://devnet-api.faven.markets/maker` One global socket for every market: generate underwrite transactions, submit quotes, and receive quote and expiry-price notifications.
 
 Open one `/maker` socket per buyer application. This version
 has no WebSocket authentication, API key, or wallet-binding handshake.
@@ -113,7 +119,7 @@ type UnderwriteTxGenerateRequest = {
 
 `premium` field is a amount of premiumAsset base units paid for one whole underlying token unit option contract. For example an `underwriteTx` for 0.05 wBTC will have `Rfq.quantity` = 0.05 * 10 ** 18 (despite the fact that BTC has 8 decimals) with a maker's premium $764 whole USDC `UnderwriteTxGenerateRequest.params.premium` must be = 764 * 10 ** 18 (despite that USDC premiumAsset has 6 decimals). Maker with given `underwriteTx` will pay on-chain $764 * 0.05 quantity * (10 ** 6 USDC decimals) = 38_200_000 USDC base units or $38.2 whole units. The protocol handles decimal scaling from RFQ scales to corresponding underlying token mint decimal scales, RFQ always use 1e18 scale for premium and quantity and 1e8 for strike price, on-chain settlement always happens in underlying token mint decimals. 
 
-Faven takes a fee from total premium `faven fee = premium * Rfq.quantity whole tokens * faven fee bps` and shows sellers `seller premium = premium - faven fee`. The fee is transferred within underwrite instruction, no separate instruction for a fee in `underwriteTx`. The fee MAY vary but remains inside on-chain configures min, min_bps, max_bps values that all options series share.
+Faven takes a fee from total premium. The on-chain fee is the greater of `premium * Rfq.quantity whole tokens * fee bps / 10_000` and the market minimum fee; seller premium is total premium minus that fee. The fee is transferred within the underwrite instruction, with no separate fee instruction. The fee bps must remain within the market's configured minimum and maximum, otherwise underwrite transaction is rejected.
 
 One whole option contract token represents one whole underlying token.
 
@@ -183,11 +189,12 @@ type Quote = {
 }
 ```
 
-`validUntil` is in Unix seconds. It must be strictly after the RFQ deadline and
-no more than 40 seconds after it. Convert the millisecond deadline before
-comparing. For example, with `requestDeadline = 1770000000123` ms, the allowed
-integer range is `1770000001` through `1770000040` sec inclusive. The server
-also rejects a quote whose transaction blockhash has expired.
+`validUntil` is in Unix seconds. It must be strictly after both the RFQ deadline
+and the current time, and no more than 40 seconds after the current server time.
+For example, with `requestDeadline = 1770000000123` ms, `1770000001` is the
+first valid integer second. A quote can be accepted before its blockhash later
+expires; the server reports a buyer-caused broadcast failure through
+`underwrite.fill` if that happens.
 
 
 ```ts
@@ -322,7 +329,8 @@ No pagination at this point the whole list of filtered/unfiltered positions is r
 ## 6. Series Expiry Price Notification - `/maker` endpoint
 
 The server sends this JSON-RPC notification to every buyer currently connected
-to `/maker` after an options Series expiry price is set on-chain.
+to `/maker` after an operator backfills a confirmed on-chain expiry-price
+finalization.
 
 ```ts
 type SeriesExpiryPriceNotification = {
@@ -331,7 +339,7 @@ type SeriesExpiryPriceNotification = {
   params: {
     seriesAddress: string // finalized Series public key
     expiryPrice: string   // USD expiry price, 1e8 fixed-point
-    method: "pyth1HourEma" | "pythUnverified"
+    method: "pythUnverified" | "pyth1HourEma"
     slot: number          // finalized Solana transaction slot
     signature: string     // finalized Solana transaction signature
   }
@@ -339,11 +347,11 @@ type SeriesExpiryPriceNotification = {
 ```
 
 Price finalization methods:
-- `pyth1HourEma` TODO: provide description
-- `pythUnverified` manually provided pyth hermes price including `id` and `publish_time` that can be used to confirm legitimacy of provided data; this method is permissioned - requires market operator authority, does not perform any on-chain checks and used as a fallback mechanics;
+- `pyth1HourEma` use the first valid Pyth EMA published from expiry through expiry + 60 seconds. On-chain program performs formal verifications before price can be finalized for series.
+- `pythUnverified` fallback method, uses a manually supplied Pyth Hermes price and its `id` and `publish_time`. Only the Market operator may submit it. The on-chain program does not perform any formal verification.
 
 
-## 7. Exercise - `/maker` endpoint
+## 7. Exercise
 
 `exercise_e18` instruction takes one argument:
 - `quantity_e18: u128` — Long tokens to exercise (transfer to options program and burn), expressed as an e18 Base Token quantity.
@@ -355,9 +363,9 @@ mint's decimals without rounding. For example, a 9-decimal Base Token requires
 `1_000_000_321_000_000_000` is valid `quantity_e18` for 9-decimal mint token,
 Converted amount to Base mint decimals that exceeds `u64` are rejected.
 
-Exercise is permitted only after 1. Option series account is reached expiry-price finalization,
-and 2. While an ITM option series' one-hour exercise window remains open.
-`Long` option series token holders MUST submit exercise transaction.
+Exercise is permitted only after 1. Series has an expiry price and 2. While an ITM
+option series' one-hour exercise window remains open. Long option token holders
+submit the transaction directly to the options program; `/maker` has no exercise method.
 
 Seller settlement remains server-operated after exercise window; Settlement
 is not a `/maker` action.
@@ -378,7 +386,6 @@ an RFQ quote slot.
 | `1004` | Submitted transaction does not exactly match a stored buyer offer. |
 | `1005` | RFQ aggregation window has closed. |
 
-Exercise errors use `2xxx` codes
-
-| Code | Meaning |
-| -- | -- |
+Exercise errors are Solana program errors, not JSON-RPC `2xxx` errors. Clients
+should decode the options program's Anchor errors from the transaction simulation
+or confirmation result.
