@@ -7,8 +7,11 @@ skip-lint = false
 [programs.devnet]
 options = "FAVENgBXzD9K9qYHKRF5RFRJeT4Qa2EV4EoTycki5gGT"
 
+[programs.localnet]
+options = "FAVENgBXzD9K9qYHKRF5RFRJeT4Qa2EV4EoTycki5gGT"
+
 [provider]
-cluster = "devnet"
+cluster = "localnet"
 wallet = "~/.config/solana/faven-dev.json"
 
 [scripts]
