@@ -385,7 +385,3 @@ an RFQ quote slot.
 | `1003` | Invalid, missing, altered, or expired transaction signatures. |
 | `1004` | Submitted transaction does not exactly match a stored buyer offer. |
 | `1005` | RFQ aggregation window has closed. |
-
-Exercise errors are Solana program errors, not JSON-RPC `2xxx` errors. Clients
-should decode the options program's Anchor errors from the transaction simulation
-or confirmation result.
