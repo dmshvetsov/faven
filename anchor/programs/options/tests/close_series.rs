@@ -181,6 +181,35 @@ fn pause_token_2022_mint(svm: &mut LiteSVM, key: Pubkey) {
     .unwrap();
 }
 
+fn activate_transfer_hook(svm: &mut LiteSVM, key: Pubkey) {
+    const BASE_ACCOUNT_AND_TYPE_LENGTH: usize = 166;
+    const TRANSFER_HOOK_LENGTH: usize = 64;
+    let mut data = vec![0; BASE_ACCOUNT_AND_TYPE_LENGTH + 4 + TRANSFER_HOOK_LENGTH];
+    Mint::pack(
+        Mint {
+            is_initialized: true,
+            ..Mint::default()
+        },
+        &mut data[..Mint::LEN],
+    )
+    .unwrap();
+    data[165] = 1;
+    data[166..168].copy_from_slice(&u16::from(ExtensionType::TransferHook).to_le_bytes());
+    data[168..170].copy_from_slice(&u16::try_from(TRANSFER_HOOK_LENGTH).unwrap().to_le_bytes());
+    data[202..].copy_from_slice(Pubkey::new_unique().as_ref());
+    svm.set_account(
+        key,
+        Account {
+            lamports: ACCOUNT_RENT,
+            data,
+            owner: spl_token_2022_interface::id(),
+            executable: false,
+            rent_epoch: 0,
+        },
+    )
+    .unwrap();
+}
+
 fn store_account<T: AccountSerialize>(svm: &mut LiteSVM, key: Pubkey, value: &T) {
     let mut data = Vec::new();
     value.try_serialize(&mut data).unwrap();
@@ -537,6 +566,28 @@ fn closure_reports_an_issuer_paused_token_2022_mint() {
         .logs
         .iter()
         .any(|log| log.contains("OperationBlockedByMintIssuer")));
+    assert!(fixture.svm.get_account(&fixture.series).is_some());
+}
+
+#[test]
+fn closure_rejects_a_mint_with_an_activated_transfer_hook() {
+    let mut fixture =
+        closed_series_with_dust_for_programs(TOKEN_PROGRAM_ID, spl_token_2022_interface::id());
+    activate_transfer_hook(&mut fixture.svm, fixture.quote_mint);
+    let transaction = Transaction::new_signed_with_payer(
+        &[close_series_instruction(&fixture)],
+        Some(&fixture.series_closer.pubkey()),
+        &[&fixture.series_closer],
+        fixture.svm.latest_blockhash(),
+    );
+
+    let error = fixture.svm.send_transaction(transaction).unwrap_err();
+
+    assert!(error
+        .meta
+        .logs
+        .iter()
+        .any(|log| log.contains("ActiveTransferHookNotSupported")));
     assert!(fixture.svm.get_account(&fixture.series).is_some());
 }
 

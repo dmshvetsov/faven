@@ -405,11 +405,95 @@ fn user_cannot_create_a_market_with_frozen_default_accounts() {
 }
 
 #[test]
+fn user_can_create_a_market_with_an_inactive_transfer_hook() {
+    let mut svm = new_svm();
+    let payer = Keypair::new();
+    let operator = Keypair::new();
+    let quote_mint = Pubkey::new_unique();
+    let base_mint = Pubkey::new_unique();
+    let hook_authority = Pubkey::new_unique();
+    svm.airdrop(&payer.pubkey(), 10 * LAMPORTS_PER_SOL).unwrap();
+    let mut transfer_hook = [0; 64];
+    transfer_hook[..32].copy_from_slice(hook_authority.as_ref());
+    add_token_2022_mint_with_extension(
+        &mut svm,
+        quote_mint,
+        6,
+        ExtensionType::TransferHook,
+        Some(&transfer_hook),
+    );
+    add_mint(&mut svm, base_mint, 9, TOKEN_PROGRAM_ID);
+
+    let instruction = create_market_instruction(
+        payer.pubkey(),
+        operator.pubkey(),
+        quote_mint,
+        base_mint,
+        OracleConfig::PythTwap { feed_id: [48; 32] },
+        spl_token_2022_interface::id(),
+        TOKEN_PROGRAM_ID,
+        0,
+        0,
+    );
+    let transaction = Transaction::new_signed_with_payer(
+        &[instruction],
+        Some(&payer.pubkey()),
+        &[&payer, &operator],
+        svm.latest_blockhash(),
+    );
+    assert!(svm.send_transaction(transaction).is_ok());
+}
+
+#[test]
+fn user_cannot_create_a_market_with_an_active_transfer_hook() {
+    let mut svm = new_svm();
+    let payer = Keypair::new();
+    let operator = Keypair::new();
+    let quote_mint = Pubkey::new_unique();
+    let base_mint = Pubkey::new_unique();
+    svm.airdrop(&payer.pubkey(), 10 * LAMPORTS_PER_SOL).unwrap();
+    let mut transfer_hook = [0; 64];
+    transfer_hook[32..].copy_from_slice(Pubkey::new_unique().as_ref());
+    add_token_2022_mint_with_extension(
+        &mut svm,
+        quote_mint,
+        6,
+        ExtensionType::TransferHook,
+        Some(&transfer_hook),
+    );
+    add_mint(&mut svm, base_mint, 9, TOKEN_PROGRAM_ID);
+
+    let instruction = create_market_instruction(
+        payer.pubkey(),
+        operator.pubkey(),
+        quote_mint,
+        base_mint,
+        OracleConfig::PythTwap { feed_id: [49; 32] },
+        spl_token_2022_interface::id(),
+        TOKEN_PROGRAM_ID,
+        0,
+        0,
+    );
+    let transaction = Transaction::new_signed_with_payer(
+        &[instruction],
+        Some(&payer.pubkey()),
+        &[&payer, &operator],
+        svm.latest_blockhash(),
+    );
+    let error = svm.send_transaction(transaction).unwrap_err();
+    assert!(
+        error
+            .meta
+            .logs
+            .iter()
+            .any(|log| log.contains("ActiveTransferHookNotSupported")),
+        "{error:?}"
+    );
+}
+
+#[test]
 fn user_cannot_create_a_market_with_unreviewed_mint_extensions() {
-    for (case, extension_type) in [
-        (48, ExtensionType::TransferHook),
-        (49, ExtensionType::MintCloseAuthority),
-    ] {
+    for (case, extension_type) in [(50, ExtensionType::MintCloseAuthority)] {
         let mut svm = new_svm();
         let payer = Keypair::new();
         let operator = Keypair::new();

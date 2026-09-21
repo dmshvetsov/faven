@@ -20,7 +20,10 @@ use solana_sdk::{
     transaction::Transaction,
 };
 use spl_token::state::{Account as SplTokenAccount, AccountState, Mint};
-use spl_token_2022_interface::{extension::ExtensionType, state::Account as Token2022Account};
+use spl_token_2022_interface::{
+    extension::ExtensionType,
+    state::{Account as Token2022Account, Mint as Token2022Mint},
+};
 
 const EXPIRY_MS: u64 = 2_000_000_000_000;
 const FEED_ID: [u8; 32] = [7; 32];
@@ -71,6 +74,36 @@ fn add_mint(svm: &mut LiteSVM, key: Pubkey, token_program: Pubkey) {
             lamports: 1_000_000,
             data,
             owner: token_program,
+            executable: false,
+            rent_epoch: 0,
+        },
+    )
+    .unwrap();
+}
+
+fn add_token_2022_mint_with_active_transfer_hook(svm: &mut LiteSVM, key: Pubkey) {
+    const BASE_ACCOUNT_AND_TYPE_LENGTH: usize = 166;
+    const TRANSFER_HOOK_LENGTH: usize = 64;
+    let mut data = vec![0; BASE_ACCOUNT_AND_TYPE_LENGTH + 4 + TRANSFER_HOOK_LENGTH];
+    Token2022Mint::pack(
+        Token2022Mint {
+            decimals: 6,
+            is_initialized: true,
+            ..Token2022Mint::default()
+        },
+        &mut data[..Token2022Mint::LEN],
+    )
+    .unwrap();
+    data[165] = 1;
+    data[166..168].copy_from_slice(&u16::from(ExtensionType::TransferHook).to_le_bytes());
+    data[168..170].copy_from_slice(&u16::try_from(TRANSFER_HOOK_LENGTH).unwrap().to_le_bytes());
+    data[202..].copy_from_slice(Pubkey::new_unique().as_ref());
+    svm.set_account(
+        key,
+        Account {
+            lamports: 1_000_000,
+            data,
+            owner: spl_token_2022_interface::id(),
             executable: false,
             rent_epoch: 0,
         },
@@ -297,6 +330,51 @@ fn finalizing_a_zero_issued_series_supports_every_token_program_pair() {
         assert_eq!(finalized.expiry_price, Some(123_456_780));
         assert_eq!(finalized.total_quote_amount, 2_100_000);
     }
+}
+
+#[test]
+fn finalization_allows_an_active_transfer_hook_without_executing_it() {
+    let operator = Keypair::new();
+    let market = Pubkey::new_unique();
+    let series = Pubkey::new_unique();
+    let base_mint = Pubkey::new_unique();
+    let quote_mint = Pubkey::new_unique();
+    let quote_token_program = spl_token_2022_interface::id();
+    let quote_collateral_vault =
+        get_associated_token_address_with_program_id(&series, &quote_mint, &quote_token_program);
+    let mut svm = new_svm(EXPIRY_MS);
+    svm.airdrop(&operator.pubkey(), 1_000_000_000).unwrap();
+    add_mint(&mut svm, base_mint, TOKEN_PROGRAM_ID);
+    add_token_2022_mint_with_active_transfer_hook(&mut svm, quote_mint);
+    add_market(&mut svm, market, operator.pubkey(), base_mint, quote_mint);
+    add_series(&mut svm, series, market, EXPIRY_MS);
+    add_token_2022_account_with_extension(
+        &mut svm,
+        quote_collateral_vault,
+        quote_mint,
+        series,
+        2_100_000,
+        ExtensionType::TransferHookAccount,
+    );
+
+    let transaction = Transaction::new_signed_with_payer(
+        &[finalize_instruction(
+            operator.pubkey(),
+            market,
+            base_mint,
+            quote_mint,
+            TOKEN_PROGRAM_ID,
+            quote_token_program,
+            series,
+            Some(quote_collateral_vault),
+            [99; 32],
+            i64::MIN,
+        )],
+        Some(&operator.pubkey()),
+        &[&operator],
+        svm.latest_blockhash(),
+    );
+    assert!(svm.send_transaction(transaction).is_ok());
 }
 
 #[test]

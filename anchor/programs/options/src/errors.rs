@@ -122,4 +122,6 @@ pub enum OptionsError {
     UnsupportedTokenAccountExtension,
     #[msg("The supplied associated token account address is invalid")]
     InvalidAssociatedTokenAccount,
+    #[msg("An active Token-2022 transfer hook is not supported")]
+    ActiveTransferHookNotSupported,
 }

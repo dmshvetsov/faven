@@ -192,6 +192,38 @@ fn pause_token_2022_mint(svm: &mut LiteSVM, key: Pubkey, decimals: u8) {
     .unwrap();
 }
 
+fn activate_transfer_hook(svm: &mut LiteSVM, key: Pubkey, decimals: u8) {
+    const BASE_ACCOUNT_AND_TYPE_LENGTH: usize = 166;
+    const TRANSFER_HOOK_LENGTH: usize = 64;
+    let mut data = vec![0; BASE_ACCOUNT_AND_TYPE_LENGTH + 4 + TRANSFER_HOOK_LENGTH];
+    Mint::pack(
+        Mint {
+            decimals,
+            is_initialized: true,
+            ..Mint::default()
+        },
+        &mut data[..Mint::LEN],
+    )
+    .unwrap();
+    data[165] = 1;
+    data[166..168].copy_from_slice(
+        &u16::from(spl_token_2022_interface::extension::ExtensionType::TransferHook).to_le_bytes(),
+    );
+    data[168..170].copy_from_slice(&u16::try_from(TRANSFER_HOOK_LENGTH).unwrap().to_le_bytes());
+    data[202..].copy_from_slice(Pubkey::new_unique().as_ref());
+    svm.set_account(
+        key,
+        Account {
+            lamports: 1_000_000,
+            data,
+            owner: spl_token_2022_interface::id(),
+            executable: false,
+            rent_epoch: 0,
+        },
+    )
+    .unwrap();
+}
+
 fn store_account<T: AccountSerialize>(svm: &mut LiteSVM, key: Pubkey, value: &T) {
     let mut data = Vec::new();
     value.try_serialize(&mut data).unwrap();
@@ -758,6 +790,25 @@ fn settlement_reports_an_issuer_paused_token_2022_mint() {
         &mut fixture,
         instruction,
         "OperationBlockedByMintIssuer",
+    ));
+}
+
+#[test]
+fn settlement_rejects_a_mint_with_an_activated_transfer_hook() {
+    let mut fixture = settlement_fixture_for_programs(
+        OptionType::Call,
+        false,
+        true,
+        spl_token_2022_interface::id(),
+        TOKEN_PROGRAM_ID,
+    );
+    activate_transfer_hook(&mut fixture.svm, fixture.base_mint, 0);
+
+    let instruction = settle_instruction_for_programs(&fixture);
+    assert!(settlement_error_contains(
+        &mut fixture,
+        instruction,
+        "ActiveTransferHookNotSupported",
     ));
 }
 

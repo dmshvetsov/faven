@@ -188,6 +188,36 @@ fn pause_token_2022_mint(svm: &mut LiteSVM, key: Pubkey, decimals: u8) {
     .unwrap();
 }
 
+fn activate_transfer_hook(svm: &mut LiteSVM, key: Pubkey, decimals: u8) {
+    const BASE_ACCOUNT_AND_TYPE_LENGTH: usize = 166;
+    const TRANSFER_HOOK_LENGTH: usize = 64;
+    let mut data = vec![0; BASE_ACCOUNT_AND_TYPE_LENGTH + 4 + TRANSFER_HOOK_LENGTH];
+    Token2022Mint::pack(
+        Token2022Mint {
+            decimals,
+            is_initialized: true,
+            ..Token2022Mint::default()
+        },
+        &mut data[..Token2022Mint::LEN],
+    )
+    .unwrap();
+    data[165] = 1;
+    data[166..168].copy_from_slice(&u16::from(ExtensionType::TransferHook).to_le_bytes());
+    data[168..170].copy_from_slice(&u16::try_from(TRANSFER_HOOK_LENGTH).unwrap().to_le_bytes());
+    data[202..].copy_from_slice(Pubkey::new_unique().as_ref());
+    svm.set_account(
+        key,
+        Account {
+            lamports: 1_000_000,
+            data,
+            owner: spl_token_2022_interface::id(),
+            executable: false,
+            rent_epoch: 0,
+        },
+    )
+    .unwrap();
+}
+
 fn store_account<T: AccountSerialize>(svm: &mut LiteSVM, key: Pubkey, value: &T) {
     let mut data = Vec::new();
     value.try_serialize(&mut data).unwrap();
@@ -722,6 +752,21 @@ fn exercise_reports_an_issuer_frozen_account_or_paused_mint() {
         &mut paused_mint,
         quantity_e18(EXERCISE_QUANTITY),
         "OperationBlockedByMintIssuer",
+    ));
+}
+
+#[test]
+fn exercise_rejects_a_mint_with_an_activated_transfer_hook() {
+    let mut fixture = fixture(
+        OptionType::Call,
+        TOKEN_PROGRAM_ID,
+        spl_token_2022_interface::id(),
+    );
+    activate_transfer_hook(&mut fixture.svm, fixture.quote_mint, 6);
+    assert!(exercise_error_contains(
+        &mut fixture,
+        quantity_e18(EXERCISE_QUANTITY),
+        "ActiveTransferHookNotSupported",
     ));
 }
 

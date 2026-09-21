@@ -538,6 +538,7 @@ enum Token2022BaseFailure {
     FrozenDefault,
     FrozenAccount,
     PausedMint,
+    ActiveTransferHook,
     UnsupportedAccountExtension(ExtensionType),
 }
 
@@ -570,6 +571,13 @@ fn assert_token_2022_base_underwriting_failure(case: Token2022BaseFailure) {
             9,
             ExtensionType::Pausable,
             &[0; 33],
+        ),
+        Token2022BaseFailure::ActiveTransferHook => add_token_2022_mint_with_extension(
+            &mut svm,
+            base_mint,
+            9,
+            ExtensionType::TransferHook,
+            &[0; 64],
         ),
         _ => add_mint_for_program(&mut svm, base_mint, 9, token_2022_program),
     }
@@ -609,6 +617,10 @@ fn assert_token_2022_base_underwriting_failure(case: Token2022BaseFailure) {
         let mut mint = svm.get_account(&base_mint).unwrap();
         mint.data[202] = 1;
         svm.set_account(base_mint, mint).unwrap();
+    } else if matches!(case, Token2022BaseFailure::ActiveTransferHook) {
+        let mut mint = svm.get_account(&base_mint).unwrap();
+        mint.data[202..].copy_from_slice(Pubkey::new_unique().as_ref());
+        svm.set_account(base_mint, mint).unwrap();
     }
 
     let buyer_quote_source = Pubkey::new_unique();
@@ -631,16 +643,16 @@ fn assert_token_2022_base_underwriting_failure(case: Token2022BaseFailure) {
                 extension_type,
             );
         }
-        Token2022BaseFailure::FrozenDefault | Token2022BaseFailure::PausedMint => {
-            add_token_account_for_program(
-                &mut svm,
-                seller_base_source,
-                base_mint,
-                seller.pubkey(),
-                1_000_000_000,
-                token_2022_program,
-            )
-        }
+        Token2022BaseFailure::FrozenDefault
+        | Token2022BaseFailure::PausedMint
+        | Token2022BaseFailure::ActiveTransferHook => add_token_account_for_program(
+            &mut svm,
+            seller_base_source,
+            base_mint,
+            seller.pubkey(),
+            1_000_000_000,
+            token_2022_program,
+        ),
         Token2022BaseFailure::FrozenAccount => add_token_account_for_program_with_state(
             &mut svm,
             seller_base_source,
@@ -707,6 +719,7 @@ fn assert_token_2022_base_underwriting_failure(case: Token2022BaseFailure) {
         Token2022BaseFailure::FrozenDefault
         | Token2022BaseFailure::FrozenAccount
         | Token2022BaseFailure::PausedMint => "OperationBlockedByMintIssuer",
+        Token2022BaseFailure::ActiveTransferHook => "ActiveTransferHookNotSupported",
         Token2022BaseFailure::UnsupportedAccountExtension(_) => "UnsupportedTokenAccountExtension",
     };
     assert!(
@@ -732,6 +745,11 @@ fn underwriting_reports_an_issuer_frozen_required_account() {
 #[test]
 fn underwriting_reports_an_issuer_paused_mint() {
     assert_token_2022_base_underwriting_failure(Token2022BaseFailure::PausedMint);
+}
+
+#[test]
+fn underwriting_rejects_a_mint_with_an_activated_transfer_hook() {
+    assert_token_2022_base_underwriting_failure(Token2022BaseFailure::ActiveTransferHook);
 }
 
 #[test]

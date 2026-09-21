@@ -8,7 +8,7 @@ use anchor_spl::{
 use spl_token_2022_interface::{
     extension::{
         default_account_state::DefaultAccountState, pausable::PausableConfig,
-        BaseStateWithExtensions, ExtensionType, StateWithExtensions,
+        transfer_hook::TransferHook, BaseStateWithExtensions, ExtensionType, StateWithExtensions,
     },
     state::{Account as Token2022Account, AccountState, Mint as Token2022Mint},
 };
@@ -67,7 +67,7 @@ pub(crate) fn validate_mint_transfer_allowed(
     mint: &InterfaceAccount<'_, Mint>,
     token_program: &Interface<'_, TokenInterface>,
 ) -> Result<()> {
-    validate_mint_token_program(mint, token_program)?;
+    validate_mint_has_inactive_transfer_hook(mint, token_program)?;
     if token_program.key() != spl_token_2022_interface::id() {
         return Ok(());
     }
@@ -82,6 +82,21 @@ pub(crate) fn validate_mint_transfer_allowed(
         );
     }
     Ok(())
+}
+
+pub(crate) fn validate_mint_has_inactive_transfer_hook(
+    mint: &InterfaceAccount<'_, Mint>,
+    token_program: &Interface<'_, TokenInterface>,
+) -> Result<()> {
+    validate_mint_token_program(mint, token_program)?;
+    if token_program.key() != spl_token_2022_interface::id() {
+        return Ok(());
+    }
+    let mint_info = mint.to_account_info();
+    let data = mint_info.try_borrow_data()?;
+    let state = StateWithExtensions::<Token2022Mint>::unpack(&data)
+        .map_err(|_| error!(OptionsError::InvalidMintExtensions))?;
+    validate_inactive_transfer_hook(&state)
 }
 
 pub(crate) fn validate_associated_token_account_address(
@@ -173,7 +188,9 @@ fn validate_token_account_info(
         .map_err(|_| error!(OptionsError::UnsupportedTokenAccountExtension))?
     {
         match extension_type {
-            ExtensionType::ImmutableOwner | ExtensionType::PausableAccount => {}
+            ExtensionType::ImmutableOwner
+            | ExtensionType::PausableAccount
+            | ExtensionType::TransferHookAccount => {}
             _ => return err!(OptionsError::UnsupportedTokenAccountExtension),
         }
     }
@@ -206,11 +223,27 @@ fn validate_token_2022_mint_extensions(mint: &AccountInfo<'_>) -> Result<()> {
                 );
             }
             ExtensionType::TransferHook => {
-                // TODO: review TransferHook support in the dedicated follow-up issue.
-                return err!(OptionsError::UnsupportedMintExtension);
+                validate_inactive_transfer_hook(&state)?;
             }
             _ => return err!(OptionsError::UnsupportedMintExtension),
         }
     }
+    Ok(())
+}
+
+fn validate_inactive_transfer_hook(state: &StateWithExtensions<Token2022Mint>) -> Result<()> {
+    let extension_types = state
+        .get_extension_types()
+        .map_err(|_| error!(OptionsError::InvalidMintExtensions))?;
+    if !extension_types.contains(&ExtensionType::TransferHook) {
+        return Ok(());
+    }
+    let transfer_hook = state
+        .get_extension::<TransferHook>()
+        .map_err(|_| error!(OptionsError::InvalidMintExtensions))?;
+    require!(
+        Option::<Pubkey>::from(transfer_hook.program_id).is_none(),
+        OptionsError::ActiveTransferHookNotSupported
+    );
     Ok(())
 }
