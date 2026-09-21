@@ -2,7 +2,7 @@
 
 Faven API for buyers. Faven implements European options, physical settlement, fully collateralised, with Pyth oracle.
 
-Only legacy SPL tokens are supported, in all cases, by Faven and options program at this moment.
+Legacy SPL tokens and Token-2022 are supported for underlying (base) and quote assets. Token-2022 base and quote assets may only have follow extensions: TODO add list of allowed token-2022 extensions. Long options token implemented as legacy SPL token.
 
 Maker and buyer is used interchangeably in this document.
 
@@ -339,14 +339,14 @@ type SeriesExpiryPriceNotification = {
 ```
 
 Price finalization methods:
-- `pythTwap` expiry price is set using Pyth off-chain cryptographic proof of time-weighted average price with `twap.start_time = expiry_ms / 1_000 - 60`, `twap.end_time == expiry_ms / 1_000`, and `twap.down_slots_ratio <= 500_000`, meaning at least 50% data coverage over the 60-second window.
+- `pyth1HourEma` TODO: provide description
 - `pythUnverified` manually provided pyth hermes price including `id` and `publish_time` that can be used to confirm legitimacy of provided data; this method is permissioned - requires market operator authority, does not perform any on-chain checks and used as a fallback mechanics;
 
 
 ## 7. Exercise - `/maker` endpoint
 
 `exercise_e18` instruction takes one argument:
-- `quantity_e18: u128` — Long tokens to burn, expressed as an e18 Base Token quantity.
+- `quantity_e18: u128` — Long tokens to exercise (transfer to options program and burn), expressed as an e18 Base Token quantity.
 
 `quantity_e18` must be greater than zero and scalable down to the Base Token
 mint's decimals without rounding. For example, a 9-decimal Base Token requires
@@ -355,28 +355,14 @@ mint's decimals without rounding. For example, a 9-decimal Base Token requires
 `1_000_000_321_000_000_000` is valid `quantity_e18` for 9-decimal mint token,
 Converted amount to Base mint decimals that exceeds `u64` are rejected.
 
-The holder sends these accounts in order:
-- `holder` — Long tokens holder, signer and transaction fee payer
-- `market`
-- `baseMint`
-- `quoteMint`
-- `series`
-- `longMint`
-- `holderLongSource` — holder-owned token account for `longMint`
-- `holderPaymentSource` — holder-owned `quoteMint` account for calls, `baseMint` account for puts
-- `holderReceiptAta` — holder’s ATA for `baseMint` on calls, `quoteMint` on puts; created by the instruction if absent
-- `baseCollateralVault` — Series PDA’s ATA for `baseMint`
-- `quoteCollateralVault` — Series PDA’s ATA for `quoteMint`
-- `tokenProgram`
-- `associatedTokenProgram`
-- `systemProgram`
-
-Exercise is permitted only after expiry-price finalization, while an ITM
-option series' one-hour exercise window remains open. `Long` option series
-token holders MUST submit exercise transaction.
+Exercise is permitted only after 1. Option series account is reached expiry-price finalization,
+and 2. While an ITM option series' one-hour exercise window remains open.
+`Long` option series token holders MUST submit exercise transaction.
 
 Seller settlement remains server-operated after exercise window; Settlement
 is not a `/maker` action.
+
+Use options program IDL to construct an exercise instruction. IDL provided separately.
 
 ## Error codes
 
