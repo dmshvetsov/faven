@@ -144,6 +144,50 @@ const LOCALHOST_SOL_MARKET = {
     maximum: baseUnits(100n, 18),
   },
 };
+const LOCALHOST_PUMP_MARKET = {
+  optionsProgramId: OPTIONS_PROGRAM_ID,
+  marketAddress: "GJiEFYsYKdX39hkhSs9WLF8AfGgXRjEtegGj3UrHbpXW",
+  oracleBase: "PUMP", // Crypto.PUMP/USD, feed 1578
+  baseMint: "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn",
+  baseTokenProgram: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+  baseMintDecimals: 6,
+  quoteMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  quoteTokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  quoteMintDecimals: 6,
+  baseCoinSymbol: "PUMP",
+  quoteCoinSymbol: "USDC",
+  feeRecipient: FAVEN_TREASURY,
+  operationalFeeBps: 500,
+  minFee: 200_000_000_000_000_000n,
+  exerciseWindowMs: ONE_HOUR_MS,
+  quantity: {
+    minimum: baseUnits(1n, 18),
+    step: baseUnits(1n, 18),
+    maximum: baseUnits(100n, 18),
+  },
+};
+const LOCALHOST_SPCX_MARKET = {
+  optionsProgramId: OPTIONS_PROGRAM_ID,
+  marketAddress: "6gL1TzV6e4QSffGJdvM7hCoVfe1nTZiB68QPD9ye6NDW",
+  oracleBase: "SPCXX", // Crypto.SPCXX/USD, feed 3329
+  baseMint: "SPCXxcqXj6e5dJDVNovHN8744zkbhM2bYudU45BimGb",
+  baseTokenProgram: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+  baseMintDecimals: 6,
+  quoteMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  quoteTokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  quoteMintDecimals: 6,
+  baseCoinSymbol: "SPCX",
+  quoteCoinSymbol: "USDC",
+  feeRecipient: FAVEN_TREASURY,
+  operationalFeeBps: 500,
+  minFee: 200_000_000_000_000_000n,
+  exerciseWindowMs: ONE_HOUR_MS,
+  quantity: {
+    minimum: baseUnits(1n, 18),
+    step: baseUnits(1n, 18),
+    maximum: baseUnits(100n, 18),
+  },
+};
 const DEVNET_WSOL_MARKET: MarketConfig = {
   optionsProgramId: OPTIONS_PROGRAM_ID,
   marketAddress: "CY7qdovcTnpA6qo3Mp1J9Zws2ZnSnM7uXLyEXWGY3EUo",
@@ -193,7 +237,11 @@ const environmentConfig: Record<ProductEnvironment, EnvironmentConfig> = {
   "development:localhost": {
     cluster: "localhost",
     allowedOrigins: [LOCAL_ORIGIN],
-    markets: [LOCALHOST_SOL_MARKET],
+    markets: [
+      LOCALHOST_SOL_MARKET,
+      LOCALHOST_PUMP_MARKET,
+      LOCALHOST_SPCX_MARKET,
+    ],
   },
   "stagingdevelopment:devnet": {
     cluster: "devnet",
