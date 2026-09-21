@@ -35,7 +35,7 @@ const TOKEN_2022_PROGRAM = address(
   "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
 );
 const MARKET = configuredMarket(
-  "localdevelopment:devnet",
+  "stagingdevelopment:devnet",
   "wSoLCzXHe214cjx7CFjP1axzXyqLkEwq5Xf873hy1JP"
 );
 

@@ -5,9 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const OPTIONS_PROGRAM = "FAVENgBXzD9K9qYHKRF5RFRJeT4Qa2EV4EoTycki5gGT";
 const SERIES = "Stake11111111111111111111111111111111111111";
-const MARKET = "CY7qdovcTnpA6qo3Mp1J9Zws2ZnSnM7uXLyEXWGY3EUo";
-const BASE_MINT = "wSoLCzXHe214cjx7CFjP1axzXyqLkEwq5Xf873hy1JP";
-const QUOTE_MINT = "usdcHvyN6fvECJ1poPYkt1vztze1pQ6psC8i4cji2Ly";
+const MARKET = "99rh3FNKgvuWigwrsaDLMSD9cX8XWkFAdTdHqLkW3BCC";
+const BASE_MINT = "So11111111111111111111111111111111111111112";
+const QUOTE_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const SIGNATURE = "5".repeat(88);
 
 beforeEach(async () => {
@@ -168,8 +168,8 @@ describe("price finalization backfill", () => {
         SERIES,
         MARKET,
         "SOL",
-        "twSOL",
-        "tUSDC",
+        "wSOL",
+        "USDC",
         0,
         1_735_689_600_000,
         "6000000000",
@@ -281,8 +281,8 @@ async function seedSeriesWithoutFinalization(): Promise<void> {
       SERIES,
       MARKET,
       "SOL",
-      "twSOL",
-      "tUSDC",
+      "wSOL",
+      "USDC",
       0,
       1_735_689_600_000,
       "6000000000",

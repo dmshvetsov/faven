@@ -46,7 +46,7 @@ describe("wallet funding", () => {
       funded: {
         wSoLCzXHe214cjx7CFjP1axzXyqLkEwq5Xf873hy1JP: "1000000000000",
         usdcHvyN6fvECJ1poPYkt1vztze1pQ6psC8i4cji2Ly: "250000000000",
-        solLamport: "25000000",
+        solLamport: "50000000",
       },
     });
     expect(fundedResponse(null, LOCALHOST_FUNDING)).toMatchObject({
@@ -295,7 +295,7 @@ describe("wallet funding", () => {
     ]);
     expect(requests[4]?.params).toEqual([
       walletAddress,
-      { lamports: 25_000_000 },
+      { lamports: 5_000_000_000 },
     ]);
     await expect(
       env.DB.prepare(

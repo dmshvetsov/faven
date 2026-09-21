@@ -17,11 +17,11 @@ const TEN_OPTIONS_E18 = "10000000000000000000";
 const PREMIUM_25_E18 = "25000000000000000000";
 const PREMIUM_30_E18 = "30000000000000000000";
 const OVER_MARKET_MAX_E18 = "101000000000000000000";
-const BASE_MINT = "wSoLCzXHe214cjx7CFjP1axzXyqLkEwq5Xf873hy1JP";
+const BASE_MINT = "So11111111111111111111111111111111111111112";
 const MARKET_ADDRESS = configuredMarketAddress();
 
 function configuredMarketAddress(): string {
-  const market = configuredMarket("localdevelopment:devnet", BASE_MINT);
+  const market = configuredMarket("development:localhost", BASE_MINT);
   if (market === null) throw new Error("test market is missing");
   return market.marketAddress;
 }
@@ -818,7 +818,7 @@ function generationParams(
 function quoteFields(rfqId: string): Record<string, unknown> {
   return {
     rfqId,
-    chainId: "solana:devnet",
+    chainId: "solana:localhost",
     validUntil: Math.floor(Date.now() / 1_000) + 30,
   };
 }
