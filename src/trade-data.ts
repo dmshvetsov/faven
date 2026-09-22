@@ -26,7 +26,7 @@ export const assets: Asset[] = [
     symbol: "BTC",
     name: "Bitcoin",
     price: 77975.93,
-    icon: "₿",
+    icon: "/assets/bitcoin.svg",
   },
   {
     id: "eth",
@@ -34,7 +34,7 @@ export const assets: Asset[] = [
     symbol: "ETH",
     name: "Ethereum",
     price: 2742.18,
-    icon: "Ξ",
+    icon: "/assets/ethereum.svg",
   },
   {
     id: "sol",
@@ -42,7 +42,7 @@ export const assets: Asset[] = [
     symbol: "SOL",
     name: "Solana",
     price: 147.92,
-    icon: "S",
+    icon: "/assets/solana.svg",
   },
   {
     id: "aapl",
@@ -50,7 +50,7 @@ export const assets: Asset[] = [
     symbol: "AAPL",
     name: "Apple",
     price: 223.41,
-    icon: "A",
+    icon: "/assets/apple.svg",
   },
   {
     id: "nvda",
@@ -58,7 +58,7 @@ export const assets: Asset[] = [
     symbol: "NVDA",
     name: "NVIDIA",
     price: 171.11,
-    icon: "N",
+    icon: "/assets/nvidia.svg",
   },
 ];
 

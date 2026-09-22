@@ -17,6 +17,9 @@ type WalletWindow = Window &
     phantom?: { solana?: WalletProvider };
     solana?: WalletProvider;
     solflare?: WalletProvider;
+    backpack?: { solana?: WalletProvider };
+    glow?: WalletProvider;
+    coin98?: { sol?: WalletProvider };
   };
 
 function addWallet(
@@ -48,6 +51,10 @@ export function detectWallets(): DetectedWallet[] {
     walletWindow.solflare ??
       (walletWindow.solana?.isSolflare ? walletWindow.solana : undefined)
   );
+  addWallet(wallets, "backpack", "Backpack", walletWindow.backpack?.solana);
+  addWallet(wallets, "glow", "Glow", walletWindow.glow);
+  addWallet(wallets, "coin98", "Coin98", walletWindow.coin98?.sol);
+  addWallet(wallets, "solana", "Solana wallet", walletWindow.solana);
 
   return wallets;
 }
