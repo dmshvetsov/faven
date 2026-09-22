@@ -20,6 +20,7 @@ import {
   type PendingPriceFinalization,
 } from "../pending-price-finalizations.js";
 import { PYTH_SOLANA_FEEDS } from "../pyth-feeds.js";
+import { formatSimulationFailure } from "../simulation.js";
 import {
   loadSolanaCliConfig,
   loadSolanaKeypair,
@@ -287,7 +288,7 @@ async function simulateFinalizationChunks(
       throw new Error(
         [
           "Price finalization simulation failed.",
-          `Reason: ${simulationReason(result)}`,
+          formatSimulationFailure(result),
           "No transaction was signed or sent.",
         ].join("\n")
       );
@@ -638,17 +639,6 @@ async function delay(milliseconds: number): Promise<void> {
 
 function isSimulationSuccessful(value: unknown): boolean {
   return isRecord(value) && isRecord(value.value) && value.value.err === null;
-}
-
-function simulationReason(value: unknown): string {
-  if (!isRecord(value) || !isRecord(value.value) || !("err" in value.value)) {
-    return "The RPC returned an invalid simulation response.";
-  }
-  try {
-    return JSON.stringify(value.value.err);
-  } catch {
-    return "The RPC returned an unreadable simulation error.";
-  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
