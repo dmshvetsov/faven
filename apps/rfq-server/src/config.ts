@@ -12,6 +12,7 @@ export interface MarketConfig {
   readonly optionsProgramId: string;
   readonly marketAddress: string;
   readonly oracleBase: string;
+  readonly baseMintCategory: "crypto" | "tokenized_stocks";
   readonly baseMint: string;
   /** SPL Token program that owns the BaseCoin mint. */
   readonly baseTokenProgram: string;
@@ -122,10 +123,11 @@ const OPTIONS_PROGRAM_ID = "FAVENgBXzD9K9qYHKRF5RFRJeT4Qa2EV4EoTycki5gGT";
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
 
-const LOCALHOST_SOL_MARKET = {
+const LOCALHOST_SOL_MARKET: MarketConfig = {
   optionsProgramId: OPTIONS_PROGRAM_ID,
   marketAddress: "99rh3FNKgvuWigwrsaDLMSD9cX8XWkFAdTdHqLkW3BCC",
   oracleBase: "SOL", // Pyth SOLUSD
+  baseMintCategory: "crypto",
   baseMint: "So11111111111111111111111111111111111111112",
   baseTokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
   baseMintDecimals: 9,
@@ -144,10 +146,11 @@ const LOCALHOST_SOL_MARKET = {
     maximum: baseUnits(100n, 18),
   },
 };
-const LOCALHOST_PUMP_MARKET = {
+const LOCALHOST_PUMP_MARKET: MarketConfig = {
   optionsProgramId: OPTIONS_PROGRAM_ID,
   marketAddress: "GJiEFYsYKdX39hkhSs9WLF8AfGgXRjEtegGj3UrHbpXW",
   oracleBase: "PUMP", // Crypto.PUMP/USD, feed 1578
+  baseMintCategory: "crypto",
   baseMint: "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn",
   baseTokenProgram: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
   baseMintDecimals: 6,
@@ -166,10 +169,11 @@ const LOCALHOST_PUMP_MARKET = {
     maximum: baseUnits(100n, 18),
   },
 };
-const LOCALHOST_SPCX_MARKET = {
+const LOCALHOST_SPCX_MARKET: MarketConfig = {
   optionsProgramId: OPTIONS_PROGRAM_ID,
   marketAddress: "6gL1TzV6e4QSffGJdvM7hCoVfe1nTZiB68QPD9ye6NDW",
   oracleBase: "SPCXX", // Crypto.SPCXX/USD, feed 3329
+  baseMintCategory: "tokenized_stocks",
   baseMint: "SPCXxcqXj6e5dJDVNovHN8744zkbhM2bYudU45BimGb",
   baseTokenProgram: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
   baseMintDecimals: 6,
@@ -192,6 +196,7 @@ const DEVNET_WSOL_MARKET: MarketConfig = {
   optionsProgramId: OPTIONS_PROGRAM_ID,
   marketAddress: "CY7qdovcTnpA6qo3Mp1J9Zws2ZnSnM7uXLyEXWGY3EUo",
   oracleBase: "SOL", // Pyth SOLUSD
+  baseMintCategory: "crypto",
   baseMint: "wSoLCzXHe214cjx7CFjP1axzXyqLkEwq5Xf873hy1JP",
   baseTokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
   baseMintDecimals: 9,
@@ -214,6 +219,7 @@ const DEVNET_Tk22_MARKET: MarketConfig = {
   optionsProgramId: OPTIONS_PROGRAM_ID,
   marketAddress: "TBD",
   oracleBase: "SOL", // Pyth SOLUSD
+  baseMintCategory: "crypto",
   baseMint: "Tk22yqDFYZq4ydpL1quxzBjCFNkkczAjSNx6uZXtBbm",
   baseTokenProgram: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
   baseMintDecimals: 9,
