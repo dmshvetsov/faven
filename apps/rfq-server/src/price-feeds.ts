@@ -73,6 +73,8 @@ export function priceFromBackpackTickerEnvelope(
     : null;
   if (ticker === null || !configuredTickers.has(ticker)) return null;
   if (
+    message.data.e !== "ticker" ||
+    message.data.s !== ticker ||
     typeof message.data.c !== "string" ||
     typeof message.data.E !== "number"
   ) {

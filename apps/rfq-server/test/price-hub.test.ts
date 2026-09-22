@@ -67,7 +67,12 @@ class ControlledBackpackSocket extends EventTarget {
       new MessageEvent("message", {
         data: JSON.stringify({
           stream: "ticker.SOL_USDC",
-          data: { c: "142.37", E: 1_694_687_692_980_000 },
+          data: {
+            e: "ticker",
+            s: "SOL_USDC",
+            c: "142.37",
+            E: 1_694_687_692_980_000,
+          },
         }),
       })
     );

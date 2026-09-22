@@ -27,7 +27,12 @@ describe("Backpack price feeds", () => {
       priceFromBackpackTickerEnvelope(
         {
           stream: "ticker.SOL_USDC",
-          data: { c: "142.37", E: 1_694_687_692_980_000 },
+          data: {
+            e: "ticker",
+            s: "SOL_USDC",
+            c: "142.37",
+            E: 1_694_687_692_980_000,
+          },
         },
         new Set(["SOL_USDC"])
       )
@@ -42,12 +47,42 @@ describe("Backpack price feeds", () => {
 
     expect(
       priceFromBackpackTickerEnvelope(
-        { stream: "ticker.PUMP_USDC", data: { c: "0.004", E: 1_000_000 } },
+        {
+          stream: "ticker.PUMP_USDC",
+          data: { e: "ticker", s: "PUMP_USDC", c: "0.004", E: 1_000_000 },
+        },
         tickers
       )
     ).toBeNull();
     expect(
       priceFromBackpackTickerEnvelope({ stream: "ticker.SOL_USDC" }, tickers)
+    ).toBeNull();
+    expect(
+      priceFromBackpackTickerEnvelope(
+        {
+          stream: "ticker.SOL_USDC",
+          data: { s: "SOL_USDC", c: "142.37", E: 1_000_000 },
+        },
+        tickers
+      )
+    ).toBeNull();
+    expect(
+      priceFromBackpackTickerEnvelope(
+        {
+          stream: "ticker.SOL_USDC",
+          data: { e: "ticker", c: "142.37", E: 1_000_000 },
+        },
+        tickers
+      )
+    ).toBeNull();
+    expect(
+      priceFromBackpackTickerEnvelope(
+        {
+          stream: "ticker.SOL_USDC",
+          data: { e: "ticker", s: "PUMP_USDC", c: "142.37", E: 1_000_000 },
+        },
+        tickers
+      )
     ).toBeNull();
   });
 });
