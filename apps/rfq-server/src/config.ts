@@ -252,12 +252,12 @@ const environmentConfig: Record<ProductEnvironment, EnvironmentConfig> = {
   "stagingdevelopment:devnet": {
     cluster: "devnet",
     allowedOrigins: [LOCAL_ORIGIN],
-    markets: [DEVNET_WSOL_MARKET, DEVNET_Tk22_MARKET],
+    markets: [DEVNET_WSOL_MARKET],
   },
   "staging:devnet": {
     cluster: "devnet",
     allowedOrigins: [],
-    markets: [DEVNET_WSOL_MARKET, DEVNET_Tk22_MARKET],
+    markets: [DEVNET_WSOL_MARKET],
   },
   "production:mainnetbeta": {
     cluster: "mainnet-beta",
