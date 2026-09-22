@@ -781,6 +781,49 @@ describe("RFQ server", () => {
     });
   });
 
+  it("upgrades allowed clients to the live price feed", async () => {
+    const response = await SELF.fetch(
+      "https://example.com/price-feeds",
+      webSocketHeaders()
+    );
+
+    await closeSocket(acceptSocket(response));
+  });
+
+  it("sends a complete unavailable price snapshot after upgrade", async () => {
+    const socket = acceptSocket(
+      await SELF.fetch("https://example.com/price-feeds", webSocketHeaders())
+    );
+
+    await expect(nextSocketMessage(socket)).resolves.toEqual({
+      jsonrpc: "2.0",
+      method: "priceFeeds.snapshot",
+      params: {
+        prices: [
+          {
+            oracleBase: "SOL",
+            marketAddress: "99rh3FNKgvuWigwrsaDLMSD9cX8XWkFAdTdHqLkW3BCC",
+            lastPriceUsd: null,
+            updatedAt: null,
+          },
+          {
+            oracleBase: "PUMP",
+            marketAddress: "GJiEFYsYKdX39hkhSs9WLF8AfGgXRjEtegGj3UrHbpXW",
+            lastPriceUsd: null,
+            updatedAt: null,
+          },
+          {
+            oracleBase: "SPCXX",
+            marketAddress: "6gL1TzV6e4QSffGJdvM7hCoVfe1nTZiB68QPD9ye6NDW",
+            lastPriceUsd: null,
+            updatedAt: null,
+          },
+        ],
+      },
+    });
+    await closeSocket(socket);
+  });
+
   it("rejects unknown browser origins", async () => {
     const response = await SELF.fetch("https://example.com/health", {
       headers: { Origin: "https://untrusted.example" },
@@ -894,6 +937,11 @@ function nextSocketMessage(socket: WebSocket | null): Promise<unknown> {
       resolve(JSON.parse(String(event.data)));
     });
   });
+}
+
+async function closeSocket(socket: WebSocket): Promise<void> {
+  socket.close();
+  await new Promise((resolve) => setTimeout(resolve, 10));
 }
 
 function resultField(message: unknown, field: string): string {

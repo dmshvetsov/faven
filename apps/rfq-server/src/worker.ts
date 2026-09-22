@@ -26,12 +26,14 @@ import {
 } from "./wallet-funding";
 export { AssetHub } from "./asset-hub";
 export { ConnectionHub } from "./connection-hub";
+export { PriceHub } from "./price-hub";
 export { RfqDurableObject } from "./rfq-durable-object";
 
 export interface Env {
   readonly DB: D1Database;
   readonly ASSET_HUB: DurableObjectNamespace;
   readonly CONNECTION_HUB: DurableObjectNamespace;
+  readonly PRICE_HUB: DurableObjectNamespace;
   readonly RFQ_OBJECT: DurableObjectNamespace;
   readonly BROADCAST_QUEUE: Queue;
   readonly PRODUCT_ENVIRONMENT: ProductEnvironment;
@@ -125,6 +127,7 @@ app.get("/sellers/:sellerAddress/underwrites", async (context) => {
 app.get("/rfqs/:asset", (context) => assetHubFetch(context));
 app.get("/maker", (context) => connectionHubFetch(context));
 app.get("/taker", (context) => connectionHubFetch(context));
+app.get("/price-feeds", (context) => priceHubFetch(context));
 
 app.notFound((context) => context.json({ error: "Not found." }, 404));
 
@@ -196,6 +199,14 @@ function connectionHubFetch(context: {
   return context.env.CONNECTION_HUB.get(
     context.env.CONNECTION_HUB.idFromName("connections")
   ).fetch(context.req.raw);
+}
+
+function priceHubFetch(context: {
+  readonly env: Env;
+  readonly req: { readonly raw: Request };
+}): Promise<Response> {
+  const id = context.env.PRICE_HUB.idFromName("all-backpack-prices");
+  return context.env.PRICE_HUB.get(id).fetch(context.req.raw);
 }
 
 export function assetHubName(asset: string): string {
