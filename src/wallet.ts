@@ -58,3 +58,26 @@ export function detectWallets(): DetectedWallet[] {
 
   return wallets;
 }
+
+function createPreviewWallet(id: string, name: string): DetectedWallet {
+  return {
+    id,
+    name,
+    provider: {
+      connect: async () => ({}),
+    },
+  };
+}
+
+/** A local-only design preview, enabled with ?wallet-preview=1 in development. */
+export function getWalletPreview(): DetectedWallet[] | null {
+  if (window.location.hostname !== "localhost") return null;
+
+  const search = new URLSearchParams(window.location.search);
+  if (search.get("wallet-preview") !== "1") return null;
+
+  return [
+    createPreviewWallet("phantom-preview", "Phantom"),
+    createPreviewWallet("solflare-preview", "Solflare"),
+  ];
+}

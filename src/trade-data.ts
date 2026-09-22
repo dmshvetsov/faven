@@ -19,6 +19,14 @@ export type TradeDraft = {
   expiry: string;
 };
 
+export type TradeState = "active" | "settled" | "archived";
+
+export type TradeRecord = TradeDraft & {
+  created: string;
+  id: string;
+  state: TradeState;
+};
+
 export const assets: Asset[] = [
   {
     id: "btc",
@@ -74,6 +82,56 @@ export const initialDraft: TradeDraft = {
   targetPrice: 91000,
   expiry: "SEP 25",
 };
+
+export function createMockTrades(draft: TradeDraft): TradeRecord[] {
+  return [
+    { ...draft, created: "Today", id: "new-trade", state: "active" },
+    {
+      amount: 0.3,
+      asset: assets[1],
+      assetKind: "crypto",
+      created: "Sep 18",
+      direction: "sellHigher",
+      expiry: "OCT 10",
+      id: "eth-active",
+      state: "active",
+      targetPrice: 3000,
+    },
+    {
+      amount: 1.4,
+      asset: assets[3],
+      assetKind: "stock",
+      created: "Aug 14",
+      direction: "sellHigher",
+      expiry: "AUG 28",
+      id: "apple-settled",
+      state: "settled",
+      targetPrice: 230,
+    },
+    {
+      amount: 0.35,
+      asset: assets[4],
+      assetKind: "stock",
+      created: "Aug 02",
+      direction: "sellHigher",
+      expiry: "AUG 16",
+      id: "nvidia-settled",
+      state: "settled",
+      targetPrice: 180,
+    },
+    {
+      amount: 5,
+      asset: assets[2],
+      assetKind: "crypto",
+      created: "Jul 21",
+      direction: "buyLower",
+      expiry: "AUG 08",
+      id: "solana-archived",
+      state: "archived",
+      targetPrice: 135,
+    },
+  ];
+}
 
 export function formatPrice(price: number): string {
   return new Intl.NumberFormat("en-US", {

@@ -141,14 +141,14 @@ a:focus-visible {
 }
 .hero mark {
   background: #dfff00;
-  border-radius: 14px 15px 13px 11px;
+  clip-path: polygon(1% 7%, 99% 0, 98% 96%, 2% 100%);
   color: inherit;
   display: inline-block;
   line-height: 1.05;
   margin: 0 -4px;
-  padding: 2px 5px 4px;
+  padding: 3px 7px 5px;
   position: relative;
-  transform: rotate(-1deg);
+  transform: rotate(-2deg);
 }
 .hero p {
   font-size: 20px;
@@ -521,7 +521,7 @@ a:focus-visible {
   border-radius: 8px;
   color: white;
   display: flex;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   gap: 8px;
   justify-content: center;
@@ -712,6 +712,14 @@ a:focus-visible {
   font-weight: 700;
   line-height: 20px;
   padding: 2px 8px;
+}
+.status-pill.is-settled {
+  background: #e5eef1;
+  color: #55545a;
+}
+.status-pill.is-archived {
+  background: #f1f3f4;
+  color: #666;
 }
 .trade-row .trade-premium {
   color: #15131b;
@@ -1074,6 +1082,7 @@ a:focus-visible {
   display: grid;
   gap: 16px;
   grid-template-columns: 1fr 1fr;
+  margin-top: 12px;
   text-align: left;
 }
 
@@ -1137,7 +1146,7 @@ a:focus-visible {
   border-radius: 8px;
   box-shadow: 0 24px 70px -22px rgba(0, 0, 0, 0.45);
   max-width: 394px;
-  padding: 32px;
+  padding: 28px 32px 32px;
   position: relative;
   width: 100%;
 }
@@ -1167,7 +1176,7 @@ a:focus-visible {
   border-radius: 8px;
   display: grid;
   gap: 12px;
-  grid-template-columns: 32px 1fr 24px;
+  grid-template-columns: 32px 1fr;
   min-height: 64px;
   padding: 12px 16px;
   text-align: left;
@@ -1179,11 +1188,6 @@ a:focus-visible {
 .wallet-options button:hover {
   background: #dce8eb;
   transform: translateY(-1px);
-}
-
-.wallet-options .icon {
-  height: 20px;
-  width: 20px;
 }
 
 .wallet-mark {
@@ -1331,28 +1335,58 @@ a:focus-visible {
 }
 
 .position-opened {
-  padding: 8px 0 4px;
+  padding: 12px 0 0;
   text-align: center;
 }
 
 .position-opened-mark {
   align-items: center;
-  animation: success-mark-in 260ms ease-out both;
-  background: #dff5e5;
+  animation: success-mark-in 180ms ease-out both;
+  background: white;
   border-radius: 50%;
   display: inline-flex;
   height: 56px;
   justify-content: center;
   margin-bottom: 20px;
+  position: relative;
   width: 56px;
 }
 
+@property --success-ring-progress {
+  inherits: false;
+  initial-value: 0%;
+  syntax: "<percentage>";
+}
+
+.position-opened-mark::before {
+  animation: success-ring-draw 420ms cubic-bezier(0.34, 0.88, 0.42, 1) both;
+  background: conic-gradient(
+    #009f57 var(--success-ring-progress),
+    transparent 0
+  );
+  border-radius: 50%;
+  content: "";
+  inset: -3px;
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 0);
+  position: absolute;
+}
+
+.position-opened-mark::after {
+  background: white;
+  border-radius: 50%;
+  content: "";
+  inset: 3px;
+  position: absolute;
+}
+
 .position-opened-stroke {
-  animation: success-check-reveal 300ms 90ms ease-out both;
+  animation: success-check-reveal 260ms 380ms ease-out both;
   display: block;
   height: 30px;
   overflow: hidden;
+  position: relative;
   width: 30px;
+  z-index: 1;
 }
 
 .position-opened-stroke img {
@@ -1364,7 +1398,19 @@ a:focus-visible {
 }
 
 .position-opened h2 {
-  max-width: 440px;
+  font-size: 20px;
+  line-height: 28px;
+  max-width: none;
+}
+
+.position-opened h2 span {
+  display: block;
+}
+
+.position-opened-reward {
+  font-size: 16px;
+  line-height: 24px;
+  margin: 16px 0 0;
 }
 
 @keyframes success-mark-in {
@@ -1384,6 +1430,12 @@ a:focus-visible {
   }
   to {
     clip-path: inset(0 0 0 0);
+  }
+}
+
+@keyframes success-ring-draw {
+  to {
+    --success-ring-progress: 100%;
   }
 }
 
@@ -1414,12 +1466,31 @@ a:focus-visible {
   padding-top: 16px;
 }
 
+.success-view-button {
+  display: block;
+  font-size: 16px;
+  margin: 24px auto 0;
+  min-height: 32px;
+}
+
 .dashboard-heading {
   align-items: baseline;
+  display: block;
 }
 
 .dashboard-heading h1 {
   margin: 0;
+}
+
+.dashboard-heading p {
+  color: #55545a;
+  font-size: 16px;
+  line-height: 24px;
+  margin: 8px 0 0;
+}
+
+.trade-list {
+  border-top: 1px solid #e5eef1;
 }
 
 .trade-row {
@@ -1499,29 +1570,32 @@ a:focus-visible {
 }
 
 .trade-detail-heading {
-  align-items: center;
-  display: flex;
-  gap: 20px;
-  justify-content: space-between;
+  display: block;
   margin-top: 28px;
+  text-align: center;
 }
 
 .trade-detail-heading h1 {
-  font-size: 32px;
-  letter-spacing: -0.8px;
-  line-height: 40px;
-  margin: 0;
-  max-width: 680px;
+  font-size: 28px;
+  letter-spacing: -0.6px;
+  line-height: 36px;
+  margin: 12px auto 0;
+  max-width: 480px;
 }
 
-.trade-detail-heading .asset-badge {
-  height: 48px;
-  width: 48px;
+.trade-detail-heading p {
+  color: #999;
+  font-size: 16px;
+  line-height: 24px;
+  margin: 16px auto 0;
+  max-width: 480px;
 }
 
-.trade-detail-heading .asset-badge img {
-  height: 28px;
-  width: 28px;
+.detail-current-price {
+  display: block;
+  font-size: 16px;
+  line-height: 24px;
+  margin-top: 20px;
 }
 
 .market-status {
@@ -1551,17 +1625,23 @@ a:focus-visible {
 }
 
 .detail-terms {
+  background: #e5eef1;
+  border-radius: 8px;
   display: grid;
-  gap: 16px;
-  grid-template-columns: repeat(3, 1fr);
-  margin-top: 28px;
+  gap: 8px;
+  grid-template-columns: 1fr;
+  margin: 24px auto 0;
+  max-width: 276px;
+  padding: 16px;
+  text-align: left;
 }
 
 .detail-terms div {
-  border-top: 1px solid #e5eef1;
-  display: grid;
-  gap: 4px;
-  padding-top: 12px;
+  align-items: baseline;
+  border: 0;
+  display: flex;
+  justify-content: space-between;
+  padding: 0;
 }
 
 .detail-terms span {
@@ -1573,21 +1653,28 @@ a:focus-visible {
   font-size: 16px;
 }
 
+.detail-terms p {
+  font-size: 12px;
+  line-height: 20px;
+  margin: 8px 0 0;
+}
+
 .detail-outcomes {
-  margin-top: 44px;
+  margin-top: 32px;
 }
 .detail-outcomes .outcome-flow {
-  margin-top: 0;
+  margin: 0 auto;
+  max-width: 592px;
 }
 .review-outcome-grid section.is-current {
   background: #f6f3da;
 }
-.outcome-current-label {
-  color: #0d63ba;
+.detail-outcomes .review-outcome-grid section:not(.is-current) {
+  border: 1px solid #e5eef1;
+}
+.detail-new-trade-button {
   display: block;
-  font-family: "Geist Mono", monospace;
-  font-size: 12px;
-  margin-top: 18px;
+  margin: 40px auto 0;
 }
 
 @media (max-width: 900px) {
