@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   assets,
   expiryOptions,
+  formatExpiry,
   formatPrice,
   getPremium,
   initialDraft,
@@ -106,6 +107,24 @@ function OptionButton({
   );
 }
 
+function Segmented({
+  children,
+  selectedIndex,
+}: {
+  children: React.ReactNode;
+  selectedIndex: 0 | 1;
+}) {
+  return (
+    <div className="segmented">
+      <span
+        aria-hidden="true"
+        className={`segment-indicator ${selectedIndex === 1 ? "is-right" : ""}`}
+      />
+      {children}
+    </div>
+  );
+}
+
 function Dropdown({
   label,
   open,
@@ -172,6 +191,7 @@ function TradeSummary({
   const verb = isSell ? "sell" : "buy";
   const comparison = isSell ? "at or below" : "above";
   const targetValue = draft.amount * draft.targetPrice;
+  const formattedExpiry = formatExpiry(draft.expiry);
   const days = draft.expiry === "SEP 25" ? 11 : 25;
   const annualizedApr = ((premium / targetValue) * (365 / days) * 100).toFixed(
     2
@@ -193,7 +213,10 @@ function TradeSummary({
         </RollingValue>{" "}
         on{" "}
         <RollingValue value={draft.expiry}>
-          {draft.expiry.replace("SEP ", "Sep ")}
+          {formattedExpiry.replace(
+            /^[A-Z]{3}/,
+            (month) => `${month[0]}${month.slice(1).toLowerCase()}`
+          )}
         </RollingValue>
       </p>
 
@@ -224,7 +247,7 @@ function TradeSummary({
       <div className="summary-group outcome-group">
         <div className="outcome-label">
           <span className="lime-label">
-            <RollingValue value={draft.expiry}>{draft.expiry}</RollingValue>
+            <RollingValue value={draft.expiry}>{formattedExpiry}</RollingValue>
           </span>
           <strong>2 possible outcomes:</strong>
         </div>
@@ -275,6 +298,71 @@ function TradeSummary({
   );
 }
 
+function TradeStatus({ expiry }: { expiry: string }) {
+  return (
+    <span className="status-pill">Waiting for {formatExpiry(expiry)}</span>
+  );
+}
+
+function OutcomeFlow({
+  draft,
+  currentOutcome,
+}: {
+  draft: TradeDraft;
+  currentOutcome?: "return" | "execution";
+}) {
+  const isSell = draft.direction === "sellHigher";
+  const targetValue = draft.amount * draft.targetPrice;
+
+  return (
+    <div className="review-outcomes outcome-flow">
+      <span className="lime-label">{formatExpiry(draft.expiry)}</span>
+      <p>2 possible outcomes:</p>
+      <img
+        alt=""
+        className="outcome-connector"
+        src="/assets/outcome-connector.svg"
+      />
+      <div className="review-outcome-grid">
+        <section className={currentOutcome === "return" ? "is-current" : ""}>
+          <h3>
+            → If {draft.asset.symbol} {isSell ? "at or below" : "above"} $
+            {formatPrice(draft.targetPrice)}
+          </h3>
+          <ul>
+            <li>
+              {isSell
+                ? `Get your ${draft.amount} ${draft.asset.symbol} back`
+                : `Buy ${draft.amount} ${draft.asset.symbol} at the target price`}
+            </li>
+            <li>You keep the USDC already received upfront</li>
+          </ul>
+          {currentOutcome === "return" && (
+            <span className="outcome-current-label">Current outcome</span>
+          )}
+        </section>
+        <section className={currentOutcome === "execution" ? "is-current" : ""}>
+          <h3>
+            → If {draft.asset.symbol} {isSell ? "above" : "below"} $
+            {formatPrice(draft.targetPrice)}
+          </h3>
+          <ul>
+            <li>
+              {isSell
+                ? `Sell ${draft.amount} ${draft.asset.symbol} for ${formatPrice(targetValue)} USDC`
+                : "Your funds are returned to your wallet"}
+            </li>
+            <li>Your collateral is exchanged at the target price</li>
+          </ul>
+          {currentOutcome === "execution" && (
+            <span className="outcome-current-label">Current outcome</span>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
 function ReviewDialog({
   draft,
   onClose,
@@ -290,7 +378,6 @@ function ReviewDialog({
 }) {
   const premium = getPremium(draft);
   const isSell = draft.direction === "sellHigher";
-  const targetValue = draft.amount * draft.targetPrice;
   return (
     <div
       aria-modal="true"
@@ -343,7 +430,10 @@ function ReviewDialog({
               You’ll get {premium.toFixed(2)} USDC upfront for agreeing to{" "}
               {isSell ? "sell" : "buy"} {draft.amount} {draft.asset.symbol} if
               it reaches ${formatPrice(draft.targetPrice)} on{" "}
-              {draft.expiry.replace("SEP ", "Sep ")}
+              {formatExpiry(draft.expiry).replace(
+                /^[A-Z]{3}/,
+                (month) => `${month[0]}${month.slice(1).toLowerCase()}`
+              )}
             </h2>
             <div className="review-today">
               <span className="lime-label">Today</span>
@@ -358,47 +448,17 @@ function ReviewDialog({
                 <p>Review all terms before signing with your wallet.</p>
               </section>
             </div>
-            <div className="review-outcomes">
-              <span className="lime-label">{draft.expiry}</span>
-              <p>2 possible outcomes:</p>
-              <img
-                alt=""
-                className="outcome-connector"
-                src="/assets/outcome-connector.svg"
-              />
-              <div className="review-outcome-grid">
-                <section>
-                  <h3>
-                    → If {draft.asset.symbol} {isSell ? "at or below" : "above"}{" "}
-                    ${formatPrice(draft.targetPrice)}
-                  </h3>
-                  <ul>
-                    <li>
-                      {isSell
-                        ? `Get your ${draft.amount} ${draft.asset.symbol} back`
-                        : `Buy ${draft.amount} ${draft.asset.symbol} at the target price`}
-                    </li>
-                    <li>You keep the USDC already received upfront</li>
-                  </ul>
-                </section>
-                <section>
-                  <h3>
-                    → If {draft.asset.symbol} {isSell ? "above" : "below"} $
-                    {formatPrice(draft.targetPrice)}
-                  </h3>
-                  <ul>
-                    <li>
-                      {isSell
-                        ? `Sell ${draft.amount} ${draft.asset.symbol} for ${formatPrice(targetValue)} USDC`
-                        : "Your funds are returned to your wallet"}
-                    </li>
-                    <li>Your collateral is exchanged at the target price</li>
-                  </ul>
-                </section>
-              </div>
-            </div>
+            <OutcomeFlow draft={draft} />
             <button className="review-button" onClick={onConfirm} type="button">
               Confirm terms <Icon name="arrow" />
+            </button>
+            <button
+              className="review-back-button"
+              onClick={onClose}
+              type="button"
+            >
+              <Icon className="back-arrow" name="arrow" />
+              Back
             </button>
           </>
         )}
@@ -572,12 +632,12 @@ function Dashboard({
               </span>
             </span>
             <span className="trade-row-meta">
-              <strong>Waiting for {draft.expiry}</strong>
+              <TradeStatus expiry={draft.expiry} />
               <small>+{premium.toFixed(2)} USDC received</small>
             </span>
           </button>
           <p className="dashboard-note">
-            Select a trade to view its conditions and current outcome.
+            Select a trade to view its conditions and current outcome
           </p>
         </>
       ) : (
@@ -609,18 +669,18 @@ function TradeDetail({
   const targetReached = isSell
     ? draft.asset.price >= draft.targetPrice
     : draft.asset.price <= draft.targetPrice;
-  const targetValue = draft.amount * draft.targetPrice;
   const premium = getPremium(draft);
   const returningOutcome = !targetReached;
 
   return (
     <main className="trade-detail page-enter">
       <button className="back-button" onClick={onBack} type="button">
-        ← Back to trades
+        <Icon className="back-arrow" name="arrow" />
+        Back to trades
       </button>
       <div className="trade-detail-heading">
         <div>
-          <p className="eyebrow">Waiting for {draft.expiry}</p>
+          <TradeStatus expiry={draft.expiry} />
           <h1>
             Sell {draft.amount} {draft.asset.symbol} if it reaches $
             {formatPrice(draft.targetPrice)}
@@ -652,34 +712,10 @@ function TradeDetail({
         </div>
       </section>
       <section className="detail-outcomes">
-        <h2>Possible outcomes</h2>
-        <div className="detail-outcome-grid">
-          <article className={returningOutcome ? "is-current" : ""}>
-            <h3>
-              → If {draft.asset.symbol}{" "}
-              {isSell ? "stays at or below" : "moves above"} $
-              {formatPrice(draft.targetPrice)}
-            </h3>
-            <p>
-              {isSell
-                ? `Your ${draft.amount} ${draft.asset.symbol} is returned.`
-                : `You buy at the target price.`}
-            </p>
-            <span>{returningOutcome ? "Current outcome" : ""}</span>
-          </article>
-          <article className={!returningOutcome ? "is-current" : ""}>
-            <h3>
-              → If {draft.asset.symbol} {isSell ? "moves above" : "moves below"}{" "}
-              ${formatPrice(draft.targetPrice)}
-            </h3>
-            <p>
-              {isSell
-                ? `Sell for ${formatPrice(targetValue)} USDC.`
-                : "Your funds are returned."}
-            </p>
-            <span>{!returningOutcome ? "Current outcome" : ""}</span>
-          </article>
-        </div>
+        <OutcomeFlow
+          currentOutcome={returningOutcome ? "return" : "execution"}
+          draft={draft}
+        />
       </section>
     </main>
   );
@@ -855,7 +891,9 @@ export default function App() {
                   index={1}
                   title={steps[0][0]}
                 />
-                <div className="segmented">
+                <Segmented
+                  selectedIndex={draft.direction === "buyLower" ? 0 : 1}
+                >
                   <OptionButton
                     onClick={() => setDirection("buyLower")}
                     selected={draft.direction === "buyLower"}
@@ -868,7 +906,7 @@ export default function App() {
                   >
                     Sell Higher
                   </OptionButton>
-                </div>
+                </Segmented>
               </div>
               <div className="form-section">
                 <StepHeading
@@ -876,7 +914,7 @@ export default function App() {
                   index={2}
                   title={steps[1][0]}
                 />
-                <div className="segmented">
+                <Segmented selectedIndex={draft.assetKind === "crypto" ? 0 : 1}>
                   <OptionButton
                     onClick={() => setKind("crypto")}
                     selected={draft.assetKind === "crypto"}
@@ -889,7 +927,7 @@ export default function App() {
                   >
                     Tokenized stocks
                   </OptionButton>
-                </div>
+                </Segmented>
               </div>
               <div className="form-section">
                 <StepHeading
@@ -1023,7 +1061,7 @@ export default function App() {
                 />
                 <Dropdown
                   alignValue
-                  label={draft.expiry}
+                  label={formatExpiry(draft.expiry)}
                   onToggle={() =>
                     setOpenMenu(openMenu === "expiry" ? null : "expiry")
                   }
@@ -1039,7 +1077,7 @@ export default function App() {
                       }}
                       type="button"
                     >
-                      <span>{expiry}</span>
+                      <span>{formatExpiry(expiry)}</span>
                       <span className="check-slot">
                         {draft.expiry === expiry && <Icon name="check" />}
                       </span>

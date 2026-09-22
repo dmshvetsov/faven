@@ -82,6 +82,33 @@ export function formatPrice(price: number): string {
   }).format(price);
 }
 
+export function formatExpiry(expiry: string, now = new Date()): string {
+  const [month, day] = expiry.split(" ");
+  const months = [
+    "JAN",
+    "FEB",
+    "MAR",
+    "APR",
+    "MAY",
+    "JUN",
+    "JUL",
+    "AUG",
+    "SEP",
+    "OCT",
+    "NOV",
+    "DEC",
+  ];
+  const monthIndex = months.indexOf(month);
+  const currentDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const settlement = new Date(now.getFullYear(), monthIndex, Number(day));
+
+  if (settlement < currentDay) settlement.setFullYear(now.getFullYear() + 1);
+
+  return settlement.getFullYear() === now.getFullYear()
+    ? expiry
+    : `${expiry}, ${settlement.getFullYear()}`;
+}
+
 export function getPremium(draft: TradeDraft): number {
   const multiplier = draft.direction === "sellHigher" ? 0.001442 : 0.00118;
   return Number((draft.amount * draft.targetPrice * multiplier).toFixed(2));
