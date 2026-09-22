@@ -23,3 +23,15 @@ export {
   type EligiblePriceFinalizationGroup,
   type SolanaRpcTransport,
 } from "./price-finalization-discovery.js";
+export {
+  discoverEligibleSettlementGroups,
+  type EligibleSettlementGroup,
+  type EligibleSettlementSeries,
+  type EligibleSettlementSeller,
+} from "./settlement-discovery.js";
+export {
+  createSettlementTransaction,
+  SETTLEMENT_COMPUTE_UNIT_LIMIT,
+  type SettlementSellerAccounts,
+  type SettlementTransactionInput,
+} from "./settlement-transaction.js";
