@@ -312,10 +312,17 @@ function ReviewDialog({
         </button>
         {isPositionOpen ? (
           <div className="position-opened">
-            <p className="eyebrow">Position opened</p>
+            <div aria-hidden="true" className="position-opened-mark">
+              <span className="position-opened-stroke">
+                <img alt="" src="/assets/check.svg" />
+              </span>
+            </div>
             <h2>Your trade is now waiting for {draft.expiry}</h2>
             <div className="position-opened-card">
-              <p>{premium.toFixed(2)} USDC has been received upfront.</p>
+              <p>
+                <strong>{premium.toFixed(2)} USDC</strong> has been received
+                upfront.
+              </p>
               <p>
                 Your {draft.amount} {draft.asset.symbol} will be evaluated
                 against the target price on {draft.expiry}.
@@ -326,7 +333,7 @@ function ReviewDialog({
               onClick={onViewTrade}
               type="button"
             >
-              View trade <Icon name="arrow" />
+              View trade
             </button>
           </div>
         ) : (
@@ -353,12 +360,12 @@ function ReviewDialog({
             </div>
             <div className="review-outcomes">
               <span className="lime-label">{draft.expiry}</span>
+              <p>2 possible outcomes:</p>
               <img
                 alt=""
                 className="outcome-connector"
                 src="/assets/outcome-connector.svg"
               />
-              <p>2 possible outcomes:</p>
               <div className="review-outcome-grid">
                 <section>
                   <h3>
@@ -975,10 +982,7 @@ export default function App() {
               </div>
               <div className="form-section">
                 <StepHeading
-                  description={steps[4][1].replace(
-                    "sell",
-                    draft.direction === "sellHigher" ? "sell" : "buy"
-                  )}
+                  description={steps[4][1].replace("BTC", draft.asset.symbol)}
                   index={5}
                   title={steps[4][0]}
                 />

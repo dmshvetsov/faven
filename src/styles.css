@@ -429,6 +429,7 @@ a:focus-visible {
   line-height: 24px;
   margin: 0 auto 16px;
   max-width: 346px;
+  min-height: 72px;
   text-align: center;
 }
 .summary-group {
@@ -1261,6 +1262,10 @@ a:focus-visible {
   width: 16px;
 }
 
+.asset-badge.asset-aapl img {
+  transform: translateY(-1px) scale(0.86);
+}
+
 .asset-eth {
   background: #627eea;
 }
@@ -1278,8 +1283,60 @@ a:focus-visible {
 }
 
 .position-opened {
-  padding: 20px 0 4px;
+  padding: 8px 0 4px;
   text-align: center;
+}
+
+.position-opened-mark {
+  align-items: center;
+  animation: success-mark-in 260ms ease-out both;
+  background: #dff5e5;
+  border-radius: 50%;
+  display: inline-flex;
+  height: 56px;
+  justify-content: center;
+  margin-bottom: 20px;
+  width: 56px;
+}
+
+.position-opened-stroke {
+  animation: success-check-reveal 300ms 90ms ease-out both;
+  display: block;
+  height: 30px;
+  overflow: hidden;
+  width: 30px;
+}
+
+.position-opened-stroke img {
+  filter: invert(44%) sepia(58%) saturate(550%) hue-rotate(94deg)
+    brightness(88%) contrast(90%);
+  height: 30px;
+  max-width: none;
+  width: 30px;
+}
+
+.position-opened h2 {
+  max-width: 440px;
+}
+
+@keyframes success-mark-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes success-check-reveal {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
 }
 
 .position-opened-card {
@@ -1295,6 +1352,10 @@ a:focus-visible {
   font-size: 16px;
   line-height: 24px;
   margin: 0;
+}
+
+.position-opened-card strong {
+  font-weight: 700;
 }
 
 .position-opened-card p + p {
@@ -1315,6 +1376,7 @@ a:focus-visible {
 
 .trade-row {
   background: transparent;
+  padding-inline: 24px;
   text-align: left;
   transition:
     background-color 160ms ease,
@@ -1485,8 +1547,7 @@ a:focus-visible {
 
 .detail-outcome-grid article.is-current {
   background: #f6f3da;
-  border-color: #df0;
-  box-shadow: 0 10px 24px -22px rgba(21, 19, 27, 0.5);
+  border-color: transparent;
 }
 
 .detail-outcome-grid h3 {
@@ -1533,5 +1594,9 @@ a:focus-visible {
   .trade-row-meta {
     justify-items: start;
     text-align: left;
+  }
+
+  .trade-row {
+    padding-inline: 16px;
   }
 }
