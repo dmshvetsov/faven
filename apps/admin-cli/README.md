@@ -24,6 +24,12 @@ export RFQ_SERVER_URL="https://devent-api.faven.markets"
 export RFQ_SERVER_ADMIN_AUTH_TOKEN="your-admin-token"
 ```
 
+## Settling series
+
+`faven series settle` discovers settlement-ready Series directly on-chain. It
+selects one Market and expiry group, simulates safe SellerVault batches before
+asking for confirmation, and keeps a local checkpoint for unfinished runs.
+
 ## Install locally
 
 From the repository root, build the CLI and install it into your user-owned

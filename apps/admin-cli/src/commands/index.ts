@@ -3,6 +3,7 @@ import { marketBackfillCommand } from "./market-backfill.js";
 import { createMarketCommand } from "./market-create.js";
 import { seriesFinalizeCommand } from "./series-finalize.js";
 import { seriesListCommand } from "./series-list.js";
+import { seriesSettleCommand } from "./series-settle.js";
 
 export const commandGroups: Readonly<Record<string, CommandGroup>> = {
   series: {
@@ -10,6 +11,7 @@ export const commandGroups: Readonly<Record<string, CommandGroup>> = {
     commands: {
       finalize: seriesFinalizeCommand,
       list: seriesListCommand,
+      settle: seriesSettleCommand,
     },
   },
   market: {
