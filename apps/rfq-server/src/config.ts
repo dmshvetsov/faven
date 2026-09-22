@@ -22,8 +22,8 @@ export interface MarketConfig {
   readonly quoteTokenProgram: string;
   /** QuoteCoin token decimals used to validate signed premium terms. */
   readonly quoteMintDecimals: number;
-  readonly baseCoinSymbol: string;
-  readonly quoteCoinSymbol: string;
+  readonly baseTokenSymbol: string;
+  readonly quoteTokenSymbol: string;
   readonly feeRecipient: string;
   readonly operationalFeeBps: number;
   /** QuoteCoin minimal required fee to pay for underwrite, base units, 18 decimals as premium */
@@ -116,6 +116,8 @@ export const LOCALHOST_FUNDING: readonly WalletFunding[] = [
 export const WALLET_FUNDING_COOLDOWN_MS = 24 * 60 * 60 * 1_000;
 
 const LOCAL_ORIGIN = "http://localhost:5173";
+const BETA_ORIGIN = "https://beta.faven.markets";
+const PRODUCTION_ORIGIN = "https://faven.markets";
 
 const FAVEN_TREASURY = "FvNtr5ZWQxcJPkknFNTSWLBtg3UhP431CxtapqSodVXe";
 
@@ -134,16 +136,16 @@ const LOCALHOST_SOL_MARKET: MarketConfig = {
   quoteMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
   quoteTokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
   quoteMintDecimals: 6,
-  baseCoinSymbol: "wSOL",
-  quoteCoinSymbol: "USDC",
+  baseTokenSymbol: "wSOL",
+  quoteTokenSymbol: "USDC",
   feeRecipient: FAVEN_TREASURY,
   operationalFeeBps: 500,
   minFee: 200_000_000_000_000_000n, // 0.25 usdc e18
   exerciseWindowMs: ONE_HOUR_MS,
   quantity: {
-    minimum: baseUnits(1n, 18),
+    minimum: baseUnits(5n, 18),
     step: baseUnits(1n, 18),
-    maximum: baseUnits(100n, 18),
+    maximum: baseUnits(200n, 18),
   },
 };
 const LOCALHOST_PUMP_MARKET: MarketConfig = {
@@ -157,16 +159,16 @@ const LOCALHOST_PUMP_MARKET: MarketConfig = {
   quoteMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
   quoteTokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
   quoteMintDecimals: 6,
-  baseCoinSymbol: "PUMP",
-  quoteCoinSymbol: "USDC",
+  baseTokenSymbol: "PUMP",
+  quoteTokenSymbol: "USDC",
   feeRecipient: FAVEN_TREASURY,
   operationalFeeBps: 500,
   minFee: 200_000_000_000_000_000n,
   exerciseWindowMs: ONE_HOUR_MS,
   quantity: {
-    minimum: baseUnits(1n, 18),
-    step: baseUnits(1n, 18),
-    maximum: baseUnits(100n, 18),
+    minimum: baseUnits(50_000n, 18),
+    step: baseUnits(10_000n, 18),
+    maximum: baseUnits(5_000_000n, 18),
   },
 };
 const LOCALHOST_SPCX_MARKET: MarketConfig = {
@@ -180,8 +182,8 @@ const LOCALHOST_SPCX_MARKET: MarketConfig = {
   quoteMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
   quoteTokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
   quoteMintDecimals: 6,
-  baseCoinSymbol: "SPCX",
-  quoteCoinSymbol: "USDC",
+  baseTokenSymbol: "SPCX",
+  quoteTokenSymbol: "USDC",
   feeRecipient: FAVEN_TREASURY,
   operationalFeeBps: 500,
   minFee: 200_000_000_000_000_000n,
@@ -203,41 +205,41 @@ const DEVNET_WSOL_MARKET: MarketConfig = {
   quoteMint: "usdcHvyN6fvECJ1poPYkt1vztze1pQ6psC8i4cji2Ly",
   quoteTokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
   quoteMintDecimals: 6,
-  baseCoinSymbol: "twSOL",
-  quoteCoinSymbol: "tUSDC",
+  baseTokenSymbol: "twSOL",
+  quoteTokenSymbol: "tUSDC",
   feeRecipient: FAVEN_TREASURY,
   operationalFeeBps: 523,
   minFee: 250_000_000_000_000_000n, // 0.25 usdc e18
   exerciseWindowMs: ONE_HOUR_MS,
   quantity: {
-    minimum: baseUnits(1n, 18),
+    minimum: baseUnits(5n, 18),
     step: baseUnits(1n, 18),
-    maximum: baseUnits(100n, 18),
+    maximum: baseUnits(200n, 18),
   },
 };
-const DEVNET_Tk22_MARKET: MarketConfig = {
-  optionsProgramId: OPTIONS_PROGRAM_ID,
-  marketAddress: "TBD",
-  oracleBase: "SOL", // Pyth SOLUSD
-  baseMintCategory: "crypto",
-  baseMint: "Tk22yqDFYZq4ydpL1quxzBjCFNkkczAjSNx6uZXtBbm",
-  baseTokenProgram: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
-  baseMintDecimals: 9,
-  quoteMint: "usdcHvyN6fvECJ1poPYkt1vztze1pQ6psC8i4cji2Ly",
-  quoteTokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-  quoteMintDecimals: 6,
-  baseCoinSymbol: "tk22SOL",
-  quoteCoinSymbol: "tUSDC",
-  feeRecipient: FAVEN_TREASURY,
-  operationalFeeBps: 400, // 4%
-  minFee: 200_000_000_000_000_000n, // 0.2 usdc e18
-  exerciseWindowMs: ONE_HOUR_MS,
-  quantity: {
-    minimum: baseUnits(1n, 18),
-    step: baseUnits(1n, 18),
-    maximum: baseUnits(100n, 18),
-  },
-};
+// const DEVNET_Tk22_MARKET: MarketConfig = {
+//   optionsProgramId: OPTIONS_PROGRAM_ID,
+//   marketAddress: "TBD",
+//   oracleBase: "SOL", // Pyth SOLUSD
+//   baseMintCategory: "crypto",
+//   baseMint: "Tk22yqDFYZq4ydpL1quxzBjCFNkkczAjSNx6uZXtBbm",
+//   baseTokenProgram: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+//   baseMintDecimals: 9,
+//   quoteMint: "usdcHvyN6fvECJ1poPYkt1vztze1pQ6psC8i4cji2Ly",
+//   quoteTokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+//   quoteMintDecimals: 6,
+//   baseTokenSymbol: "tk22SOL",
+//   quoteTokenSymbol: "tUSDC",
+//   feeRecipient: FAVEN_TREASURY,
+//   operationalFeeBps: 400, // 4%
+//   minFee: 200_000_000_000_000_000n, // 0.2 usdc e18
+//   exerciseWindowMs: ONE_HOUR_MS,
+//   quantity: {
+//     minimum: baseUnits(1n, 18),
+//     step: baseUnits(1n, 18),
+//     maximum: baseUnits(100n, 18),
+//   },
+// };
 
 const environmentConfig: Record<ProductEnvironment, EnvironmentConfig> = {
   "development:localhost": {
@@ -251,17 +253,17 @@ const environmentConfig: Record<ProductEnvironment, EnvironmentConfig> = {
   },
   "stagingdevelopment:devnet": {
     cluster: "devnet",
-    allowedOrigins: [LOCAL_ORIGIN],
+    allowedOrigins: [BETA_ORIGIN],
     markets: [DEVNET_WSOL_MARKET],
   },
   "staging:devnet": {
     cluster: "devnet",
-    allowedOrigins: [],
+    allowedOrigins: [BETA_ORIGIN],
     markets: [DEVNET_WSOL_MARKET],
   },
   "production:mainnetbeta": {
     cluster: "mainnet-beta",
-    allowedOrigins: [],
+    allowedOrigins: [PRODUCTION_ORIGIN],
     markets: [],
   },
 };

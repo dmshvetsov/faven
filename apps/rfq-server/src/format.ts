@@ -44,8 +44,8 @@ export function formatFixedPoint(value: bigint, decimals: number): string {
 
 export interface TickerSeries {
   readonly oracleBase: string;
-  readonly quoteCoinSymbol: string;
-  readonly baseCoinSymbol: string;
+  readonly quoteTokenSymbol: string;
+  readonly baseTokenSymbol: string;
   readonly expirySeconds: number;
   readonly isPut: boolean;
   readonly strike: bigint;
@@ -70,8 +70,8 @@ export function tickerForSeries(series: TickerSeries): string {
 
   return [
     series.oracleBase,
-    series.quoteCoinSymbol,
-    series.baseCoinSymbol,
+    series.quoteTokenSymbol,
+    series.baseTokenSymbol,
     `${day}${month}${year}`,
     strike,
     series.isPut ? "P" : "C",

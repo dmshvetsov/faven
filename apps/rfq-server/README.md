@@ -14,9 +14,7 @@ pnpm --dir apps/rfq-server exec wrangler secret put FAUCET_PRIVATE_KEY --env <cf
 pnpm --dir apps/rfq-server exec wrangler secret put ADMIN_AUTH_TOKEN --env <cf env>
 ```
 
-Repeat for staging and production. Local development includes a testnet SOL
-test market for WebSocket integration checks. Browser origins are closed
-outside local development, and unsupported markets fail closed.
+Repeat for staging and production.
 
 ## Canonical term units
 

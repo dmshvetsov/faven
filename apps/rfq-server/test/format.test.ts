@@ -24,8 +24,8 @@ describe("canonical option ticker", () => {
     expect(
       tickerForSeries({
         oracleBase: "BTC",
-        quoteCoinSymbol: "USDC",
-        baseCoinSymbol: "WBTC",
+        quoteTokenSymbol: "USDC",
+        baseTokenSymbol: "WBTC",
         expirySeconds: 1_735_689_600,
         isPut: false,
         strike: 6_000_000_000_000n,

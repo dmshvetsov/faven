@@ -17,6 +17,7 @@ import {
   type UnderwriteStatus,
 } from "./database/underwrite-repository";
 import { backfillsRouter } from "./routers/backfills";
+import { marketsRouter } from "./routers/markets";
 import { JsonSolanaRpc } from "./solana-rpc";
 import {
   fundedResponse,
@@ -65,6 +66,7 @@ app.get("/health", (context) =>
   context.json({ environment: context.env.PRODUCT_ENVIRONMENT, status: "ok" })
 );
 
+app.route("/markets", marketsRouter);
 app.route("/internal/backfills", backfillsRouter);
 
 app.post("/wallet-fundings", async (context) => {
