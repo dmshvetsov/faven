@@ -42,6 +42,7 @@ export class PriceHub implements DurableObject {
     const client = pair[0];
     const server = pair[1];
     this.state.acceptWebSocket(server, [PRICE_FEED_SOCKET_TAG]);
+    this.closeUpstreamAfterConnect = false;
     this.sendSnapshot(server);
     this.logClientCount();
     this.startBroadcasting();
