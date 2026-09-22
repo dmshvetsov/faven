@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   assets,
   expiryOptions,
@@ -11,6 +11,7 @@ import {
   type Direction,
   type TradeDraft,
 } from "./trade-data";
+import { detectWallets, type DetectedWallet } from "./wallet";
 
 type View = "earn" | "dashboard";
 type OpenMenu = "asset" | "target" | "expiry" | null;
@@ -46,6 +47,20 @@ function Icon({
   const source = `/assets/${name === "arrow" ? "arrow-right" : name}.svg`;
   return (
     <img aria-hidden="true" className={`icon ${className}`} src={source} />
+  );
+}
+
+function RollingValue({
+  children,
+  value,
+}: {
+  children: React.ReactNode;
+  value: string | number;
+}) {
+  return (
+    <span className="rolling-value" key={value}>
+      {children}
+    </span>
   );
 }
 
@@ -101,8 +116,23 @@ function Dropdown({
   onToggle: () => void;
   children: React.ReactNode;
 }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [opensUpward, setOpensUpward] = useState(false);
+
+  useEffect(() => {
+    if (!open || !rootRef.current) return;
+
+    const spaceBelow =
+      window.innerHeight - rootRef.current.getBoundingClientRect().bottom;
+    setOpensUpward(spaceBelow < 280);
+  }, [open]);
+
   return (
-    <div className="dropdown" data-dropdown-root>
+    <div
+      className={`dropdown ${opensUpward ? "opens-upward" : ""}`}
+      data-dropdown-root
+      ref={rootRef}
+    >
       <button
         aria-expanded={open}
         className="select-trigger"
@@ -141,19 +171,38 @@ function TradeSummary({
   return (
     <aside className="trade-summary">
       <p className="summary-title">
-        You’ll get {premium.toFixed(2)} USDC upfront for agreeing to {verb}{" "}
-        {draft.amount} {draft.asset.symbol} at ${formatPrice(draft.targetPrice)}{" "}
-        on {draft.expiry.replace("SEP ", "Sep ")}
+        You’ll get{" "}
+        <RollingValue value={premium}>{premium.toFixed(2)}</RollingValue> USDC
+        upfront for agreeing to <RollingValue value={verb}>{verb}</RollingValue>{" "}
+        <RollingValue value={draft.amount}>{draft.amount}</RollingValue>{" "}
+        <RollingValue value={draft.asset.symbol}>
+          {draft.asset.symbol}
+        </RollingValue>{" "}
+        at $
+        <RollingValue value={draft.targetPrice}>
+          {formatPrice(draft.targetPrice)}
+        </RollingValue>{" "}
+        on{" "}
+        <RollingValue value={draft.expiry}>
+          {draft.expiry.replace("SEP ", "Sep ")}
+        </RollingValue>
       </p>
 
       <div className="summary-group">
         <span className="lime-label">Today</span>
         <section className="summary-card today-card">
           <ul>
-            <li>Receive {premium.toFixed(2)} USDC upfront</li>
             <li>
-              {isSell ? "Lock" : "Set aside"} {draft.amount}{" "}
-              {draft.asset.symbol}
+              Receive{" "}
+              <RollingValue value={premium}>{premium.toFixed(2)}</RollingValue>{" "}
+              USDC upfront
+            </li>
+            <li>
+              {isSell ? "Lock" : "Set aside"}{" "}
+              <RollingValue value={draft.amount}>{draft.amount}</RollingValue>{" "}
+              <RollingValue value={draft.asset.symbol}>
+                {draft.asset.symbol}
+              </RollingValue>
             </li>
           </ul>
           <p>
@@ -165,7 +214,9 @@ function TradeSummary({
 
       <div className="summary-group outcome-group">
         <div className="outcome-label">
-          <span className="lime-label">{draft.expiry}</span>
+          <span className="lime-label">
+            <RollingValue value={draft.expiry}>{draft.expiry}</RollingValue>
+          </span>
           <strong>2 possible outcomes:</strong>
         </div>
         <section className="summary-card outcome-card">
@@ -201,7 +252,10 @@ function TradeSummary({
       </div>
 
       <button className="review-button" onClick={onReview} type="button">
-        <span>Review &amp; Earn {premium.toFixed(2)} USDC</span>
+        <span>
+          Review &amp; Earn{" "}
+          <RollingValue value={premium}>{premium.toFixed(2)}</RollingValue> USDC
+        </span>
         <Icon name="arrow" />
       </button>
       <p className="summary-footnote">
@@ -222,6 +276,8 @@ function ReviewDialog({
   onConfirm: () => void;
 }) {
   const premium = getPremium(draft);
+  const isSell = draft.direction === "sellHigher";
+  const targetValue = draft.amount * draft.targetPrice;
   return (
     <div
       aria-modal="true"
@@ -239,37 +295,183 @@ function ReviewDialog({
           onClick={onClose}
           type="button"
         >
-          ×
+          <img alt="" src="/assets/close.svg" />
         </button>
         <p className="eyebrow">Review your terms</p>
-        <h2>Earn {premium.toFixed(2)} USDC upfront</h2>
-        <dl>
-          <div>
-            <dt>Asset</dt>
-            <dd>
-              {draft.amount} {draft.asset.symbol}
-            </dd>
+        <h2>
+          You’ll get {premium.toFixed(2)} USDC upfront for agreeing to{" "}
+          {isSell ? "sell" : "buy"} {draft.amount} {draft.asset.symbol} at $
+          {formatPrice(draft.targetPrice)} on{" "}
+          {draft.expiry.replace("SEP ", "Sep ")}
+        </h2>
+        <div className="review-today">
+          <span className="lime-label">Today</span>
+          <section>
+            <ul>
+              <li>Receive {premium.toFixed(2)} USDC upfront</li>
+              <li>
+                {isSell ? "Lock" : "Set aside"} {draft.amount}{" "}
+                {draft.asset.symbol}
+              </li>
+            </ul>
+            <p>Review all terms before signing with your wallet.</p>
+          </section>
+        </div>
+        <div className="review-outcomes">
+          <span className="lime-label">{draft.expiry}</span>
+          <img
+            alt=""
+            className="outcome-connector"
+            src="/assets/outcome-connector.svg"
+          />
+          <p>2 possible outcomes:</p>
+          <div className="review-outcome-grid">
+            <section>
+              <h3>
+                → If {draft.asset.symbol} {isSell ? "at or below" : "above"} $
+                {formatPrice(draft.targetPrice)}
+              </h3>
+              <ul>
+                <li>
+                  {isSell
+                    ? `Get your ${draft.amount} ${draft.asset.symbol} back`
+                    : `Buy ${draft.amount} ${draft.asset.symbol} at the target price`}
+                </li>
+                <li>You keep the USDC already received upfront</li>
+              </ul>
+            </section>
+            <section>
+              <h3>
+                → If {draft.asset.symbol} {isSell ? "above" : "below"} $
+                {formatPrice(draft.targetPrice)}
+              </h3>
+              <ul>
+                <li>
+                  {isSell
+                    ? `Sell ${draft.amount} ${draft.asset.symbol} for ${formatPrice(targetValue)} USDC`
+                    : "Your funds are returned to your wallet"}
+                </li>
+                <li>Your collateral is exchanged at the target price</li>
+              </ul>
+            </section>
           </div>
-          <div>
-            <dt>Condition</dt>
-            <dd>
-              {draft.direction === "sellHigher" ? "Sell higher" : "Buy lower"}{" "}
-              at ${formatPrice(draft.targetPrice)}
-            </dd>
-          </div>
-          <div>
-            <dt>Settlement</dt>
-            <dd>{draft.expiry}</dd>
-          </div>
-        </dl>
-        <p className="dialog-note">
-          Your trade starts only after confirmation. You can review all terms
-          before signing with your wallet.
-        </p>
+        </div>
         <button className="review-button" onClick={onConfirm} type="button">
           Confirm terms <Icon name="arrow" />
         </button>
       </section>
+    </div>
+  );
+}
+
+function WalletDialog({
+  wallets,
+  onClose,
+  onSelect,
+}: {
+  wallets: DetectedWallet[];
+  onClose: () => void;
+  onSelect: (wallet: DetectedWallet) => void;
+}) {
+  return (
+    <div
+      aria-modal="true"
+      className="dialog-backdrop"
+      onMouseDown={onClose}
+      role="dialog"
+    >
+      <section
+        className="wallet-dialog"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <button
+          aria-label="Close wallet selection"
+          className="dialog-close"
+          onClick={onClose}
+          type="button"
+        >
+          <img alt="" src="/assets/close.svg" />
+        </button>
+        <p className="eyebrow">Connect wallet</p>
+        <h2>Choose a wallet</h2>
+        <p>Choose the wallet you’d like to use with Faven.</p>
+        <div className="wallet-options">
+          {wallets.map((wallet) => (
+            <button
+              key={wallet.id}
+              onClick={() => onSelect(wallet)}
+              type="button"
+            >
+              <span className={`wallet-mark wallet-${wallet.id}`}>
+                {wallet.name.slice(0, 1)}
+              </span>
+              <strong>{wallet.name}</strong>
+              <Icon name="arrow" />
+            </button>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function DisconnectDialog({
+  walletName,
+  onClose,
+  onConfirm,
+}: {
+  walletName: string;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div
+      aria-modal="true"
+      className="dialog-backdrop"
+      onMouseDown={onClose}
+      role="dialog"
+    >
+      <section
+        className="wallet-dialog disconnect-dialog"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <button
+          aria-label="Close disconnect confirmation"
+          className="dialog-close"
+          onClick={onClose}
+          type="button"
+        >
+          <img alt="" src="/assets/close.svg" />
+        </button>
+        <p className="eyebrow">Wallet connected</p>
+        <h2>Disconnect {walletName}?</h2>
+        <p>You can reconnect this wallet at any time.</p>
+        <div className="dialog-actions">
+          <button className="secondary-button" onClick={onClose} type="button">
+            Cancel
+          </button>
+          <button className="primary-button" onClick={onConfirm} type="button">
+            Disconnect
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function WalletNotice({
+  message,
+  onClose,
+}: {
+  message: string;
+  onClose: () => void;
+}) {
+  return (
+    <div className="wallet-notice" role="status">
+      <span>{message}</span>
+      <button aria-label="Dismiss" onClick={onClose} type="button">
+        ×
+      </button>
     </div>
   );
 }
@@ -332,7 +534,14 @@ export default function App() {
   const [draft, setDraft] = useState<TradeDraft>(initialDraft);
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
   const [isReviewOpen, setReviewOpen] = useState(false);
-  const [isSignedIn, setSignedIn] = useState(false);
+  const [connectedWallet, setConnectedWallet] = useState<DetectedWallet | null>(
+    null
+  );
+  const [walletsToChoose, setWalletsToChoose] = useState<
+    DetectedWallet[] | null
+  >(null);
+  const [isDisconnectOpen, setDisconnectOpen] = useState(false);
+  const [walletNotice, setWalletNotice] = useState<string | null>(null);
 
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -368,6 +577,41 @@ export default function App() {
   const setAsset = (asset: Asset) => {
     setDraft((current) => ({ ...current, asset }));
     setOpenMenu(null);
+  };
+  const connectWallet = async (wallet: DetectedWallet) => {
+    try {
+      await wallet.provider.connect();
+      setConnectedWallet(wallet);
+      setWalletsToChoose(null);
+      setWalletNotice(`${wallet.name} connected`);
+    } catch {
+      setWalletsToChoose(null);
+      setWalletNotice("Wallet connection was cancelled");
+    }
+  };
+  const handleWalletButton = () => {
+    if (connectedWallet) {
+      setDisconnectOpen(true);
+      return;
+    }
+
+    const wallets = detectWallets();
+    if (wallets.length === 0) {
+      setWalletNotice("No supported wallet extension found");
+    } else if (wallets.length === 1) {
+      void connectWallet(wallets[0]);
+    } else {
+      setWalletsToChoose(wallets);
+    }
+  };
+  const disconnectWallet = async () => {
+    try {
+      await connectedWallet?.provider.disconnect?.();
+    } finally {
+      setWalletNotice(`${connectedWallet?.name ?? "Wallet"} disconnected`);
+      setConnectedWallet(null);
+      setDisconnectOpen(false);
+    }
   };
 
   return (
@@ -408,10 +652,10 @@ export default function App() {
           </nav>
           <button
             className="sign-in-button"
-            onClick={() => setSignedIn((signedIn) => !signedIn)}
+            onClick={handleWalletButton}
             type="button"
           >
-            {isSignedIn ? "Wallet connected" : "Sign in"}
+            {connectedWallet ? connectedWallet.name : "Sign in"}
           </button>
         </div>
       </header>
@@ -428,7 +672,10 @@ export default function App() {
               Choose a tokenized stock or cryptocurrency, set your price and
               settlement date: on that date, the trade will either be executed
               if your condition is met, or your locked funds will be returned.{" "}
-              <a href="#how-it-works">How it works (2-minute video)</a>
+              <a className="how-it-works-link" href="#how-it-works">
+                <span aria-hidden="true" className="video-icon" />
+                How it works (2 min)
+              </a>
             </p>
           </section>
 
@@ -520,7 +767,9 @@ export default function App() {
                         </small>
                       </span>
                       <b>${formatPrice(asset.price)}</b>
-                      {draft.asset.id === asset.id && <Icon name="check" />}
+                      <span className="check-slot">
+                        {draft.asset.id === asset.id && <Icon name="check" />}
+                      </span>
                     </button>
                   ))}
                 </Dropdown>
@@ -596,8 +845,10 @@ export default function App() {
                       }}
                       type="button"
                     >
-                      ${formatPrice(price)}
-                      {draft.targetPrice === price && <Icon name="check" />}
+                      <span>${formatPrice(price)}</span>
+                      <span className="check-slot">
+                        {draft.targetPrice === price && <Icon name="check" />}
+                      </span>
                     </button>
                   ))}
                 </Dropdown>
@@ -625,8 +876,10 @@ export default function App() {
                       }}
                       type="button"
                     >
-                      {expiry}
-                      {draft.expiry === expiry && <Icon name="check" />}
+                      <span>{expiry}</span>
+                      <span className="check-slot">
+                        {draft.expiry === expiry && <Icon name="check" />}
+                      </span>
                     </button>
                   ))}
                 </Dropdown>
@@ -645,6 +898,26 @@ export default function App() {
             setReviewOpen(false);
             setView("dashboard");
           }}
+        />
+      )}
+      {walletsToChoose && (
+        <WalletDialog
+          onClose={() => setWalletsToChoose(null)}
+          onSelect={(wallet) => void connectWallet(wallet)}
+          wallets={walletsToChoose}
+        />
+      )}
+      {isDisconnectOpen && connectedWallet && (
+        <DisconnectDialog
+          onClose={() => setDisconnectOpen(false)}
+          onConfirm={() => void disconnectWallet()}
+          walletName={connectedWallet.name}
+        />
+      )}
+      {walletNotice && (
+        <WalletNotice
+          message={walletNotice}
+          onClose={() => setWalletNotice(null)}
         />
       )}
     </div>
