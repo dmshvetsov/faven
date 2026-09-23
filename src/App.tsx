@@ -34,7 +34,7 @@ const steps = [
   ],
   [
     "How much would you like to sell?",
-    "Choose how much BTC you would sell if the target price is reached",
+    "Choose how much BTC you would sell if its price is above your target",
   ],
   ["Set target price", "The market price of BTC that triggers your trade"],
   [
@@ -90,7 +90,7 @@ function StepHeading({
 }: {
   index: number;
   title: string;
-  description: string;
+  description: React.ReactNode;
 }) {
   return (
     <div className="step-heading">
@@ -100,6 +100,42 @@ function StepHeading({
         <p>{description}</p>
       </div>
     </div>
+  );
+}
+
+function BackpackMark({ className = "" }: { className?: string }) {
+  return (
+    <img
+      alt=""
+      aria-hidden="true"
+      className={`backpack-mark ${className}`}
+      src="/assets/backpack.svg"
+    />
+  );
+}
+
+function SiteFooter() {
+  return (
+    <footer className="site-footer">
+      <div className="footer-content">
+        <div className="footer-partners">
+          <span className="footer-partner">
+            <img alt="" src="/assets/solana.svg" />
+            Build on Solana
+          </span>
+          <span className="footer-partner">
+            <BackpackMark />
+            Build with Backpack securities
+          </span>
+        </div>
+        <nav aria-label="Footer navigation" className="footer-links">
+          <a href="#terms-of-service">Terms of service</a>
+          <a href="#email">Email</a>
+          <a href="#tg-group">TG group</a>
+          <a href="#documentation">Documentation</a>
+        </nav>
+      </div>
+    </footer>
   );
 }
 
@@ -292,10 +328,9 @@ function TradeSummary({
             <ul>
               <li>
                 {isSell
-                  ? `Sell ${draft.amount} ${draft.asset.symbol} for ${formatPrice(targetValue)} USDC`
+                  ? `Sell ${draft.amount} ${draft.asset.symbol} and receive ${formatPrice(targetValue)} USDC in your wallet`
                   : `Buy ${draft.amount} ${draft.asset.symbol} at the target price`}
               </li>
-              <li>Your collateral is exchanged at the target price</li>
             </ul>
           </div>
         </section>
@@ -309,8 +344,7 @@ function TradeSummary({
         <Icon name="arrow" />
       </button>
       <p className="summary-footnote">
-        View the details and terms — the trade will only start after
-        confirmation
+        View the details and terms — the trade starts after confirmation.
       </p>
     </aside>
   );
@@ -381,10 +415,9 @@ function OutcomeFlow({
           <ul>
             <li>
               {isSell
-                ? `Sell ${draft.amount} ${draft.asset.symbol} for ${formatPrice(targetValue)} USDC`
+                ? `Sell ${draft.amount} ${draft.asset.symbol} and receive ${formatPrice(targetValue)} USDC in your wallet`
                 : `Buy ${draft.amount} ${draft.asset.symbol} at the target price`}
             </li>
-            <li>Your collateral is exchanged at the target price</li>
           </ul>
         </section>
       </div>
@@ -397,12 +430,14 @@ function ReviewDialog({
   onClose,
   onConfirm,
   isPositionOpen,
+  isSigningIn,
   onViewTrade,
 }: {
   draft: TradeDraft;
   onClose: () => void;
   onConfirm: () => void;
   isPositionOpen: boolean;
+  isSigningIn: boolean;
   onViewTrade: () => void;
 }) {
   const premium = getPremium(draft);
@@ -451,7 +486,6 @@ function ReviewDialog({
           </div>
         ) : (
           <>
-            <p className="eyebrow">Review your terms</p>
             <h2>
               You’ll get {premium.toFixed(2)} USDC upfront for agreeing to{" "}
               {isSell ? "sell" : "buy"} {draft.amount} {draft.asset.symbol} if{" "}
@@ -475,8 +509,20 @@ function ReviewDialog({
               </section>
             </div>
             <OutcomeFlow draft={draft} />
-            <button className="review-button" onClick={onConfirm} type="button">
-              Confirm terms
+            <button
+              className="review-button"
+              disabled={isSigningIn}
+              onClick={onConfirm}
+              type="button"
+            >
+              {isSigningIn ? (
+                <>
+                  Sign in a Wallet
+                  <span aria-label="Signing in" className="button-spinner" />
+                </>
+              ) : (
+                <>Confirm &amp; Earn {premium.toFixed(2)} USDC</>
+              )}
             </button>
             <button
               className="review-back-button"
@@ -713,6 +759,13 @@ function TradeDetail({
     : draft.asset.price <= draft.targetPrice;
   const premium = getPremium(draft);
   const returningOutcome = !targetReached;
+  const currentPriceCondition = targetReached
+    ? isSell
+      ? "above"
+      : "at or below"
+    : isSell
+      ? "at or below"
+      : "above";
 
   return (
     <main className="trade-detail page-enter">
@@ -740,8 +793,8 @@ function TradeDetail({
             {trade.resolution === "notExecuted"
               ? "This trade was not executed because the market maker declined it."
               : targetReached
-                ? "At the moment, the target has been reached. The execution outcome is currently in play."
-                : "At the moment, the target has not been reached. The return outcome is currently in play."}
+                ? `At the moment, the market price is ${currentPriceCondition} the target price. The execution outcome is currently in play.`
+                : `At the moment, the market price is ${currentPriceCondition} the target price. The return outcome is currently in play.`}
           </p>
           <strong className="detail-current-price">
             Current {draft.asset.symbol} price: $
@@ -803,6 +856,7 @@ export default function App() {
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
   const [isReviewOpen, setReviewOpen] = useState(false);
   const [isPositionOpen, setPositionOpen] = useState(false);
+  const [isReviewWalletSigning, setReviewWalletSigning] = useState(false);
   const [connectedWallet, setConnectedWallet] = useState<DetectedWallet | null>(
     null
   );
@@ -854,9 +908,11 @@ export default function App() {
       await wallet.provider.connect();
       setConnectedWallet(wallet);
       setWalletsToChoose(null);
+      setReviewWalletSigning(false);
       setWalletNotice(`${wallet.name} connected`);
     } catch {
       setWalletsToChoose(null);
+      setReviewWalletSigning(false);
       setWalletNotice("Wallet connection was cancelled");
     }
   };
@@ -1015,7 +1071,17 @@ export default function App() {
               </div>
               <div className="form-section">
                 <StepHeading
-                  description="Explore available assets and their current prices"
+                  description={
+                    <>
+                      Explore available assets and their current prices
+                      {draft.assetKind === "stock" && (
+                        <span className="backpack-note">
+                          <BackpackMark />
+                          Build with Backpack securities
+                        </span>
+                      )}
+                    </>
+                  }
                   index={3}
                   title={
                     draft.assetKind === "crypto"
@@ -1202,12 +1268,19 @@ export default function App() {
         <ReviewDialog
           draft={draft}
           isPositionOpen={isPositionOpen}
+          isSigningIn={isReviewWalletSigning}
           onClose={() => {
             setPositionOpen(false);
             setReviewOpen(false);
+            setReviewWalletSigning(false);
           }}
           onConfirm={() => {
-            setPositionOpen(true);
+            if (connectedWallet) {
+              setPositionOpen(true);
+              return;
+            }
+            setReviewWalletSigning(true);
+            handleWalletButton();
           }}
           onViewTrade={() => {
             setReviewOpen(false);
@@ -1218,7 +1291,10 @@ export default function App() {
       )}
       {walletsToChoose && (
         <WalletDialog
-          onClose={() => setWalletsToChoose(null)}
+          onClose={() => {
+            setWalletsToChoose(null);
+            setReviewWalletSigning(false);
+          }}
           onSelect={(wallet) => void connectWallet(wallet)}
           wallets={walletsToChoose}
         />
@@ -1236,6 +1312,7 @@ export default function App() {
           onClose={() => setWalletNotice(null)}
         />
       )}
+      <SiteFooter />
     </div>
   );
 }

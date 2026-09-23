@@ -30,6 +30,8 @@ a {
   color: #0d63ba;
 }
 .app-shell {
+  display: flex;
+  flex-direction: column;
   min-height: 100vh;
   overflow: clip;
 }
@@ -475,7 +477,6 @@ a:focus-visible {
   align-self: start;
   background: #f6f3da;
   border-radius: 8px;
-  min-height: 681px;
   padding: 25px 24px 16px;
   position: sticky;
   top: 24px;
@@ -484,9 +485,8 @@ a:focus-visible {
   font-size: 16px;
   font-weight: 700;
   line-height: 24px;
-  margin: 0 auto 16px;
+  margin: 0 auto 8px;
   max-width: 346px;
-  min-height: 72px;
   text-align: center;
 }
 .summary-group {
@@ -545,7 +545,6 @@ a:focus-visible {
 .outcome-card {
   display: grid;
   gap: 20px;
-  min-height: 245px;
 }
 .outcome-card h4 {
   font-size: 16px;
@@ -1130,7 +1129,6 @@ a:focus-visible {
 .review-outcome-grid section {
   background: white;
   border-radius: 8px;
-  min-height: 133px;
   padding: 16px;
 }
 
@@ -1153,6 +1151,25 @@ a:focus-visible {
 .review-dialog .review-button {
   margin: 24px auto 0;
   max-width: 346px;
+}
+.review-button:disabled {
+  background: #7f9dc0;
+  box-shadow: none;
+  cursor: wait;
+  transform: none;
+}
+.button-spinner {
+  animation: button-spin 700ms linear infinite;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-right-color: white;
+  border-radius: 50%;
+  height: 16px;
+  width: 16px;
+}
+@keyframes button-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 .review-back-button {
   align-items: center;
@@ -1357,6 +1374,70 @@ a:focus-visible {
 
 .asset-badge.asset-aapl img {
   transform: translateY(-1px) scale(0.86);
+}
+
+.backpack-note {
+  align-items: center;
+  color: #55545a;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 5px;
+  line-height: 18px;
+  margin-left: 8px;
+  white-space: nowrap;
+}
+.backpack-mark {
+  display: block;
+  flex: none;
+  height: 14px;
+  width: 14px;
+}
+
+.site-footer {
+  border-top: 1px solid #e5eef1;
+  margin-top: 72px;
+  padding: 20px 24px;
+}
+.footer-content {
+  align-items: center;
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+  margin: 0 auto;
+  max-width: 840px;
+}
+.footer-partners,
+.footer-links {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+}
+.footer-partner {
+  align-items: center;
+  color: #55545a;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 6px;
+  line-height: 18px;
+}
+.footer-partner > img {
+  filter: brightness(0) saturate(100%);
+  height: 14px;
+  width: 14px;
+}
+.footer-links a {
+  color: #55545a;
+  font-size: 12px;
+  line-height: 18px;
+  text-decoration: none;
+}
+.footer-links a:hover {
+  color: #0d63ba;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .asset-eth {
@@ -1732,6 +1813,20 @@ a:focus-visible {
 @media (max-width: 620px) {
   .trade-detail {
     margin-inline: 16px;
+  }
+
+  .site-footer {
+    margin-top: 48px;
+    padding-inline: 16px;
+  }
+  .footer-content {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .footer-partners,
+  .footer-links {
+    gap: 10px 16px;
   }
 
   .trade-detail-heading h1 {
