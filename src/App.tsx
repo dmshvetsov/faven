@@ -20,7 +20,10 @@ import { detectWallets, getWalletPreview, type DetectedWallet } from "./wallet";
 
 type View = "earn" | "dashboard" | "trade-detail";
 type OpenMenu = "asset" | "target" | "expiry" | null;
-type TradeTab = "active" | "settled" | "archived";
+type TradeTab = "active" | "settled";
+
+const showOpenedReviewPreview =
+  new URLSearchParams(window.location.search).get("review") === "opened";
 
 const steps = [
   [
@@ -275,7 +278,7 @@ function TradeSummary({
       </p>
 
       <div className="summary-group">
-        <span className="lime-label">Today</span>
+        <span className="lime-label">Now</span>
         <section className="summary-card today-card">
           <ul>
             <li>
@@ -303,7 +306,7 @@ function TradeSummary({
           <span className="lime-label">
             <RollingValue value={draft.expiry}>{formattedExpiry}</RollingValue>
           </span>
-          <strong>2 possible outcomes:</strong>
+          <strong>2 possible outcomes</strong>
         </div>
         <section className="summary-card outcome-card">
           <div>
@@ -373,27 +376,21 @@ function TradeStatus({
   );
 }
 
-function OutcomeFlow({
-  draft,
-  currentOutcome,
-}: {
-  draft: TradeDraft;
-  currentOutcome?: "return" | "execution";
-}) {
+function OutcomeFlow({ draft }: { draft: TradeDraft }) {
   const isSell = draft.direction === "sellHigher";
   const targetValue = draft.amount * draft.targetPrice;
 
   return (
     <div className="review-outcomes outcome-flow">
       <span className="lime-label">{formatExpiry(draft.expiry)}</span>
-      <p>2 possible outcomes:</p>
+      <p>2 possible outcomes</p>
       <img
         alt=""
         className="outcome-connector"
         src="/assets/outcome-connector.svg"
       />
       <div className="review-outcome-grid">
-        <section className={currentOutcome === "return" ? "is-current" : ""}>
+        <section>
           <h3>
             → If {draft.asset.symbol} {isSell ? "at or below" : "above"} $
             {formatPrice(draft.targetPrice)}
@@ -407,7 +404,7 @@ function OutcomeFlow({
             <li>You keep the USDC already received upfront</li>
           </ul>
         </section>
-        <section className={currentOutcome === "execution" ? "is-current" : ""}>
+        <section>
           <h3>
             → If {draft.asset.symbol} {isSell ? "above" : "at or below"} $
             {formatPrice(draft.targetPrice)}
@@ -432,6 +429,7 @@ function ReviewDialog({
   isPositionOpen,
   isSigningIn,
   onViewTrade,
+  onStartNewTrade,
 }: {
   draft: TradeDraft;
   onClose: () => void;
@@ -439,6 +437,7 @@ function ReviewDialog({
   isPositionOpen: boolean;
   isSigningIn: boolean;
   onViewTrade: () => void;
+  onStartNewTrade: () => void;
 }) {
   const premium = getPremium(draft);
   const isSell = draft.direction === "sellHigher";
@@ -468,13 +467,10 @@ function ReviewDialog({
                 <img alt="" src="/assets/check.svg" />
               </span>
             </div>
-            <h2>
-              Your trade is created
-              <span>Waiting for {formatExpiry(draft.expiry)}</span>
-            </h2>
+            <h2>Your trade is opened</h2>
             <p className="position-opened-reward">
-              <strong>{premium.toFixed(2)} USDC</strong> has been received
-              upfront
+              <strong>{premium.toFixed(2)} USDC</strong> has been sent to your
+              wallet
             </p>
             <button
               className="primary-button success-view-button"
@@ -482,6 +478,13 @@ function ReviewDialog({
               type="button"
             >
               View trade
+            </button>
+            <button
+              className="sign-in-button position-new-trade-button"
+              onClick={onStartNewTrade}
+              type="button"
+            >
+              Create new trade
             </button>
           </div>
         ) : (
@@ -497,7 +500,7 @@ function ReviewDialog({
               )}
             </h2>
             <div className="review-today">
-              <span className="lime-label">Today</span>
+              <span className="lime-label">Now</span>
               <section>
                 <ul>
                   <li>Receive {premium.toFixed(2)} USDC upfront</li>
@@ -505,7 +508,10 @@ function ReviewDialog({
                     Lock {draft.amount} {draft.asset.symbol}
                   </li>
                 </ul>
-                <p>Review all terms before signing with your wallet.</p>
+                <p className="review-yield">
+                  <span>0.54% over 11 days</span>
+                  <strong>14.77% APR</strong>
+                </p>
               </section>
             </div>
             <OutcomeFlow draft={draft} />
@@ -649,6 +655,20 @@ function WalletNotice({
   );
 }
 
+function tradeTitle(trade: TradeRecord) {
+  const isSell = trade.direction === "sellHigher";
+
+  if (trade.state === "settled") {
+    if (trade.resolution === "executed") {
+      return `${isSell ? "Sold" : "Bought"} ${trade.amount} ${trade.asset.symbol} at $${formatPrice(trade.targetPrice)}`;
+    }
+
+    return `Not executed — ${trade.amount} ${trade.asset.symbol} was not ${isSell ? "sold" : "bought"}`;
+  }
+
+  return `${isSell ? "Sell" : "Buy"} ${trade.amount} ${trade.asset.symbol} if ${trade.asset.symbol} is ${isSell ? "above" : "at or below"} $${formatPrice(trade.targetPrice)}`;
+}
+
 function Dashboard({
   onStartTrade,
   onOpenTrade,
@@ -675,21 +695,14 @@ function Dashboard({
           onClick={() => setTab("active")}
           type="button"
         >
-          Active <span>{tabCount("active")}</span>
+          Opened <span>{tabCount("active")}</span>
         </button>
         <button
           className={tab === "settled" ? "is-active" : ""}
           onClick={() => setTab("settled")}
           type="button"
         >
-          Settled <span>{tabCount("settled")}</span>
-        </button>
-        <button
-          className={tab === "archived" ? "is-active" : ""}
-          onClick={() => setTab("archived")}
-          type="button"
-        >
-          Archived <span>{tabCount("archived")}</span>
+          Closed <span>{tabCount("settled")}</span>
         </button>
       </nav>
       {visibleTrades.length > 0 ? (
@@ -704,13 +717,7 @@ function Dashboard({
               <span className="trade-row-main">
                 <AssetBadge asset={trade.asset} />
                 <span>
-                  <strong>
-                    {trade.direction === "sellHigher" ? "Sell" : "Buy"}{" "}
-                    {trade.amount} {trade.asset.symbol} if {trade.asset.symbol}{" "}
-                    is{" "}
-                    {trade.direction === "sellHigher" ? "above" : "at or below"}{" "}
-                    ${formatPrice(trade.targetPrice)}
-                  </strong>
+                  <strong>{tradeTitle(trade)}</strong>
                   <small>
                     {trade.state === "active"
                       ? `Settlement on ${formatExpiry(trade.expiry)}`
@@ -730,7 +737,9 @@ function Dashboard({
           ))}
         </div>
       ) : (
-        <p className="empty-trades">No {tab} trades yet</p>
+        <p className="empty-trades">
+          No {tab === "active" ? "opened" : "closed"} trades yet
+        </p>
       )}
       <button
         className="sign-in-button new-trade-button"
@@ -753,19 +762,7 @@ function TradeDetail({
   trade: TradeRecord;
 }) {
   const draft = trade;
-  const isSell = draft.direction === "sellHigher";
-  const targetReached = isSell
-    ? draft.asset.price > draft.targetPrice
-    : draft.asset.price <= draft.targetPrice;
   const premium = getPremium(draft);
-  const returningOutcome = !targetReached;
-  const currentPriceCondition = targetReached
-    ? isSell
-      ? "above"
-      : "at or below"
-    : isSell
-      ? "at or below"
-      : "above";
 
   return (
     <main className="trade-detail page-enter">
@@ -780,22 +777,12 @@ function TradeDetail({
             resolution={trade.resolution}
             state={trade.state}
           />
-          <h1>
-            {draft.direction === "sellHigher" ? "Sell" : "Buy"} {draft.amount}{" "}
-            {draft.asset.symbol} if {draft.asset.symbol} is{" "}
-            {isSell ? "above" : "at or below"} ${formatPrice(draft.targetPrice)}
-          </h1>
-          <p
-            className={
-              trade.resolution === "notExecuted" ? "is-not-executed" : ""
-            }
-          >
-            {trade.resolution === "notExecuted"
-              ? "This trade was not executed because the market maker declined it."
-              : targetReached
-                ? `At the moment, the market price is ${currentPriceCondition} the target price. The execution outcome is currently in play.`
-                : `At the moment, the market price is ${currentPriceCondition} the target price. The return outcome is currently in play.`}
-          </p>
+          <h1>{tradeTitle(trade)}</h1>
+          {trade.resolution === "notExecuted" && (
+            <p className="is-not-executed">
+              This trade was not executed because the market maker declined it
+            </p>
+          )}
           <strong className="detail-current-price">
             Current {draft.asset.symbol} price: $
             {formatPrice(draft.asset.price)}
@@ -816,7 +803,7 @@ function TradeDetail({
           <strong>{premium.toFixed(2)} USDC</strong>
         </div>
         <div>
-          <span>Lock</span>
+          <span>Locked</span>
           <strong>
             {draft.amount} {draft.asset.symbol}
           </strong>
@@ -833,10 +820,7 @@ function TradeDetail({
         </p>
       </section>
       <section className="detail-outcomes">
-        <OutcomeFlow
-          currentOutcome={returningOutcome ? "return" : "execution"}
-          draft={draft}
-        />
+        <OutcomeFlow draft={draft} />
       </section>
       <button
         className="sign-in-button detail-new-trade-button"
@@ -854,8 +838,8 @@ export default function App() {
   const [draft, setDraft] = useState<TradeDraft>(initialDraft);
   const [selectedTrade, setSelectedTrade] = useState<TradeRecord | null>(null);
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
-  const [isReviewOpen, setReviewOpen] = useState(false);
-  const [isPositionOpen, setPositionOpen] = useState(false);
+  const [isReviewOpen, setReviewOpen] = useState(showOpenedReviewPreview);
+  const [isPositionOpen, setPositionOpen] = useState(showOpenedReviewPreview);
   const [isReviewWalletSigning, setReviewWalletSigning] = useState(false);
   const [connectedWallet, setConnectedWallet] = useState<DetectedWallet | null>(
     null
@@ -1106,37 +1090,45 @@ export default function App() {
                   open={openMenu === "asset"}
                 >
                   {relevantAssets.map((asset) => (
-                    <div className="asset-option" key={asset.id}>
-                      <button
-                        className="asset-select"
-                        onClick={() => setAsset(asset)}
-                        type="button"
-                      >
-                        <AssetBadge asset={asset} />
-                        <span>
-                          <strong>{asset.name}</strong>
+                    <div
+                      className="asset-option"
+                      key={asset.id}
+                      onClick={() => setAsset(asset)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setAsset(asset);
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
+                    >
+                      <AssetBadge asset={asset} />
+                      <span className="asset-details">
+                        <strong>{asset.name}</strong>
+                        <span className="asset-contract">
                           <small>
                             {formatContractAddress(asset.contractAddress)}
                           </small>
+                          <button
+                            aria-label={`Copy ${asset.name} contract address`}
+                            className="copy-address-button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void navigator.clipboard?.writeText(
+                                asset.contractAddress
+                              );
+                            }}
+                            type="button"
+                          >
+                            <CopyIcon />
+                          </button>
                         </span>
-                        <b>${formatPrice(asset.price)}</b>
-                        <span className="check-slot">
-                          {draft.asset.id === asset.id && <Icon name="check" />}
-                        </span>
-                      </button>
-                      <button
-                        aria-label={`Copy ${asset.name} contract address`}
-                        className="copy-address-button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void navigator.clipboard?.writeText(
-                            asset.contractAddress
-                          );
-                        }}
-                        type="button"
-                      >
-                        <CopyIcon />
-                      </button>
+                      </span>
+                      <b>${formatPrice(asset.price)}</b>
+                      <span className="check-slot">
+                        {draft.asset.id === asset.id && <Icon name="check" />}
+                      </span>
                     </div>
                   ))}
                 </Dropdown>
@@ -1286,6 +1278,11 @@ export default function App() {
             setReviewOpen(false);
             setPositionOpen(false);
             setView("trade-detail");
+          }}
+          onStartNewTrade={() => {
+            setReviewOpen(false);
+            setPositionOpen(false);
+            setView("earn");
           }}
         />
       )}

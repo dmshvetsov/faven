@@ -30,8 +30,6 @@ a {
   color: #0d63ba;
 }
 .app-shell {
-  display: flex;
-  flex-direction: column;
   min-height: 100vh;
   overflow: clip;
 }
@@ -255,11 +253,13 @@ a:focus-visible {
     box-shadow 160ms ease,
     transform 160ms ease;
 }
-.segment-option:hover {
-  color: #0d63ba;
-}
 .segment-option.is-selected {
   background: transparent;
+}
+.segment-option:not(.is-selected):hover {
+  background: rgba(255, 255, 255, 0.42);
+  box-shadow: inset 0 0 0 1px rgba(21, 19, 27, 0.05);
+  transform: translateY(-1px);
 }
 .segment-option.is-selected:hover {
   color: #15131b;
@@ -364,28 +364,28 @@ a:focus-visible {
     transform 140ms ease;
   width: 100%;
 }
-.asset-select:hover,
+.asset-option:hover,
 .plain-option:hover {
   background: #e5eef1;
   transform: translateX(2px);
 }
-.asset-select > span {
+.asset-details {
   display: grid;
   gap: 1px;
 }
-.asset-select strong,
+.asset-option strong,
 .plain-option {
   font-size: 14px;
   font-weight: 700;
 }
-.asset-select small {
+.asset-option small {
   font-size: 12px;
 }
-.asset-select b {
+.asset-option b {
   font-size: 14px;
   margin-left: auto;
 }
-.asset-select .icon,
+.asset-option .icon,
 .plain-option .icon {
   height: 24px;
   margin-left: auto;
@@ -397,32 +397,35 @@ a:focus-visible {
   justify-content: center;
 }
 .asset-option {
-  padding: 0;
-  position: relative;
-}
-.asset-select {
   align-items: center;
-  background: transparent;
   border-radius: 8px;
   display: flex;
+  cursor: pointer;
   gap: 12px;
   min-height: 56px;
-  padding: 8px 0 8px 16px;
+  padding: 8px 16px;
   text-align: left;
   width: 100%;
+}
+.asset-option:focus-visible {
+  box-shadow: 0 0 0 2px rgba(21, 19, 27, 0.42);
+  outline: 0;
+}
+.asset-contract {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
 }
 .copy-address-button {
   align-items: center;
   background: transparent;
   color: #666;
   display: inline-flex;
-  height: 32px;
+  height: 20px;
   justify-content: center;
-  bottom: 7px;
-  left: 142px;
   margin: 0;
-  position: absolute;
-  width: 32px;
+  padding: 0;
+  width: 20px;
 }
 .copy-address-button:hover {
   color: #15131b;
@@ -939,6 +942,15 @@ a:focus-visible {
   align-items: center;
   display: inline-flex;
   gap: 6px;
+  transition:
+    color 160ms ease,
+    text-decoration-color 160ms ease,
+    transform 160ms ease;
+}
+.how-it-works-link:hover {
+  color: #09559f;
+  text-decoration-color: currentColor;
+  transform: translateY(-1px);
 }
 
 .video-icon {
@@ -947,7 +959,14 @@ a:focus-visible {
   display: inline-block;
   height: 14px;
   position: relative;
+  transition:
+    box-shadow 160ms ease,
+    transform 160ms ease;
   width: 20px;
+}
+.how-it-works-link:hover .video-icon {
+  box-shadow: 0 4px 10px -6px rgba(13, 99, 186, 0.85);
+  transform: scale(1.04);
 }
 
 .video-icon::after {
@@ -965,12 +984,7 @@ a:focus-visible {
   top: auto;
 }
 
-.asset-option {
-  display: flex;
-}
-
-.asset-select b {
-  margin-left: auto;
+.asset-option b {
   text-align: right;
 }
 
@@ -1094,10 +1108,14 @@ a:focus-visible {
   padding-left: 4px;
 }
 
-.review-today p {
+.review-yield {
+  display: grid;
   font-size: 14px;
   line-height: 20px;
   margin: 8px 0 0;
+}
+.review-yield strong {
+  font-weight: 400;
 }
 
 .review-outcomes {
@@ -1378,13 +1396,12 @@ a:focus-visible {
 
 .backpack-note {
   align-items: center;
-  color: #55545a;
+  color: inherit;
   display: inline-flex;
-  font-size: 12px;
-  font-weight: 600;
+  font: inherit;
   gap: 5px;
-  line-height: 18px;
-  margin-left: 8px;
+  line-height: inherit;
+  margin: 0;
   white-space: nowrap;
 }
 .backpack-mark {
@@ -1424,7 +1441,6 @@ a:focus-visible {
   line-height: 18px;
 }
 .footer-partner > img {
-  filter: brightness(0) saturate(100%);
   height: 14px;
   width: 14px;
 }
@@ -1533,6 +1549,11 @@ a:focus-visible {
   font-size: 16px;
   line-height: 24px;
   margin: 16px 0 0;
+}
+.position-new-trade-button {
+  display: block;
+  font-size: 14px;
+  margin: 12px auto 0;
 }
 
 @keyframes success-mark-in {
@@ -1793,11 +1814,9 @@ a:focus-visible {
   margin: 0 auto;
   max-width: 592px;
 }
-.review-outcome-grid section.is-current {
+.detail-outcomes .review-outcome-grid section {
   background: #f6f3da;
-}
-.detail-outcomes .review-outcome-grid section:not(.is-current) {
-  border: 1px solid #e5eef1;
+  border: 0;
 }
 .detail-new-trade-button {
   display: block;
