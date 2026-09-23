@@ -2,6 +2,7 @@ export type AssetKind = "crypto" | "stock";
 export type Direction = "sellHigher" | "buyLower";
 
 export type Asset = {
+  contractAddress: string;
   id: string;
   kind: AssetKind;
   symbol: string;
@@ -20,15 +21,18 @@ export type TradeDraft = {
 };
 
 export type TradeState = "active" | "settled" | "archived";
+export type TradeResolution = "executed" | "notExecuted";
 
 export type TradeRecord = TradeDraft & {
   created: string;
   id: string;
+  resolution?: TradeResolution;
   state: TradeState;
 };
 
 export const assets: Asset[] = [
   {
+    contractAddress: "0x8A2f3C914e56D7b8A9c0E1f2A3b4C5d6E7f84910",
     id: "btc",
     kind: "crypto",
     symbol: "BTC",
@@ -37,6 +41,7 @@ export const assets: Asset[] = [
     icon: "/assets/bitcoin.svg",
   },
   {
+    contractAddress: "0x71C3a5E9f2B48d6C0a1E7f3B9d5C2a8E4f6BEf89",
     id: "eth",
     kind: "crypto",
     symbol: "ETH",
@@ -45,6 +50,7 @@ export const assets: Asset[] = [
     icon: "/assets/ethereum.svg",
   },
   {
+    contractAddress: "0x9E40c6A1f3B57d8E2a4C9f0B6d1E3a7C5f8Abd31",
     id: "sol",
     kind: "crypto",
     symbol: "SOL",
@@ -53,6 +59,7 @@ export const assets: Asset[] = [
     icon: "/assets/solana.svg",
   },
   {
+    contractAddress: "0x5DA7b3E1f9C42a8D6e0B5c7A1f4D9e2C8a6F29c4",
     id: "aapl",
     kind: "stock",
     symbol: "AAPL",
@@ -61,6 +68,7 @@ export const assets: Asset[] = [
     icon: "/assets/apple.svg",
   },
   {
+    contractAddress: "0x2F91d7A4e8C03b6F1a5D9c2E7f4B0a8C6e3Fa8d3",
     id: "nvda",
     kind: "stock",
     symbol: "NVDA",
@@ -105,6 +113,7 @@ export function createMockTrades(draft: TradeDraft): TradeRecord[] {
       direction: "sellHigher",
       expiry: "AUG 28",
       id: "apple-settled",
+      resolution: "executed",
       state: "settled",
       targetPrice: 230,
     },
@@ -116,6 +125,7 @@ export function createMockTrades(draft: TradeDraft): TradeRecord[] {
       direction: "sellHigher",
       expiry: "AUG 16",
       id: "nvidia-settled",
+      resolution: "notExecuted",
       state: "settled",
       targetPrice: 180,
     },

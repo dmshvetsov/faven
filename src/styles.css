@@ -362,28 +362,28 @@ a:focus-visible {
     transform 140ms ease;
   width: 100%;
 }
-.asset-option:hover,
+.asset-select:hover,
 .plain-option:hover {
   background: #e5eef1;
   transform: translateX(2px);
 }
-.asset-option > span {
+.asset-select > span {
   display: grid;
   gap: 1px;
 }
-.asset-option strong,
+.asset-select strong,
 .plain-option {
   font-size: 14px;
   font-weight: 700;
 }
-.asset-option small {
+.asset-select small {
   font-size: 12px;
 }
-.asset-option b {
+.asset-select b {
   font-size: 14px;
   margin-left: auto;
 }
-.asset-option .icon,
+.asset-select .icon,
 .plain-option .icon {
   height: 24px;
   margin-left: auto;
@@ -393,6 +393,46 @@ a:focus-visible {
   font-size: 16px;
   font-weight: 600;
   justify-content: center;
+}
+.asset-option {
+  padding: 0;
+  position: relative;
+}
+.asset-select {
+  align-items: center;
+  background: transparent;
+  border-radius: 8px;
+  display: flex;
+  gap: 12px;
+  min-height: 56px;
+  padding: 8px 0 8px 16px;
+  text-align: left;
+  width: 100%;
+}
+.copy-address-button {
+  align-items: center;
+  background: transparent;
+  color: #666;
+  display: inline-flex;
+  height: 32px;
+  justify-content: center;
+  bottom: 7px;
+  left: 142px;
+  margin: 0;
+  position: absolute;
+  width: 32px;
+}
+.copy-address-button:hover {
+  color: #15131b;
+}
+.copy-icon {
+  fill: none;
+  height: 14px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.4;
+  width: 14px;
 }
 .amount-control {
   align-items: center;
@@ -717,6 +757,10 @@ a:focus-visible {
   background: #e5eef1;
   color: #55545a;
 }
+.status-pill.is-notExecuted {
+  background: #f6e8e5;
+  color: #8a3b2f;
+}
 .status-pill.is-archived {
   background: #f1f3f4;
   color: #666;
@@ -923,14 +967,11 @@ a:focus-visible {
 }
 
 .asset-option {
-  display: grid;
-  gap: 12px;
-  grid-template-columns: 24px minmax(0, 1fr) max-content 24px;
+  display: flex;
 }
 
-.asset-option b {
-  justify-self: end;
-  margin-left: 0;
+.asset-select b {
+  margin-left: auto;
   text-align: right;
 }
 
@@ -1590,6 +1631,11 @@ a:focus-visible {
   margin: 16px auto 0;
   max-width: 480px;
 }
+.trade-detail-heading p.is-not-executed {
+  color: #15131b;
+  max-width: 620px;
+  white-space: nowrap;
+}
 
 .detail-current-price {
   display: block;
@@ -1691,6 +1737,9 @@ a:focus-visible {
   .trade-detail-heading h1 {
     font-size: 26px;
     line-height: 34px;
+  }
+  .trade-detail-heading p.is-not-executed {
+    white-space: normal;
   }
 
   .detail-terms {

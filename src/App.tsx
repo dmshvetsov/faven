@@ -13,6 +13,7 @@ import {
   type Direction,
   type TradeDraft,
   type TradeRecord,
+  type TradeResolution,
   type TradeState,
 } from "./trade-data";
 import { detectWallets, getWalletPreview, type DetectedWallet } from "./wallet";
@@ -53,6 +54,19 @@ function Icon({
   return (
     <img aria-hidden="true" className={`icon ${className}`} src={source} />
   );
+}
+
+function CopyIcon() {
+  return (
+    <svg aria-hidden="true" className="copy-icon" viewBox="0 0 16 16">
+      <rect height="9" rx="1" width="9" x="5" y="2" />
+      <path d="M11 5v7a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1" />
+    </svg>
+  );
+}
+
+function formatContractAddress(address: string) {
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
 function RollingValue({
@@ -192,6 +206,7 @@ function TradeSummary({
   const premium = getPremium(draft);
   const isSell = draft.direction === "sellHigher";
   const verb = isSell ? "sell" : "buy";
+  const condition = isSell ? "above" : "at or below";
   const comparison = isSell ? "at or below" : "above";
   const targetValue = draft.amount * draft.targetPrice;
   const formattedExpiry = formatExpiry(draft.expiry);
@@ -203,14 +218,14 @@ function TradeSummary({
   return (
     <aside className="trade-summary">
       <p className="summary-title">
-        You’ll get{" "}
+        You’ll receive{" "}
         <RollingValue value={premium}>{premium.toFixed(2)}</RollingValue> USDC
-        upfront for agreeing to <RollingValue value={verb}>{verb}</RollingValue>{" "}
+        upfront. You’ll <RollingValue value={verb}>{verb}</RollingValue>{" "}
         <RollingValue value={draft.amount}>{draft.amount}</RollingValue>{" "}
         <RollingValue value={draft.asset.symbol}>
           {draft.asset.symbol}
         </RollingValue>{" "}
-        if {draft.asset.symbol} reaches $
+        if {draft.asset.symbol} is {condition} $
         <RollingValue value={draft.targetPrice}>
           {formatPrice(draft.targetPrice)}
         </RollingValue>{" "}
@@ -233,7 +248,7 @@ function TradeSummary({
               USDC upfront
             </li>
             <li>
-              {isSell ? "Lock" : "Set aside"}{" "}
+              Lock{" "}
               <RollingValue value={draft.amount}>{draft.amount}</RollingValue>{" "}
               <RollingValue value={draft.asset.symbol}>
                 {draft.asset.symbol}
@@ -242,7 +257,7 @@ function TradeSummary({
           </ul>
           <p>
             {((premium / targetValue) * 100).toFixed(2)}% over {days} days ·{" "}
-            {annualizedApr}% APR annualized
+            {annualizedApr}% APR
           </p>
         </section>
       </div>
@@ -264,21 +279,21 @@ function TradeSummary({
               <li>
                 {isSell
                   ? `Get your ${draft.amount} ${draft.asset.symbol} back`
-                  : `Buy ${draft.amount} ${draft.asset.symbol} at the target price`}
+                  : `Your ${draft.amount} ${draft.asset.symbol} is returned`}
               </li>
               <li>You keep the USDC already received upfront</li>
             </ul>
           </div>
           <div>
             <h4>
-              → If {draft.asset.symbol} {isSell ? "above" : "below"} $
+              → If {draft.asset.symbol} {isSell ? "above" : "at or below"} $
               {formatPrice(draft.targetPrice)}
             </h4>
             <ul>
               <li>
                 {isSell
                   ? `Sell ${draft.amount} ${draft.asset.symbol} for ${formatPrice(targetValue)} USDC`
-                  : `Your funds are returned to your wallet`}
+                  : `Buy ${draft.amount} ${draft.asset.symbol} at the target price`}
               </li>
               <li>Your collateral is exchanged at the target price</li>
             </ul>
@@ -303,19 +318,25 @@ function TradeSummary({
 
 function TradeStatus({
   expiry,
+  resolution,
   state = "active",
 }: {
   expiry: string;
+  resolution?: TradeResolution;
   state?: TradeState;
 }) {
   const label =
-    state === "active"
-      ? `Waiting for ${formatExpiry(expiry)}`
-      : state === "settled"
-        ? "Settled"
-        : "Archived";
+    resolution === "notExecuted"
+      ? "Not executed"
+      : state === "active"
+        ? `Waiting for ${formatExpiry(expiry)}`
+        : state === "settled"
+          ? "Settled"
+          : "Archived";
 
-  return <span className={`status-pill is-${state}`}>{label}</span>;
+  return (
+    <span className={`status-pill is-${resolution ?? state}`}>{label}</span>
+  );
 }
 
 function OutcomeFlow({
@@ -347,21 +368,21 @@ function OutcomeFlow({
             <li>
               {isSell
                 ? `Get your ${draft.amount} ${draft.asset.symbol} back`
-                : `Buy ${draft.amount} ${draft.asset.symbol} at the target price`}
+                : `Your ${draft.amount} ${draft.asset.symbol} is returned`}
             </li>
             <li>You keep the USDC already received upfront</li>
           </ul>
         </section>
         <section className={currentOutcome === "execution" ? "is-current" : ""}>
           <h3>
-            → If {draft.asset.symbol} {isSell ? "above" : "below"} $
+            → If {draft.asset.symbol} {isSell ? "above" : "at or below"} $
             {formatPrice(draft.targetPrice)}
           </h3>
           <ul>
             <li>
               {isSell
                 ? `Sell ${draft.amount} ${draft.asset.symbol} for ${formatPrice(targetValue)} USDC`
-                : "Your funds are returned to your wallet"}
+                : `Buy ${draft.amount} ${draft.asset.symbol} at the target price`}
             </li>
             <li>Your collateral is exchanged at the target price</li>
           </ul>
@@ -433,8 +454,9 @@ function ReviewDialog({
             <p className="eyebrow">Review your terms</p>
             <h2>
               You’ll get {premium.toFixed(2)} USDC upfront for agreeing to{" "}
-              {isSell ? "sell" : "buy"} {draft.amount} {draft.asset.symbol} if
-              it reaches ${formatPrice(draft.targetPrice)} on{" "}
+              {isSell ? "sell" : "buy"} {draft.amount} {draft.asset.symbol} if{" "}
+              {draft.asset.symbol} is {isSell ? "above" : "at or below"} $
+              {formatPrice(draft.targetPrice)} on{" "}
               {formatExpiry(draft.expiry).replace(
                 /^[A-Z]{3}/,
                 (month) => `${month[0]}${month.slice(1).toLowerCase()}`
@@ -446,8 +468,7 @@ function ReviewDialog({
                 <ul>
                   <li>Receive {premium.toFixed(2)} USDC upfront</li>
                   <li>
-                    {isSell ? "Lock" : "Set aside"} {draft.amount}{" "}
-                    {draft.asset.symbol}
+                    Lock {draft.amount} {draft.asset.symbol}
                   </li>
                 </ul>
                 <p>Review all terms before signing with your wallet.</p>
@@ -639,8 +660,10 @@ function Dashboard({
                 <span>
                   <strong>
                     {trade.direction === "sellHigher" ? "Sell" : "Buy"}{" "}
-                    {trade.amount} {trade.asset.symbol} if it reaches $
-                    {formatPrice(trade.targetPrice)}
+                    {trade.amount} {trade.asset.symbol} if {trade.asset.symbol}{" "}
+                    is{" "}
+                    {trade.direction === "sellHigher" ? "above" : "at or below"}{" "}
+                    ${formatPrice(trade.targetPrice)}
                   </strong>
                   <small>
                     {trade.state === "active"
@@ -650,7 +673,11 @@ function Dashboard({
                 </span>
               </span>
               <span className="trade-row-meta">
-                <TradeStatus expiry={trade.expiry} state={trade.state} />
+                <TradeStatus
+                  expiry={trade.expiry}
+                  resolution={trade.resolution}
+                  state={trade.state}
+                />
                 <small>+{getPremium(trade).toFixed(2)} USDC received</small>
               </span>
             </button>
@@ -682,7 +709,7 @@ function TradeDetail({
   const draft = trade;
   const isSell = draft.direction === "sellHigher";
   const targetReached = isSell
-    ? draft.asset.price >= draft.targetPrice
+    ? draft.asset.price > draft.targetPrice
     : draft.asset.price <= draft.targetPrice;
   const premium = getPremium(draft);
   const returningOutcome = !targetReached;
@@ -695,15 +722,26 @@ function TradeDetail({
       </button>
       <div className="trade-detail-heading">
         <div>
-          <TradeStatus expiry={draft.expiry} state={trade.state} />
+          <TradeStatus
+            expiry={draft.expiry}
+            resolution={trade.resolution}
+            state={trade.state}
+          />
           <h1>
             {draft.direction === "sellHigher" ? "Sell" : "Buy"} {draft.amount}{" "}
-            {draft.asset.symbol} if it reaches ${formatPrice(draft.targetPrice)}
+            {draft.asset.symbol} if {draft.asset.symbol} is{" "}
+            {isSell ? "above" : "at or below"} ${formatPrice(draft.targetPrice)}
           </h1>
-          <p>
-            {targetReached
-              ? "At the moment, the target has been reached. The execution outcome is currently in play."
-              : "At the moment, the target has not been reached. The return outcome is currently in play."}
+          <p
+            className={
+              trade.resolution === "notExecuted" ? "is-not-executed" : ""
+            }
+          >
+            {trade.resolution === "notExecuted"
+              ? "This trade was not executed because the market maker declined it."
+              : targetReached
+                ? "At the moment, the target has been reached. The execution outcome is currently in play."
+                : "At the moment, the target has not been reached. The return outcome is currently in play."}
           </p>
           <strong className="detail-current-price">
             Current {draft.asset.symbol} price: $
@@ -738,7 +776,7 @@ function TradeDetail({
             (365 / 11) *
             100
           ).toFixed(2)}
-          %{" APR annualized"}
+          % APR
         </p>
       </section>
       <section className="detail-outcomes">
@@ -977,7 +1015,7 @@ export default function App() {
               </div>
               <div className="form-section">
                 <StepHeading
-                  description={steps[2][1]}
+                  description="Explore available assets and their current prices"
                   index={3}
                   title={
                     draft.assetKind === "crypto"
@@ -1002,33 +1040,44 @@ export default function App() {
                   open={openMenu === "asset"}
                 >
                   {relevantAssets.map((asset) => (
-                    <button
-                      className="asset-option"
-                      key={asset.id}
-                      onClick={() => setAsset(asset)}
-                      type="button"
-                    >
-                      <AssetBadge asset={asset} />
-                      <span>
-                        <strong>{asset.name}</strong>
-                        <small>
-                          {asset.symbol}{" "}
-                          {asset.kind === "crypto"
-                            ? "Cryptocurrency"
-                            : "Tokenized stock"}
-                        </small>
-                      </span>
-                      <b>${formatPrice(asset.price)}</b>
-                      <span className="check-slot">
-                        {draft.asset.id === asset.id && <Icon name="check" />}
-                      </span>
-                    </button>
+                    <div className="asset-option" key={asset.id}>
+                      <button
+                        className="asset-select"
+                        onClick={() => setAsset(asset)}
+                        type="button"
+                      >
+                        <AssetBadge asset={asset} />
+                        <span>
+                          <strong>{asset.name}</strong>
+                          <small>
+                            {formatContractAddress(asset.contractAddress)}
+                          </small>
+                        </span>
+                        <b>${formatPrice(asset.price)}</b>
+                        <span className="check-slot">
+                          {draft.asset.id === asset.id && <Icon name="check" />}
+                        </span>
+                      </button>
+                      <button
+                        aria-label={`Copy ${asset.name} contract address`}
+                        className="copy-address-button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void navigator.clipboard?.writeText(
+                            asset.contractAddress
+                          );
+                        }}
+                        type="button"
+                      >
+                        <CopyIcon />
+                      </button>
+                    </div>
                   ))}
                 </Dropdown>
               </div>
               <div className="form-section">
                 <StepHeading
-                  description={steps[3][1].replace("BTC", draft.asset.symbol)}
+                  description={`Choose how much ${draft.asset.symbol} to ${draft.direction === "sellHigher" ? "sell" : "buy"} at the target price`}
                   index={4}
                   title={
                     draft.direction === "sellHigher"
@@ -1053,7 +1102,9 @@ export default function App() {
                   </button>
                   <div>
                     <strong>{draft.amount.toFixed(2)}</strong>
-                    <span>{draft.asset.symbol}</span>
+                    <span>
+                      ≈${formatPrice(draft.amount * draft.asset.price)}
+                    </span>
                   </div>
                   <button
                     onClick={() =>
