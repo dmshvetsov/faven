@@ -25,6 +25,10 @@ type TradeTab = "active" | "settled";
 const showOpenedReviewPreview =
   new URLSearchParams(window.location.search).get("review") === "opened";
 
+// Keep wallet sign-in available for production, but leave it off while the
+// prototype is being tested end-to-end without a wallet extension.
+const requireWalletSignInForReview = false;
+
 const steps = [
   [
     "Buy or sell",
@@ -1272,7 +1276,7 @@ export default function App() {
               return;
             }
 
-            if ((getWalletPreview() ?? detectWallets()).length === 0) {
+            if (!requireWalletSignInForReview) {
               setPositionOpen(true);
               return;
             }
