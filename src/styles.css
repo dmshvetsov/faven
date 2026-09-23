@@ -1189,7 +1189,8 @@ a:focus-visible {
     transform: rotate(360deg);
   }
 }
-.review-back-button {
+.review-back-button,
+.back-button {
   align-items: center;
   background: #dbdce5;
   border-radius: 8px;
@@ -1200,12 +1201,13 @@ a:focus-visible {
   justify-content: center;
   margin: 12px auto 0;
   min-height: 32px;
-  padding: 4px 16px;
+  padding: 8px 24px;
   transition:
     background-color 160ms ease,
     transform 160ms ease;
 }
-.review-back-button:hover {
+.review-back-button:hover,
+.back-button:hover {
   background: #cfd1dc;
   transform: translateY(-1px);
 }
@@ -1548,12 +1550,19 @@ a:focus-visible {
 .position-opened-reward {
   font-size: 16px;
   line-height: 24px;
-  margin: 16px 0 0;
+  margin: 8px 0 0;
 }
-.position-new-trade-button {
+
+.success-action-button {
   display: block;
   font-size: 14px;
-  margin: 12px auto 0;
+  margin: 24px auto 0;
+  min-height: 32px;
+  width: 176px;
+}
+
+.position-new-trade-button {
+  margin-top: 8px;
 }
 
 @keyframes success-mark-in {
@@ -1607,13 +1616,6 @@ a:focus-visible {
   line-height: 20px;
   margin-top: 16px;
   padding-top: 16px;
-}
-
-.success-view-button {
-  display: block;
-  font-size: 16px;
-  margin: 24px auto 0;
-  min-height: 32px;
 }
 
 .dashboard-heading {
@@ -1695,21 +1697,9 @@ a:focus-visible {
   max-width: 840px;
 }
 
-.back-button {
-  align-items: center;
-  background: #dbdce5;
-  border-radius: 8px;
+.trade-detail > .back-button {
   display: inline-flex;
-  font-size: 14px;
-  font-weight: 600;
-  gap: 8px;
-  min-height: 32px;
-  padding: 4px 12px;
-}
-
-.back-button:hover {
-  background: #cfd1dc;
-  transform: translateY(-1px);
+  margin: 0;
 }
 
 .trade-detail-heading {

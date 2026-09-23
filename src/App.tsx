@@ -473,14 +473,14 @@ function ReviewDialog({
               wallet
             </p>
             <button
-              className="primary-button success-view-button"
+              className="sign-in-button success-action-button"
               onClick={onViewTrade}
               type="button"
             >
-              View trade
+              View opened trade
             </button>
             <button
-              className="sign-in-button position-new-trade-button"
+              className="sign-in-button success-action-button position-new-trade-button"
               onClick={onStartNewTrade}
               type="button"
             >
@@ -1271,6 +1271,12 @@ export default function App() {
               setPositionOpen(true);
               return;
             }
+
+            if ((getWalletPreview() ?? detectWallets()).length === 0) {
+              setPositionOpen(true);
+              return;
+            }
+
             setReviewWalletSigning(true);
             handleWalletButton();
           }}
