@@ -292,6 +292,13 @@ function walletErrorMessage(error: unknown) {
   return "Wallet connection was cancelled or failed. Please try again.";
 }
 
+function walletMarkClass(walletName: string) {
+  const normalizedName = walletName.toLowerCase();
+  if (normalizedName.includes("backpack")) return "wallet-backpack";
+  if (normalizedName.includes("solflare")) return "wallet-solflare";
+  return "";
+}
+
 function WalletDialog({
   error,
   isConnecting,
@@ -374,7 +381,9 @@ function WalletDialog({
                   onClick={() => onSelect(wallet)}
                   type="button"
                 >
-                  <span className={`wallet-mark wallet-${wallet.id}`}>
+                  <span
+                    className={`wallet-mark ${walletMarkClass(wallet.name)}`}
+                  >
                     {wallet.name.slice(0, 1)}
                   </span>
                   <strong>{wallet.name}</strong>
