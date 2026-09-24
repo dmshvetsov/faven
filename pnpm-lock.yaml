@@ -20,6 +20,84 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+
+  apps/admin-cli:
+    dependencies:
+      '@clack/prompts':
+        specifier: ^1.7.0
+        version: 1.7.0
+      '@solana/kit':
+        specifier: ^5.1.0
+        version: 5.5.1(typescript@5.9.3)
+      sdk:
+        specifier: workspace:*
+        version: link:../../packages/sdk
+    devDependencies:
+      '@types/node':
+        specifier: ^20
+        version: 20.19.43
+      eslint:
+        specifier: ^9.35.0
+        version: 9.39.5(jiti@2.7.0)
+      prettier:
+        specifier: ^3.6.2
+        version: 3.9.6
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+      typescript-eslint:
+        specifier: ^8.44.0
+        version: 8.67.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3)
+
+  apps/rfq-server:
+    dependencies:
+      '@solana/kit':
+        specifier: ^5.1.0
+        version: 5.5.1(typescript@5.9.3)
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@cloudflare/workers-types@5.20260907.1)
+      hono:
+        specifier: latest
+        version: 4.13.9
+      sdk:
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      uuid:
+        specifier: ^14.0.2
+        version: 14.0.2
+    devDependencies:
+      '@cloudflare/vitest-plugin':
+        specifier: 1.1.5
+        version: 1.1.5(@cloudflare/workers-types@5.20260907.1)(@vitest/runner@4.1.11)(@vitest/snapshot@4.1.11)(vitest@4.1.11(@types/node@20.19.43)(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.12)))
+      drizzle-kit:
+        specifier: 1.0.0-rc.4
+        version: 1.0.0-rc.4
+      eslint:
+        specifier: ^9.35.0
+        version: 9.39.5(jiti@2.7.0)
+      globals:
+        specifier: ^16.4.0
+        version: 16.5.0
+      prettier:
+        specifier: ^3.6.2
+        version: 3.9.6
+      tsx:
+        specifier: ^4.23.12
+        version: 4.23.12
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+      typescript-eslint:
+        specifier: ^8.44.0
+        version: 8.67.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3)
+      vitest:
+        specifier: 4.1.11
+        version: 4.1.11(@types/node@20.19.43)(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.12))
+      wrangler:
+        specifier: 4.127.1
+        version: 4.127.1(@cloudflare/workers-types@5.20260907.1)
+
   apps/web:
     dependencies:
       '@solana/client':
@@ -31,12 +109,18 @@ importers:
       '@solana/react-hooks':
         specifier: ^1.1.5
         version: 1.4.1(@solana/sysvars@5.5.1(typescript@5.9.3))(@types/react@19.2.18)(react@19.2.8)(typescript@5.9.3)(use-sync-external-store@1.6.0(react@19.2.8))
+      '@tanstack/react-query':
+        specifier: ^5.103.2
+        version: 5.103.2(react@19.2.8)
       react:
         specifier: ^19.2.0
         version: 19.2.8
       react-dom:
         specifier: ^19.2.0
         version: 19.2.8(react@19.2.8)
+      sdk:
+        specifier: workspace:*
+        version: link:../../packages/sdk
     devDependencies:
       '@eslint/js':
         specifier: ^9.35.0
@@ -77,83 +161,6 @@ importers:
       vite:
         specifier: ^7.1.7
         version: 7.3.6(@types/node@20.19.43)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.12)
-
-  apps/admin-cli:
-    dependencies:
-      '@clack/prompts':
-        specifier: ^1.7.0
-        version: 1.7.0
-      '@solana/kit':
-        specifier: ^5.1.0
-        version: 5.5.1(typescript@5.9.3)
-      sdk:
-        specifier: workspace:*
-        version: link:../../packages/sdk
-    devDependencies:
-      '@types/node':
-        specifier: ^20
-        version: 20.19.43
-      eslint:
-        specifier: ^9.35.0
-        version: 9.39.5(jiti@2.7.0)
-      prettier:
-        specifier: ^3.6.2
-        version: 3.9.6
-      typescript:
-        specifier: ^5.9.2
-        version: 5.9.3
-      typescript-eslint:
-        specifier: ^8.44.0
-        version: 8.67.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3)
-
-  apps/rfq-server:
-    dependencies:
-      '@solana/kit':
-        specifier: ^5.1.0
-        version: 5.5.1(typescript@5.9.3)
-      drizzle-orm:
-        specifier: ^0.45.2
-        version: 0.45.2(@cloudflare/workers-types@5.20260907.1)
-      hono:
-        specifier: latest
-        version: 4.13.7
-      sdk:
-        specifier: workspace:*
-        version: link:../../packages/sdk
-      uuid:
-        specifier: ^14.0.2
-        version: 14.0.2
-    devDependencies:
-      '@cloudflare/vitest-plugin':
-        specifier: 1.1.5
-        version: 1.1.5(@cloudflare/workers-types@5.20260907.1)(@vitest/runner@4.1.11)(@vitest/snapshot@4.1.11)(vitest@4.1.11(@types/node@20.19.43)(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.12)))
-      drizzle-kit:
-        specifier: 1.0.0-rc.4
-        version: 1.0.0-rc.4
-      eslint:
-        specifier: ^9.35.0
-        version: 9.39.5(jiti@2.7.0)
-      globals:
-        specifier: ^16.4.0
-        version: 16.5.0
-      prettier:
-        specifier: ^3.6.2
-        version: 3.9.6
-      tsx:
-        specifier: ^4.23.12
-        version: 4.23.12
-      typescript:
-        specifier: ^5.9.2
-        version: 5.9.3
-      typescript-eslint:
-        specifier: ^8.44.0
-        version: 8.67.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3)
-      vitest:
-        specifier: 4.1.11
-        version: 4.1.11(@types/node@20.19.43)(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.12))
-      wrangler:
-        specifier: 4.127.1
-        version: 4.127.1(@cloudflare/workers-types@5.20260907.1)
 
   packages/sdk:
     dependencies:
@@ -1707,6 +1714,14 @@ packages:
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
+  '@tanstack/query-core@5.103.2':
+    resolution: {integrity: sha512-I8DkFXls5jXLqtm8+QpOhEmG07hIblhSZFzafg9wHsMSEvMzULy9hK17wU1T/ahfhMbtITJhbxutwwCoihkR7A==}
+
+  '@tanstack/react-query@5.103.2':
+    resolution: {integrity: sha512-B+fWiYZBc+0uUD5zDZAeLw9dKj7XEsdnuu6zRZ+no6LNKpeE3P3bJ+N6HINjcIlWR6fW3vUoTneEaGa2V6ehqw==}
+    peerDependencies:
+      react: ^18 || ^19
+
   '@types/babel__core@7.20.5':
     resolution: {integrity: sha512-qoQprZvz5wQFJwMDqeseRXWv3rqMvhgpbXFfVyWhbx9X47POIA6i/+dXefEmZKoAgOaTdaIgNSMqMIU61yRyzA==}
 
@@ -2317,8 +2332,8 @@ packages:
     resolution: {integrity: sha512-T2UbfbBEF32wiepXIsMlTW9+dDYC6wMh/t/vYA4tuOMKqWz/n3vr1NFSxQiyP+zk2mXsoMA/i/7qV6LKut1t1A==}
     engines: {node: '>= 0.4'}
 
-  hono@4.13.7:
-    resolution: {integrity: sha512-c8/gF9ac8Y78/agExVocyLevgR+JlpNB444Py0FSX8pJoPdYUfUzRcXtYEYGwt6l19qIlVZPN5Mfsw9jFShmQQ==}
+  hono@4.13.9:
+    resolution: {integrity: sha512-7dMkQmZoC4E6F7AtaQSPhlWAdnBti+j7rreMZl8QB4jFiEhP9TWbGWUMi8WYzBCgmgulxuvLQupKqo+Co6Omyg==}
     engines: {node: '>=16.9.0'}
 
   ignore@5.3.2:
@@ -4280,6 +4295,13 @@ snapshots:
 
   '@standard-schema/spec@1.1.0': {}
 
+  '@tanstack/query-core@5.103.2': {}
+
+  '@tanstack/react-query@5.103.2(react@19.2.8)':
+    dependencies:
+      '@tanstack/query-core': 5.103.2
+      react: 19.2.8
+
   '@types/babel__core@7.20.5':
     dependencies:
       '@babel/parser': 7.29.8
@@ -4917,7 +4939,7 @@ snapshots:
     dependencies:
       function-bind: 1.1.2
 
-  hono@4.13.7: {}
+  hono@4.13.9: {}
 
   ignore@5.3.2: {}
 
