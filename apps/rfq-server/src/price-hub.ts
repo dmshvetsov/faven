@@ -130,6 +130,7 @@ export class PriceHub implements DurableObject {
       console.error("Price feed upstream error.", {
         error: errorMessage(error),
       });
+      this.failPendingPrices(new PriceFeedUnavailableError());
       this.scheduleReconnect();
     }
   }

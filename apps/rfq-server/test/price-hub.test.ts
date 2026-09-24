@@ -117,6 +117,19 @@ describe("Price hub", () => {
       error: "Price feed is unavailable.",
     });
   });
+
+  it("returns 503 when the price feed cannot be constructed", async () => {
+    vi.stubGlobal("WebSocket", ThrowingBackpackSocket);
+
+    const response = await SELF.fetch(
+      "https://example.com/markets/6gL1TzV6e4QSffGJdvM7hCoVfe1nTZiB68QPD9ye6NDW/series"
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({
+      error: "Price feed is unavailable.",
+    });
+  });
 });
 
 class ControlledBackpackSocket extends EventTarget {
@@ -185,6 +198,12 @@ class FailingBackpackSocket extends EventTarget {
 
   send(): void {
     // The upstream fails before it can receive a subscription request.
+  }
+}
+
+class ThrowingBackpackSocket {
+  constructor() {
+    throw new Error("Unable to create WebSocket.");
   }
 }
 
