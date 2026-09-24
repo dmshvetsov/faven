@@ -1,17 +1,6 @@
 {
   "name": "faven-v2",
-  "scripts": {
-    "anchor-build": "cd anchor && anchor build --ignore-keys",
-    "anchor-test": "cd anchor && anchor build --ignore-keys && cargo test",
-    "build": "tsc -b && vite build",
-    "codama:js": "codama run js",
-    "dev": "vite",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "lint": "eslint .",
-    "preview": "vite preview",
-    "setup": "npm run anchor-build && npm run codama:js"
-  },
+  "scripts": {},
   "description": "Faven Solana protocol workspace",
   "keywords": [
     "anchor",
@@ -20,30 +9,11 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "dependencies": {
-    "@solana/client": "^1.2.0",
-    "@solana/kit": "^5.1.0",
-    "@solana/react-hooks": "^1.1.5",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0"
-  },
   "devDependencies": {
-    "@eslint/js": "^9.35.0",
-    "@types/node": "^20.19.22",
-    "@types/react": "^19.2.2",
-    "@types/react-dom": "^19.2.2",
-    "@vitejs/plugin-react": "^5.0.4",
     "@codama/nodes-from-anchor": "1.5.3",
     "@codama/renderers-js": "1.7.1",
     "codama": "1.10.0",
-    "eslint": "^9.35.0",
-    "eslint-plugin-react-hooks": "^5.2.0",
-    "eslint-plugin-react-refresh": "^0.4.20",
-    "globals": "^16.4.0",
-    "prettier": "^3.6.2",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.44.1",
-    "vite": "^7.1.7"
+    "typescript": "^5.9.3"
   },
   "packageManager": "pnpm@9.10.0+sha512.73a29afa36a0d092ece5271de5177ecbf8318d454ecd701343131b8ebc0c1a91c487da46ab77c8e596d6acf1461e3594ced4becedf8921b074fbd8653ed7051c"
 }

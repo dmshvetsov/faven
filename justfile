@@ -23,14 +23,19 @@ apps-format:
     pnpm -F rfq run format
     pnpm -F admin-cli run format
     pnpm -F sdk run format
+    pnpm -F web run format
 
 apps-lint:
     pnpm -F rfq run lint
     pnpm -F admin-cli run lint
     pnpm -F sdk run lint
+    pnpm -F web run lint
 
 rfq-dev *args:
     pnpm -F rfq run dev {{args}}
+
+web-dev *args:
+    pnpm -F web run dev {{args}}
 
 rfq-test:
     pnpm -F rfq run test
