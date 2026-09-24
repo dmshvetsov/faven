@@ -46,6 +46,12 @@ export async function fundWallet(input: {
     return { status: "funding-unavailable" };
   }
 
+  console.info({
+    event: "wallet_funding_requested",
+    walletAddress: input.walletAddress,
+    cluster: input.cluster,
+  });
+
   const now = input.now ?? Date.now();
   const repository = new WalletFundingRepository(input.database);
   const retryAt = await cooldownRetryAt(repository, input.walletAddress);
@@ -79,6 +85,14 @@ export async function fundWallet(input: {
     try {
       treasury = await treasurySignerFromSecret(input.treasuryPrivateKey);
     } catch {
+      console.error({
+        event: "wallet_funding_treasury_unavailable",
+        attemptId: pending.id,
+        walletAddress: input.walletAddress,
+        cluster: input.cluster,
+        faucetPrivateKeyConfigured: input.treasuryPrivateKey !== undefined,
+        reason: "invalid-treasury-secret",
+      });
       await repository.markFailed(pending.id, "funding-unavailable", now);
       return { status: "funding-unavailable" };
     }
@@ -102,24 +116,27 @@ export async function fundWallet(input: {
     return { status: "funded", signature: transaction.signature, funding };
   } catch (error) {
     if (!(error instanceof FundingTransactionFailedError)) {
-      console.error(
-        "Wallet funding outcome is unknown; attempt remains pending.",
-        {
-          walletAddress: input.walletAddress,
-          error:
-            error instanceof FundingConfirmationTimeoutError
-              ? "confirmation timed out"
-              : error instanceof Error
-                ? error.message
-                : "Unknown error.",
-        }
-      );
+      console.error({
+        event: "wallet_funding_outcome_unknown",
+        attemptId: pending.id,
+        walletAddress: input.walletAddress,
+        cluster: input.cluster,
+        error:
+          error instanceof FundingConfirmationTimeoutError
+            ? "confirmation timed out"
+            : error instanceof Error
+              ? error.message
+              : "Unknown error.",
+      });
       return { status: "funding-unavailable" };
     }
 
-    console.error("Wallet funding transaction failed on-chain.", {
+    console.error({
+      event: "wallet_funding_transaction_failed",
+      attemptId: pending.id,
       walletAddress: input.walletAddress,
-      error: error.rpcError,
+      cluster: input.cluster,
+      rpcError: error.rpcError,
     });
     await repository.markFailed(pending.id, "transaction-failed", Date.now());
     return { status: "funding-unavailable" };

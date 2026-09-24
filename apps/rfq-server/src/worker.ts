@@ -84,9 +84,10 @@ app.post("/wallet-fundings", async (context) => {
     context.env.SOLANA_CLUSTER !== "devnet" &&
     context.env.SOLANA_CLUSTER !== "localhost"
   ) {
-    console.warn(
-      `wallet-funding is called outside localhost or devnet, SOLANA_CLUSTER=${context.env.SOLANA_CLUSTER}`
-    );
+    console.warn({
+      event: "wallet_funding_unavailable_for_cluster",
+      cluster: context.env.SOLANA_CLUSTER,
+    });
     return context.json({ error: "Not found." }, 404);
   }
   const walletAddress = await walletAddressFromRequest(context.req.raw);

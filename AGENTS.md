@@ -20,6 +20,26 @@ If you work on Solana programs then follow `./anchor/README.md` instructions on 
 
 Always prefer to use Shadcn components if they exists in Shadcn library of component, install missing component instead writing your own component like so `corepack pnpm dlx shadcn@latest add tabs table`. Do not make copies of shadcn components yourself always install. Only write your own components if Shadcn library missing it. Use Radix-UI with Shadcn.
 
+### Cloudflare Workers
+
+Log structured objects with a stable `event` field. Add a short `message` only when useful. Never log secrets, private keys, serialized transactions or whole request, response objects as they might have secrets and keys.
+
+How to log error, info, warn events (with error example):
+
+```ts
+console.error({
+  event: "wallet_funding_treasury_keypair_invalid",
+  cluster,
+});
+```
+
+How not to log:
+
+```ts
+console.error(`Funding failed for ${walletAddress}: ${privateKey} ${someSecret}`);
+console.error("Funding failed:", { walletAddress, cluster, ...response, ...request });
+```
+
 ## Git rules
 
 - commits format `<name of the monorepo package>: <explain what changes are in the commit>`
