@@ -1,6 +1,7 @@
 import { env, SELF } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { getEnvironmentConfig } from "../src/config";
 import { isRecord } from "../src/rfq-rpc";
 import worker from "../src/worker";
 
@@ -22,7 +23,7 @@ const publicMarket = expect.objectContaining({
     step: expect.any(String),
     maximum: expect.any(String),
   }),
-  price: expect.any(String),
+  lastPrice: expect.any(String),
 });
 
 async function expectMarketContract(response: Response, marketCount: number) {
@@ -36,6 +37,7 @@ async function expectMarketContract(response: Response, marketCount: number) {
   expect(body.markets).toHaveLength(marketCount);
   for (const market of body.markets) {
     expect(market).toEqual(publicMarket);
+    expect(market).toMatchObject({ lastPrice: "142.37" });
   }
 }
 
@@ -54,14 +56,10 @@ describe("market catalogue", () => {
     ["production:mainnetbeta", "mainnet-beta"],
   ] as const)(
     "selects the correct market catalogue for %s",
-    async (environment, cluster) => {
-      const response = await worker.fetch(
-        new Request("https://example.com/markets"),
-        { ...env, PRODUCT_ENVIRONMENT: environment, SOLANA_CLUSTER: cluster }
-      );
-
-      await expectMarketContract(
-        response,
+    (environment, cluster) => {
+      const config = getEnvironmentConfig(environment);
+      expect(config.cluster).toBe(cluster);
+      expect(config.markets).toHaveLength(
         environment === "production:mainnetbeta" ? 0 : 1
       );
     }
@@ -98,3 +96,41 @@ describe("market catalogue", () => {
     expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
 });
+
+beforeEach(() => vi.stubGlobal("WebSocket", MarketPricesSocket));
+
+afterEach(() => vi.unstubAllGlobals());
+
+class MarketPricesSocket extends EventTarget {
+  constructor() {
+    super();
+    setTimeout(() => this.dispatchEvent(new Event("open")), 0);
+  }
+
+  close(): void {
+    this.dispatchEvent(new Event("close"));
+  }
+
+  send(message: string): void {
+    const request: unknown = JSON.parse(message);
+    if (!isRecord(request) || !Array.isArray(request.params)) return;
+
+    for (const subscription of request.params) {
+      if (typeof subscription !== "string") continue;
+      const ticker = subscription.replace(/^ticker\./, "");
+      this.dispatchEvent(
+        new MessageEvent("message", {
+          data: JSON.stringify({
+            stream: `ticker.${ticker}`,
+            data: {
+              e: "ticker",
+              s: ticker,
+              c: "142.37",
+              E: 1_694_687_692_980_000,
+            },
+          }),
+        })
+      );
+    }
+  }
+}

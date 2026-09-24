@@ -10,17 +10,22 @@ import type { Env } from "../worker";
 
 export const marketsRouter = new Hono<{ Bindings: Env }>();
 
-marketsRouter.get("/", (context) => {
+marketsRouter.get("/", async (context) => {
   const config = getEnvironmentConfig(context.env.PRODUCT_ENVIRONMENT);
-  const response = context.json({
-    markets: config.markets.map(publicMarket),
-  });
-  const origin = context.req.header("Origin");
-  if (origin !== undefined && config.allowedOrigins.includes(origin)) {
-    response.headers.set("Access-Control-Allow-Origin", origin);
+  const marketsWithPrices = await Promise.all(
+    config.markets.map(async (market) => ({
+      market,
+      price: await observedPriceForMarket(context, market.marketAddress),
+    }))
+  );
+  const markets: Market[] = [];
+  for (const { market, price } of marketsWithPrices) {
+    if (price.status !== "available") {
+      return priceErrorResponse(context, market.marketAddress, price.status);
+    }
+    markets.push(publicMarket(market, price.lastPriceUsd));
   }
-  response.headers.set("Vary", "Origin");
-  return response;
+  return marketJson(context, { markets });
 });
 
 marketsRouter.get("/:marketAddress/series", async (context) => {
@@ -32,32 +37,12 @@ marketsRouter.get("/:marketAddress/series", async (context) => {
   if (market === null)
     return marketJson(context, { error: "RFQ market not found." }, 404);
 
-  const priceResponse = await context.env.PRICE_HUB.get(
-    context.env.PRICE_HUB.idFromName("all-backpack-prices")
-  ).fetch(
-    new Request(
-      `https://price-hub/prices/${encodeURIComponent(marketAddress)}`,
-      {
-        signal: context.req.raw.signal,
-      }
-    )
-  );
-  if (priceResponse.status === 504) {
-    return marketJson(
-      context,
-      { error: `Timed out waiting for a price for market ${marketAddress}.` },
-      504
-    );
-  }
-  if (!priceResponse.ok) {
-    return marketJson(context, { error: "Price feed is unavailable." }, 503);
-  }
-  const price: unknown = await priceResponse.json();
-  if (!isObservedPrice(price)) {
-    return marketJson(context, { error: "Price feed is unavailable." }, 503);
+  const price = await observedPriceForMarket(context, marketAddress);
+  if (price.status !== "available") {
+    return priceErrorResponse(context, marketAddress, price.status);
   }
   return marketJson(context, {
-    market: publicMarket(market),
+    market: publicMarket(market, price.lastPriceUsd),
     series: generateUnderwritingSeries({
       nowMs: Date.now(),
       priceUpdatedAt: price.updatedAt,
@@ -84,10 +69,10 @@ export interface Market {
     readonly step: string;
     readonly maximum: string;
   };
-  readonly price: string;
+  readonly lastPrice: string;
 }
 
-export function publicMarket(market: MarketConfig): Market {
+export function publicMarket(market: MarketConfig, lastPrice: string): Market {
   return {
     marketAddress: market.marketAddress,
     baseTokenSymbol: market.baseTokenSymbol,
@@ -106,8 +91,53 @@ export function publicMarket(market: MarketConfig): Market {
       step: market.quantity.step.toString(),
       maximum: market.quantity.maximum.toString(),
     },
-    price: "0",
+    lastPrice,
   };
+}
+
+type ObservedPriceResult =
+  | {
+      readonly status: "available";
+      readonly lastPriceUsd: string;
+      readonly updatedAt: number;
+    }
+  | { readonly status: "timed-out" | "unavailable" };
+
+async function observedPriceForMarket(
+  context: Context<{ Bindings: Env }>,
+  marketAddress: string
+): Promise<ObservedPriceResult> {
+  const priceResponse = await context.env.PRICE_HUB.get(
+    context.env.PRICE_HUB.idFromName(
+      `backpack-prices:${context.env.PRODUCT_ENVIRONMENT}`
+    )
+  ).fetch(
+    new Request(
+      `https://price-hub/prices/${encodeURIComponent(marketAddress)}`,
+      { signal: context.req.raw.signal }
+    )
+  );
+  if (priceResponse.status === 504) return { status: "timed-out" };
+  if (!priceResponse.ok) return { status: "unavailable" };
+
+  const price: unknown = await priceResponse.json();
+  if (!isObservedPrice(price)) return { status: "unavailable" };
+  return { status: "available", ...price };
+}
+
+function priceErrorResponse(
+  context: Context<{ Bindings: Env }>,
+  marketAddress: string,
+  status: "timed-out" | "unavailable"
+): Response {
+  if (status === "timed-out") {
+    return marketJson(
+      context,
+      { error: `Timed out waiting for a price for market ${marketAddress}.` },
+      504
+    );
+  }
+  return marketJson(context, { error: "Price feed is unavailable." }, 503);
 }
 
 function isObservedPrice(

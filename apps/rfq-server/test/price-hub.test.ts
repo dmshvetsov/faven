@@ -38,6 +38,7 @@ describe("Price hub", () => {
     await expect(response.json()).resolves.toEqual({
       market: expect.objectContaining({
         marketAddress: "99rh3FNKgvuWigwrsaDLMSD9cX8XWkFAdTdHqLkW3BCC",
+        lastPrice: "142.37",
       }),
       series: {
         call: expect.arrayContaining([
