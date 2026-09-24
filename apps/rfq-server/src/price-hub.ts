@@ -113,6 +113,10 @@ export class PriceHub implements DurableObject {
     if (!this.hasDemand() || this.backpackSocket !== null || this.connecting) {
       return;
     }
+    console.info("Price feed upstream connection starting.", {
+      clientCount: this.clientCount(),
+      pendingTickers: [...this.pendingPrices.keys()],
+    });
     this.connecting = true;
     try {
       const socket = new WebSocket(BACKPACK_WEBSOCKET_URL);
@@ -156,8 +160,10 @@ export class PriceHub implements DurableObject {
     const tickers = configuredBackpackTickers(this.env.PRODUCT_ENVIRONMENT);
     console.info("Price feed upstream connected.", {
       tickerCount: tickers.length,
+      tickers,
     });
     try {
+      console.info("Price feed upstream subscribing.", { tickers });
       socket.send(
         JSON.stringify({
           method: "SUBSCRIBE",
@@ -192,12 +198,17 @@ export class PriceHub implements DurableObject {
     pending.resolve(update.price);
   }
 
-  private closeUpstream(socket: WebSocket): void {
+  private closeUpstream(socket: WebSocket, event?: CloseEvent): void {
     if (this.backpackSocket !== socket) return;
     this.backpackSocket = null;
     this.closeUpstreamAfterConnect = false;
     this.connecting = false;
-    console.info("Price feed upstream closed.", {});
+    console.info("Price feed upstream closed.", {
+      code: event?.code,
+      reason: event?.reason,
+      clean: event?.wasClean,
+      pendingTickers: [...this.pendingPrices.keys()],
+    });
     if (this.pendingPrices.size > 0) {
       this.failPendingPrices(new PriceFeedUnavailableError());
     }
@@ -206,7 +217,10 @@ export class PriceHub implements DurableObject {
 
   private errorUpstream(socket: WebSocket, error: unknown): void {
     if (this.backpackSocket !== socket) return;
-    console.error("Price feed upstream error.", { error: errorMessage(error) });
+    console.error("Price feed upstream error.", {
+      error: errorMessage(error),
+      pendingTickers: [...this.pendingPrices.keys()],
+    });
     this.failPendingPrices(new PriceFeedUnavailableError());
     this.closeUpstream(socket);
   }
@@ -219,6 +233,7 @@ export class PriceHub implements DurableObject {
     console.info("Price feed upstream retry scheduled.", {
       delayMs,
       nextBaseDelayMs: this.retryDelayMs,
+      pendingTickers: [...this.pendingPrices.keys()],
     });
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
@@ -281,6 +296,12 @@ export class PriceHub implements DurableObject {
     if (market === null) return jsonError("RFQ market not found.", 404);
     const ticker = backpackTickerForOracleBase(market.oracleBase);
     if (ticker === null) return jsonError("Price feed is unavailable.", 503);
+    console.info("Price feed price requested.", {
+      marketAddress,
+      ticker,
+      cached: this.observedPrices.has(ticker),
+      clientCount: this.clientCount(),
+    });
     try {
       const price = await this.waitForPrice(ticker, request.signal);
       return Response.json(price);
@@ -300,9 +321,23 @@ export class PriceHub implements DurableObject {
     signal: AbortSignal
   ): Promise<ObservedPrice> {
     const observed = this.observedPrices.get(ticker);
-    if (observed !== undefined) return observed;
+    if (observed !== undefined) {
+      console.info("Price feed cache hit.", {
+        ticker,
+        updatedAt: observed.updatedAt,
+        ageMs: Math.max(0, Date.now() - observed.updatedAt),
+      });
+      return observed;
+    }
     const pending = this.pendingPrice(ticker);
     pending.requestCount += 1;
+    console.info("Price feed price pending.", {
+      ticker,
+      requestCount: pending.requestCount,
+      websocketState:
+        this.backpackSocket === null ? "disconnected" : "connected",
+      connecting: this.connecting,
+    });
     this.scheduleUpstreamConnection();
     try {
       return await waitForPriceOrAbort(pending.promise, signal);
@@ -338,6 +373,15 @@ export class PriceHub implements DurableObject {
       requestCount: 0,
       timeout: setTimeout(() => {
         if (this.pendingPrices.get(ticker) !== pending) return;
+        console.warn("Price feed request timed out.", {
+          ticker,
+          waitedMs: PRICE_WAIT_TIMEOUT_MS,
+          clientCount: this.clientCount(),
+          pendingTickers: [...this.pendingPrices.keys()],
+          websocketState:
+            this.backpackSocket === null ? "disconnected" : "connected",
+          connecting: this.connecting,
+        });
         this.pendingPrices.delete(ticker);
         pending.reject(new PriceWaitTimeoutError());
       }, PRICE_WAIT_TIMEOUT_MS),
