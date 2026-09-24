@@ -301,7 +301,7 @@ export function MarketTradeForm({
                     </span>
                   </span>
                 </span>
-                <b>{formatPrice(market.price)}</b>
+                <b>{formatPrice(market.lastPrice)}</b>
                 <span className="check-slot">
                   {market.marketAddress === selectedMarket.marketAddress && (
                     <Icon name="check" />
@@ -525,7 +525,8 @@ function MarketReviewPanel({
             </li>
           </ul>
           <p>
-            Market price: {formatPrice(market.price)} {market.quoteTokenSymbol}
+            Market price: {formatPrice(market.lastPrice)}{" "}
+            {market.quoteTokenSymbol}
           </p>
         </section>
       </div>
@@ -909,7 +910,7 @@ function AssetChoice({ market }: { readonly market: MarketChoice }) {
       <AssetBadge market={market} />
       <span>
         {market.baseTokenSymbol} / {market.quoteTokenSymbol} (now{" "}
-        <strong>{formatPrice(market.price)}</strong>)
+        <strong>{formatPrice(market.lastPrice)}</strong>)
       </span>
     </span>
   );
@@ -957,7 +958,7 @@ function formatPrice(price: string): string {
 }
 
 function formatApproximateUsd(quantity: bigint, market: MarketChoice): string {
-  const [whole, fraction = ""] = market.price.split(".");
+  const [whole, fraction = ""] = market.lastPrice.split(".");
   const priceE8 =
     BigInt(whole) * 100_000_000n + BigInt(fraction.slice(0, 8).padEnd(8, "0"));
   const amountE8 =

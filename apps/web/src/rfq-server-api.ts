@@ -18,7 +18,7 @@ export type ApiMarket = {
     readonly step: string;
     readonly maximum: string;
   };
-  readonly price: string;
+  readonly lastPrice: string;
 };
 
 export type ApiSeriesItem = {
@@ -140,7 +140,7 @@ function parseMarket(value: unknown): ApiMarket {
     ),
     baseMintCategory: category,
     quantity: { minimum, step, maximum },
-    price: decimal(record.price, "price"),
+    lastPrice: decimal(record.lastPrice, "lastPrice"),
   };
 }
 

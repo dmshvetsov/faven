@@ -12,7 +12,7 @@ export type MarketChoice = {
   readonly quoteTokenSymbol: string;
   readonly assetKind: AssetKind;
   readonly icon: string;
-  readonly price: string;
+  readonly lastPrice: string;
   readonly quantityDecimals: number;
   readonly quoteTokenDecimals: number;
   readonly quantity: QuantityTerms;
@@ -46,7 +46,7 @@ export function toMarketChoices(
     assetKind:
       market.baseMintCategory === "tokenized_stocks" ? "stock" : "crypto",
     icon: iconFor(market.baseMintCategory, market.baseTokenSymbol),
-    price: market.price,
+    lastPrice: market.lastPrice,
     quantityDecimals: market.quantityDecimals,
     quoteTokenDecimals: market.quoteMintDecimals,
     quantity: {
