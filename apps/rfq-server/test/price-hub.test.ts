@@ -4,6 +4,58 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Price hub", () => {
+  it("returns 404 for an unknown market series", async () => {
+    const response = await SELF.fetch(
+      "https://example.com/markets/unknown-market/series"
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      error: "RFQ market not found.",
+    });
+  });
+
+  it("allows the configured browser origin to request a market series", async () => {
+    const response = await SELF.fetch(
+      "https://example.com/markets/unknown-market/series",
+      { headers: { Origin: "http://localhost:5173" } }
+    );
+
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+      "http://localhost:5173"
+    );
+    expect(response.headers.get("Vary")).toBe("Origin");
+  });
+
+  it("serves series after receiving the first requested market price", async () => {
+    vi.stubGlobal("WebSocket", ControlledBackpackSocket);
+
+    const response = await SELF.fetch(
+      "https://example.com/markets/99rh3FNKgvuWigwrsaDLMSD9cX8XWkFAdTdHqLkW3BCC/series"
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      market: expect.objectContaining({
+        marketAddress: "99rh3FNKgvuWigwrsaDLMSD9cX8XWkFAdTdHqLkW3BCC",
+      }),
+      series: {
+        call: expect.arrayContaining([
+          expect.objectContaining({
+            strikePriceDecimals: "14500000000",
+            updateAt: 1_694_687_692_980,
+          }),
+        ]),
+        put: expect.arrayContaining([
+          expect.objectContaining({
+            strikePriceDecimals: "13500000000",
+            updateAt: 1_694_687_692_980,
+          }),
+        ]),
+      },
+    });
+  });
+
   it("keeps the price feed available when a client reconnects during setup", async () => {
     vi.stubGlobal("WebSocket", ControlledBackpackSocket);
 
@@ -37,6 +89,33 @@ describe("Price hub", () => {
     );
     await closeSocket(reconnectingClient);
     await closeSocket(laterClient);
+  });
+
+  it("returns 504 when the requested market price does not arrive", async () => {
+    vi.stubGlobal("WebSocket", SilentBackpackSocket);
+
+    const response = await SELF.fetch(
+      "https://example.com/markets/GJiEFYsYKdX39hkhSs9WLF8AfGgXRjEtegGj3UrHbpXW/series"
+    );
+
+    expect(response.status).toBe(504);
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "Timed out waiting for a price for market GJiEFYsYKdX39hkhSs9WLF8AfGgXRjEtegGj3UrHbpXW.",
+    });
+  }, 10_000);
+
+  it("returns 503 when the price feed fails", async () => {
+    vi.stubGlobal("WebSocket", FailingBackpackSocket);
+
+    const response = await SELF.fetch(
+      "https://example.com/markets/6gL1TzV6e4QSffGJdvM7hCoVfe1nTZiB68QPD9ye6NDW/series"
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({
+      error: "Price feed is unavailable.",
+    });
   });
 });
 
@@ -76,6 +155,36 @@ class ControlledBackpackSocket extends EventTarget {
         }),
       })
     );
+  }
+}
+
+class SilentBackpackSocket extends EventTarget {
+  constructor() {
+    super();
+    setTimeout(() => this.dispatchEvent(new Event("open")), 0);
+  }
+
+  close(): void {
+    this.dispatchEvent(new Event("close"));
+  }
+
+  send(): void {
+    // The upstream remains connected but has no tick for the requested market.
+  }
+}
+
+class FailingBackpackSocket extends EventTarget {
+  constructor() {
+    super();
+    setTimeout(() => this.dispatchEvent(new Event("error")), 0);
+  }
+
+  close(): void {
+    this.dispatchEvent(new Event("close"));
+  }
+
+  send(): void {
+    // The upstream fails before it can receive a subscription request.
   }
 }
 

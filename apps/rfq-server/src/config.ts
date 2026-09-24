@@ -20,7 +20,10 @@ export interface MarketConfig {
   readonly quoteMint: string;
   /** SPL Token program that owns the QuoteCoin mint. */
   readonly quoteTokenProgram: string;
-  /** QuoteCoin token decimals used to validate signed premium terms. */
+  /**
+   * USD QuoteCoin token decimals used to validate signed premium terms.
+   * RFQ server currently supports only USD quote markets.
+   */
   readonly quoteMintDecimals: number;
   readonly baseTokenSymbol: string;
   readonly quoteTokenSymbol: string;
@@ -241,6 +244,7 @@ const DEVNET_WSOL_MARKET: MarketConfig = {
 //   },
 // };
 
+/** RFQ server market configurations support USD QuoteCoin markets only. */
 const environmentConfig: Record<ProductEnvironment, EnvironmentConfig> = {
   "development:localhost": {
     cluster: "localhost",

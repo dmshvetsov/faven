@@ -1,9 +1,11 @@
 import {
+  backpackTickerForOracleBase,
   configuredBackpackTickers,
   createPriceFeedsSnapshot,
   priceFromBackpackTickerEnvelope,
   type ObservedPrice,
 } from "./price-feeds";
+import { configuredMarketByAddress } from "./config";
 import type { Env } from "./worker";
 
 const BACKPACK_WEBSOCKET_URL = "wss://ws.backpack.exchange";
@@ -12,6 +14,15 @@ const INITIAL_CONNECTION_DELAY_MS = 100;
 const MAX_RETRY_DELAY_MS = 30_000;
 const SNAPSHOT_INTERVAL_MS = 10_000;
 const PRICE_FEED_SOCKET_TAG = "price-feed";
+const PRICE_WAIT_TIMEOUT_MS = 5_000;
+
+interface PendingPrice {
+  readonly promise: Promise<ObservedPrice>;
+  readonly reject: (error: Error) => void;
+  readonly resolve: (price: ObservedPrice) => void;
+  readonly timeout: ReturnType<typeof setTimeout>;
+  requestCount: number;
+}
 
 export class PriceHub implements DurableObject {
   private readonly observedPrices = new Map<string, ObservedPrice>();
@@ -20,6 +31,7 @@ export class PriceHub implements DurableObject {
   private closeUpstreamAfterConnect = false;
   private connectTimer: ReturnType<typeof setTimeout> | null = null;
   private connecting = false;
+  private readonly pendingPrices = new Map<string, PendingPrice>();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private retryDelayMs = INITIAL_RETRY_DELAY_MS;
 
@@ -33,9 +45,9 @@ export class PriceHub implements DurableObject {
     }
   }
 
-  fetch(request: Request): Response {
+  async fetch(request: Request): Promise<Response> {
     if (request.headers.get("Upgrade") !== "websocket") {
-      return new Response("WebSocket endpoint not found.", { status: 404 });
+      return this.priceResponse(request);
     }
 
     const pair = new WebSocketPair();
@@ -98,11 +110,7 @@ export class PriceHub implements DurableObject {
   }
 
   private ensureUpstreamConnection(): void {
-    if (
-      this.clientCount() === 0 ||
-      this.backpackSocket !== null ||
-      this.connecting
-    ) {
+    if (!this.hasDemand() || this.backpackSocket !== null || this.connecting) {
       return;
     }
     this.connecting = true;
@@ -137,7 +145,7 @@ export class PriceHub implements DurableObject {
   private subscribe(socket: WebSocket): void {
     if (this.backpackSocket !== socket) return;
     this.connecting = false;
-    if (this.closeUpstreamAfterConnect || this.clientCount() === 0) {
+    if (this.closeUpstreamAfterConnect || !this.hasDemand()) {
       this.closeUpstreamAfterConnect = false;
       this.backpackSocket = null;
       socket.close(1000, "No price-feed clients remain.");
@@ -159,6 +167,7 @@ export class PriceHub implements DurableObject {
       console.error("Price feed upstream subscription failed.", {
         error: errorMessage(error),
       });
+      this.failPendingPrices(new PriceFeedUnavailableError());
       this.closeUpstream(socket);
       try {
         socket.close(1011, "Price feed subscription failed.");
@@ -173,7 +182,13 @@ export class PriceHub implements DurableObject {
       parseJson(message),
       new Set(configuredBackpackTickers(this.env.PRODUCT_ENVIRONMENT))
     );
-    if (update !== null) this.observedPrices.set(update.ticker, update.price);
+    if (update === null) return;
+    this.observedPrices.set(update.ticker, update.price);
+    const pending = this.pendingPrices.get(update.ticker);
+    if (pending === undefined) return;
+    this.pendingPrices.delete(update.ticker);
+    clearTimeout(pending.timeout);
+    pending.resolve(update.price);
   }
 
   private closeUpstream(socket: WebSocket): void {
@@ -182,17 +197,21 @@ export class PriceHub implements DurableObject {
     this.closeUpstreamAfterConnect = false;
     this.connecting = false;
     console.info("Price feed upstream closed.", {});
+    if (this.pendingPrices.size > 0) {
+      this.failPendingPrices(new PriceFeedUnavailableError());
+    }
     this.scheduleReconnect();
   }
 
   private errorUpstream(socket: WebSocket, error: unknown): void {
     if (this.backpackSocket !== socket) return;
     console.error("Price feed upstream error.", { error: errorMessage(error) });
+    this.failPendingPrices(new PriceFeedUnavailableError());
     this.closeUpstream(socket);
   }
 
   private scheduleReconnect(): void {
-    if (this.clientCount() === 0 || this.reconnectTimer !== null) return;
+    if (!this.hasDemand() || this.reconnectTimer !== null) return;
     const baseDelayMs = this.retryDelayMs;
     const delayMs = Math.round(baseDelayMs * (0.8 + Math.random() * 0.4));
     this.retryDelayMs = Math.min(baseDelayMs * 2, MAX_RETRY_DELAY_MS);
@@ -207,7 +226,11 @@ export class PriceHub implements DurableObject {
   }
 
   private stopWhenNoClientsRemain(): void {
-    if (this.clientCount() !== 0) return;
+    this.stopWhenNoDemandRemains();
+  }
+
+  private stopWhenNoDemandRemains(): void {
+    if (this.hasDemand()) return;
     if (this.broadcastTimer !== null) {
       clearInterval(this.broadcastTimer);
       this.broadcastTimer = null;
@@ -244,6 +267,130 @@ export class PriceHub implements DurableObject {
       clientCount: this.clientCount(),
     });
   }
+
+  private async priceResponse(request: Request): Promise<Response> {
+    const marketAddress = marketAddressFromPriceRequest(request.url);
+    if (marketAddress === null) {
+      return new Response("Price endpoint not found.", { status: 404 });
+    }
+    const market = configuredMarketByAddress(
+      this.env.PRODUCT_ENVIRONMENT,
+      marketAddress
+    );
+    if (market === null) return jsonError("RFQ market not found.", 404);
+    const ticker = backpackTickerForOracleBase(market.oracleBase);
+    if (ticker === null) return jsonError("Price feed is unavailable.", 503);
+    try {
+      const price = await this.waitForPrice(ticker, request.signal);
+      return Response.json(price);
+    } catch (error) {
+      if (error instanceof PriceWaitTimeoutError) {
+        return jsonError(
+          `Timed out waiting for a price for market ${marketAddress}.`,
+          504
+        );
+      }
+      return jsonError("Price feed is unavailable.", 503);
+    }
+  }
+
+  private async waitForPrice(
+    ticker: string,
+    signal: AbortSignal
+  ): Promise<ObservedPrice> {
+    const observed = this.observedPrices.get(ticker);
+    if (observed !== undefined) return observed;
+    const pending = this.pendingPrice(ticker);
+    pending.requestCount += 1;
+    this.scheduleUpstreamConnection();
+    try {
+      return await waitForPriceOrAbort(pending.promise, signal);
+    } finally {
+      pending.requestCount -= 1;
+      if (
+        pending.requestCount === 0 &&
+        this.pendingPrices.get(ticker) === pending
+      ) {
+        this.pendingPrices.delete(ticker);
+        clearTimeout(pending.timeout);
+        pending.reject(new PriceRequestCancelledError());
+      }
+      this.stopWhenNoDemandRemains();
+    }
+  }
+
+  private pendingPrice(ticker: string): PendingPrice {
+    const existing = this.pendingPrices.get(ticker);
+    if (existing !== undefined) return existing;
+    let resolve!: (price: ObservedPrice) => void;
+    let reject!: (error: Error) => void;
+    const promise = new Promise<ObservedPrice>(
+      (resolvePromise, rejectPromise) => {
+        resolve = resolvePromise;
+        reject = rejectPromise;
+      }
+    );
+    const pending: PendingPrice = {
+      promise,
+      reject,
+      resolve,
+      requestCount: 0,
+      timeout: setTimeout(() => {
+        if (this.pendingPrices.get(ticker) !== pending) return;
+        this.pendingPrices.delete(ticker);
+        pending.reject(new PriceWaitTimeoutError());
+      }, PRICE_WAIT_TIMEOUT_MS),
+    };
+    this.pendingPrices.set(ticker, pending);
+    return pending;
+  }
+
+  private failPendingPrices(error: Error): void {
+    for (const [ticker, pending] of this.pendingPrices) {
+      this.pendingPrices.delete(ticker);
+      clearTimeout(pending.timeout);
+      pending.reject(error);
+    }
+  }
+
+  private hasDemand(): boolean {
+    return this.clientCount() > 0 || this.pendingPrices.size > 0;
+  }
+}
+
+class PriceFeedUnavailableError extends Error {}
+
+class PriceRequestCancelledError extends Error {}
+
+class PriceWaitTimeoutError extends Error {}
+
+function marketAddressFromPriceRequest(value: string): string | null {
+  const url = new URL(value);
+  const prefix = "/prices/";
+  if (!url.pathname.startsWith(prefix)) return null;
+  try {
+    return decodeURIComponent(url.pathname.slice(prefix.length));
+  } catch {
+    return null;
+  }
+}
+
+function jsonError(error: string, status: number): Response {
+  return Response.json({ error }, { status });
+}
+
+function waitForPriceOrAbort(
+  price: Promise<ObservedPrice>,
+  signal: AbortSignal
+): Promise<ObservedPrice> {
+  if (signal.aborted) return Promise.reject(new PriceRequestCancelledError());
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(new PriceRequestCancelledError());
+    signal.addEventListener("abort", abort, { once: true });
+    void price.then(resolve, reject).finally(() => {
+      signal.removeEventListener("abort", abort);
+    });
+  });
 }
 
 function parseJson(message: unknown): unknown {
