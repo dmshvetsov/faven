@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import App from "./App";
 import { rfqServerQueryFn } from "./rfq-server-api";
+import { WalletProvider } from "./wallet";
 import "./styles.css";
 
 const root = document.getElementById("root");
@@ -27,7 +28,9 @@ const queryClient = new QueryClient({
 createRoot(root).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <App />
+      <WalletProvider>
+        <App />
+      </WalletProvider>
     </QueryClientProvider>
   </StrictMode>
 );

@@ -1306,6 +1306,12 @@ a:focus-visible {
   transform: translateY(-1px);
 }
 
+.wallet-options button:disabled {
+  cursor: wait;
+  opacity: 0.58;
+  transform: none;
+}
+
 .wallet-mark {
   align-items: center;
   background: #ab9ff2;
@@ -1317,6 +1323,28 @@ a:focus-visible {
   height: 32px;
   justify-content: center;
   width: 32px;
+}
+
+.wallet-install-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.wallet-install-links a {
+  color: #0d63ba;
+  font-weight: 600;
+}
+
+.wallet-dialog-status,
+.wallet-dialog-error {
+  font-size: 14px;
+  line-height: 20px;
+  margin: 16px 0 0;
+}
+
+.wallet-dialog-error {
+  color: #9b2c20;
 }
 
 .wallet-solflare {

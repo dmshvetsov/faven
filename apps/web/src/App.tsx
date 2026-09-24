@@ -16,7 +16,7 @@ import { MarketTradeForm } from "./MarketTradeForm";
 import { initialMarket, toMarketChoices } from "./market-selection";
 import type { MarketsResponse, RfqServerQueryKey } from "./rfq-server-api";
 import { useTakerRfq } from "./use-taker-rfq";
-import { detectWallets, getWalletPreview, type DetectedWallet } from "./wallet";
+import { WalletConnectButton } from "./wallet";
 import type { TakerRfqTerms } from "sdk";
 
 type View = "earn" | "dashboard" | "trade-detail";
@@ -239,116 +239,6 @@ function MockOpenedTradeDialog({
   );
 }
 
-function WalletDialog({
-  wallets,
-  onClose,
-  onSelect,
-}: {
-  wallets: DetectedWallet[];
-  onClose: () => void;
-  onSelect: (wallet: DetectedWallet) => void;
-}) {
-  return (
-    <div
-      aria-modal="true"
-      className="dialog-backdrop"
-      onMouseDown={onClose}
-      role="dialog"
-    >
-      <section
-        className="wallet-dialog"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <button
-          aria-label="Close wallet selection"
-          className="dialog-close"
-          onClick={onClose}
-          type="button"
-        >
-          <img alt="" src="/assets/close.svg" />
-        </button>
-        <h2>Choose a wallet</h2>
-        <p>Choose the wallet you’d like to use with Faven.</p>
-        <div className="wallet-options">
-          {wallets.map((wallet) => (
-            <button
-              key={wallet.id}
-              onClick={() => onSelect(wallet)}
-              type="button"
-            >
-              <span className={`wallet-mark wallet-${wallet.id}`}>
-                {wallet.name.slice(0, 1)}
-              </span>
-              <strong>{wallet.name}</strong>
-            </button>
-          ))}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function DisconnectDialog({
-  walletName,
-  onClose,
-  onConfirm,
-}: {
-  walletName: string;
-  onClose: () => void;
-  onConfirm: () => void;
-}) {
-  return (
-    <div
-      aria-modal="true"
-      className="dialog-backdrop"
-      onMouseDown={onClose}
-      role="dialog"
-    >
-      <section
-        className="wallet-dialog disconnect-dialog"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <button
-          aria-label="Close disconnect confirmation"
-          className="dialog-close"
-          onClick={onClose}
-          type="button"
-        >
-          <img alt="" src="/assets/close.svg" />
-        </button>
-        <p className="eyebrow">Wallet connected</p>
-        <h2>Disconnect {walletName}?</h2>
-        <p>You can reconnect this wallet at any time.</p>
-        <div className="dialog-actions">
-          <button className="secondary-button" onClick={onClose} type="button">
-            Cancel
-          </button>
-          <button className="primary-button" onClick={onConfirm} type="button">
-            Disconnect
-          </button>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function WalletNotice({
-  message,
-  onClose,
-}: {
-  message: string;
-  onClose: () => void;
-}) {
-  return (
-    <div className="wallet-notice" role="status">
-      <span>{message}</span>
-      <button aria-label="Dismiss" onClick={onClose} type="button">
-        ×
-      </button>
-    </div>
-  );
-}
-
 function tradeTitle(trade: TradeRecord) {
   const isSell = trade.direction === "sellHigher";
 
@@ -536,14 +426,6 @@ export default function App() {
   >(null);
   const [rfqTerms, setRfqTerms] = useState<TakerRfqTerms | null>(null);
   const rfqState = useTakerRfq(rfqTerms);
-  const [connectedWallet, setConnectedWallet] = useState<DetectedWallet | null>(
-    null
-  );
-  const [walletsToChoose, setWalletsToChoose] = useState<
-    DetectedWallet[] | null
-  >(null);
-  const [isDisconnectOpen, setDisconnectOpen] = useState(false);
-  const [walletNotice, setWalletNotice] = useState<string | null>(null);
 
   const marketsQuery = useQuery<
     MarketsResponse,
@@ -571,42 +453,6 @@ export default function App() {
     });
   }, [marketChoices]);
   const previewTrades = useMemo(() => createMockTrades(draft), [draft]);
-  const connectWallet = async (wallet: DetectedWallet) => {
-    try {
-      await wallet.provider.connect();
-      setConnectedWallet(wallet);
-      setWalletsToChoose(null);
-      setWalletNotice(`${wallet.name} connected`);
-    } catch {
-      setWalletsToChoose(null);
-      setWalletNotice("Wallet connection was cancelled");
-    }
-  };
-  const handleWalletButton = () => {
-    if (connectedWallet) {
-      setDisconnectOpen(true);
-      return;
-    }
-
-    const wallets = getWalletPreview() ?? detectWallets();
-    if (wallets.length === 0) {
-      setWalletNotice("No supported wallet extension found");
-    } else if (wallets.length === 1) {
-      void connectWallet(wallets[0]);
-    } else {
-      setWalletsToChoose(wallets);
-    }
-  };
-  const disconnectWallet = async () => {
-    try {
-      await connectedWallet?.provider.disconnect?.();
-    } finally {
-      setWalletNotice(`${connectedWallet?.name ?? "Wallet"} disconnected`);
-      setConnectedWallet(null);
-      setDisconnectOpen(false);
-    }
-  };
-
   return (
     <div className="app-shell">
       <header className="site-header">
@@ -643,13 +489,7 @@ export default function App() {
               <img alt="" src="/assets/x-logo.png" />
             </a>
           </nav>
-          <button
-            className="sign-in-button"
-            onClick={handleWalletButton}
-            type="button"
-          >
-            {connectedWallet ? connectedWallet.name : "Sign in"}
-          </button>
+          <WalletConnectButton />
         </div>
       </header>
 
@@ -705,28 +545,6 @@ export default function App() {
         </main>
       )}
 
-      {walletsToChoose && (
-        <WalletDialog
-          onClose={() => {
-            setWalletsToChoose(null);
-          }}
-          onSelect={(wallet) => void connectWallet(wallet)}
-          wallets={walletsToChoose}
-        />
-      )}
-      {isDisconnectOpen && connectedWallet && (
-        <DisconnectDialog
-          onClose={() => setDisconnectOpen(false)}
-          onConfirm={() => void disconnectWallet()}
-          walletName={connectedWallet.name}
-        />
-      )}
-      {walletNotice && (
-        <WalletNotice
-          message={walletNotice}
-          onClose={() => setWalletNotice(null)}
-        />
-      )}
       <SiteFooter />
     </div>
   );
