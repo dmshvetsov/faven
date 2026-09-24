@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   createRfqRequest,
+  createUnderwriteSubmitRequest,
   isQuoteValid,
   parseTakerMessage,
   quoteMatchesTerms,
@@ -22,15 +23,36 @@ export type TakerRfqState =
   | { readonly status: "no-buyers" }
   | { readonly status: "error"; readonly message: string };
 
+export type UnderwriteSubmitResult = Readonly<{
+  rfqId: string;
+  txSignature: string;
+}>;
+
+export type TakerRfqController = Readonly<{
+  state: TakerRfqState;
+  submitUnderwrite(input: {
+    readonly rfqId: string;
+    readonly underwriteTx: string;
+  }): Promise<UnderwriteSubmitResult>;
+}>;
+
 type ActiveRequest = {
   readonly requestId: string;
   readonly terms: ActiveTakerRfqTerms;
 };
 
-export function useTakerRfq(terms: TakerRfqTerms | null): TakerRfqState {
+type PendingSubmit = {
+  readonly requestId: string;
+  readonly rfqId: string;
+  readonly reject: (error: Error) => void;
+  readonly resolve: (result: UnderwriteSubmitResult) => void;
+};
+
+export function useTakerRfq(terms: TakerRfqTerms | null): TakerRfqController {
   const [state, setState] = useState<TakerRfqState>({ status: "idle" });
   const socketRef = useRef<WebSocket | null>(null);
   const activeRequestRef = useRef<ActiveRequest | null>(null);
+  const pendingSubmitRef = useRef<PendingSubmit | null>(null);
   const termsRef = useRef<TakerRfqTerms | null>(terms);
   const requestReadyRef = useRef(false);
   const quoteExpiryTimerRef = useRef<number | null>(null);
@@ -47,10 +69,17 @@ export function useTakerRfq(terms: TakerRfqTerms | null): TakerRfqState {
     }
   }, []);
 
+  const rejectPendingSubmit = useCallback((message: string) => {
+    const pendingSubmit = pendingSubmitRef.current;
+    pendingSubmitRef.current = null;
+    pendingSubmit?.reject(new Error(message));
+  }, []);
+
   const clearActiveRequest = useCallback(() => {
     clearQuoteExpiryTimer();
     activeRequestRef.current = null;
-  }, [clearQuoteExpiryTimer]);
+    rejectPendingSubmit("The quote is no longer available.");
+  }, [clearQuoteExpiryTimer, rejectPendingSubmit]);
 
   const setGenericError = useCallback(
     (retryOnReconnect = false) => {
@@ -126,24 +155,61 @@ export function useTakerRfq(terms: TakerRfqTerms | null): TakerRfqState {
         return;
       }
 
-      const activeRequest = activeRequestRef.current;
-      if (!activeRequest) {
-        setGenericError();
-        return;
-      }
-
       if ("error" in message) {
+        const pendingSubmit = pendingSubmitRef.current;
+        if (pendingSubmit && message.id === pendingSubmit.requestId) {
+          pendingSubmitRef.current = null;
+          pendingSubmit.reject(new Error("underwrite_submission_failed"));
+          return;
+        }
         setGenericError();
         return;
       }
 
       if ("result" in message) {
+        const pendingSubmit = pendingSubmitRef.current;
+        if (pendingSubmit && message.id === pendingSubmit.requestId) {
+          if (
+            !("status" in message.result) ||
+            message.result.status !== "queued" ||
+            message.result.rfqId !== pendingSubmit.rfqId
+          ) {
+            pendingSubmitRef.current = null;
+            pendingSubmit.reject(new Error("invalid_underwrite_submission"));
+            return;
+          }
+          pendingSubmitRef.current = null;
+          clearQuoteExpiryTimer();
+          activeRequestRef.current = null;
+          requestReadyRef.current = false;
+          pendingSubmit.resolve({
+            rfqId: message.result.rfqId,
+            txSignature: message.result.txSignature,
+          });
+          return;
+        }
+
+        if ("status" in message.result) {
+          setGenericError();
+          return;
+        }
+        const activeRequest = activeRequestRef.current;
+        if (!activeRequest) {
+          setGenericError();
+          return;
+        }
         if (
           message.id !== activeRequest.requestId ||
           message.result.rfqId !== activeRequest.terms.rfqId
         ) {
           setGenericError();
         }
+        return;
+      }
+
+      const activeRequest = activeRequestRef.current;
+      if (!activeRequest) {
+        setGenericError();
         return;
       }
 
@@ -253,7 +319,47 @@ export function useTakerRfq(terms: TakerRfqTerms | null): TakerRfqState {
     return () => window.clearTimeout(debounceTimer);
   }, [clearActiveRequest, terms]);
 
-  return state;
+  const submitUnderwrite = useCallback(
+    (input: {
+      readonly rfqId: string;
+      readonly underwriteTx: string;
+    }): Promise<UnderwriteSubmitResult> => {
+      const socket = socketRef.current;
+      const activeRequest = activeRequestRef.current;
+      if (
+        !socket ||
+        socket.readyState !== WebSocket.OPEN ||
+        !activeRequest ||
+        activeRequest.terms.rfqId !== input.rfqId ||
+        pendingSubmitRef.current
+      ) {
+        return Promise.reject(new Error("underwrite_submission_unavailable"));
+      }
+
+      try {
+        const request = createUnderwriteSubmitRequest(input);
+        return new Promise<UnderwriteSubmitResult>((resolve, reject) => {
+          pendingSubmitRef.current = {
+            requestId: request.id,
+            rfqId: input.rfqId,
+            resolve,
+            reject,
+          };
+          try {
+            socket.send(JSON.stringify(request));
+          } catch (error) {
+            pendingSubmitRef.current = null;
+            reject(error);
+          }
+        });
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    },
+    []
+  );
+
+  return { state, submitUnderwrite };
 }
 
 export { GENERIC_ERROR };

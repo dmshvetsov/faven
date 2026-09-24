@@ -2,7 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  address,
+  getBase64Encoder,
+  getBase64EncodedWireTransaction,
+  getTransactionDecoder,
+} from "@solana/kit";
+import {
   calculateTotalPremiumE18,
+  deriveAssociatedTokenAddress,
   isQuoteValid,
   PREVIEW_SELLER_ADDRESS,
   type BestQuote,
@@ -25,8 +32,13 @@ import {
   type SelectedTerms,
   uniqueStrikes,
 } from "./market-selection";
-import type { MarketSeriesResponse, RfqServerQueryKey } from "./rfq-server-api";
-import type { TakerRfqState } from "./use-taker-rfq";
+import {
+  requestDevelopmentWalletFunding,
+  type MarketSeriesResponse,
+  type RfqServerQueryKey,
+} from "./rfq-server-api";
+import type { TakerRfqController, TakerRfqState } from "./use-taker-rfq";
+import { useWallet, type VersionZeroTransaction } from "./wallet";
 
 type OpenMenu = "asset" | "target" | "expiry" | null;
 
@@ -35,21 +47,31 @@ export function MarketTradeForm({
   selectedMarket,
   onSelectMarket,
   onRfqTermsChange,
+  onStartNewTrade,
+  onViewOpenedTrade,
   rfqState,
+  takerRfq,
 }: {
   readonly markets: readonly MarketChoice[];
   readonly selectedMarket: MarketChoice;
   readonly onSelectMarket: (market: MarketChoice) => void;
   readonly onRfqTermsChange: (terms: TakerRfqTerms | null) => void;
+  readonly onStartNewTrade: () => void;
+  readonly onViewOpenedTrade: () => void;
   readonly rfqState: TakerRfqState;
+  readonly takerRfq: TakerRfqController;
 }) {
+  const wallet = useWallet();
   const queryClient = useQueryClient();
   const [direction, setDirection] = useState<Direction>("buyLower");
   const [terms, setTerms] = useState<SelectedTerms | null>(null);
   const [quantity, setQuantity] = useState<bigint | null>(null);
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
   const [isReviewOpen, setReviewOpen] = useState(false);
+  const [reviewEoa, setReviewEoa] = useState<string | null>(null);
   const wasUsable = useRef(false);
+  const isFundingWallet = useDevelopmentWalletFunding(wallet.activeEoa);
+  const sellerAccounts = useSellerAccounts(wallet.activeEoa, selectedMarket);
   const seriesQuery = useQuery<
     MarketSeriesResponse,
     Error,
@@ -76,10 +98,18 @@ export function MarketTradeForm({
             direction,
             market: selectedMarket,
             quantity: selectedQuantity,
+            sellerAccounts: isFundingWallet ? null : sellerAccounts,
             terms: selectedTerms,
           })
         : null,
-    [direction, selectedMarket, selectedQuantity, selectedTerms]
+    [
+      direction,
+      isFundingWallet,
+      selectedMarket,
+      selectedQuantity,
+      selectedTerms,
+      sellerAccounts,
+    ]
   );
   const verifiedQuote =
     rfqState.status === "quote" &&
@@ -129,6 +159,12 @@ export function MarketTradeForm({
     return () =>
       document.removeEventListener("pointerdown", closeOnOutsidePress);
   }, []);
+
+  useEffect(() => {
+    if (isReviewOpen && reviewEoa !== wallet.activeEoa) {
+      setReviewOpen(false);
+    }
+  }, [isReviewOpen, reviewEoa, wallet.activeEoa]);
 
   const marketsForKind = useMemo(
     () =>
@@ -445,6 +481,7 @@ export function MarketTradeForm({
         market={selectedMarket}
         onReview={() => {
           if (verifiedQuote && isQuoteValid(verifiedQuote, Date.now())) {
+            setReviewEoa(wallet.activeEoa);
             setReviewOpen(true);
           }
         }}
@@ -458,8 +495,12 @@ export function MarketTradeForm({
           direction={direction}
           market={selectedMarket}
           onClose={() => setReviewOpen(false)}
+          onStartNewTrade={onStartNewTrade}
+          onViewOpenedTrade={onViewOpenedTrade}
           quantity={selectedQuantity}
           quote={verifiedQuote}
+          signTransaction={wallet.signTransaction}
+          submitUnderwrite={takerRfq.submitUnderwrite}
           terms={selectedTerms}
         />
       )}
@@ -596,7 +637,7 @@ function MarketReviewPanel({
         <p className="quote-notice">{rfqState.message}</p>
       )}
       <p className="summary-footnote">
-        Preview only — confirmation is not available yet.
+        Connect a wallet to underwrite a live quote.
       </p>
     </aside>
   );
@@ -606,15 +647,23 @@ function ReviewDialog({
   direction,
   market,
   onClose,
+  onStartNewTrade,
+  onViewOpenedTrade,
   quantity,
   quote,
+  signTransaction,
+  submitUnderwrite,
   terms,
 }: {
   readonly direction: Direction;
   readonly market: MarketChoice;
   readonly onClose: () => void;
+  readonly onStartNewTrade: () => void;
+  readonly onViewOpenedTrade: () => void;
   readonly quantity: bigint;
   readonly quote: BestQuote;
+  readonly signTransaction: TakerTransactionSigner;
+  readonly submitUnderwrite: TakerRfqController["submitUnderwrite"];
   readonly terms: SelectedTerms;
 }) {
   const isSell = direction === "sellHigher";
@@ -636,12 +685,95 @@ function ReviewDialog({
     }),
     market.quoteTokenDecimals
   );
+  const [phase, setPhase] = useState<
+    "review" | "signing" | "submitting" | "waiting" | "success"
+  >("review");
+  const [signedTransaction, setSignedTransaction] = useState<string | null>(
+    null
+  );
+  const [info, setInfo] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const isLocked =
+    phase === "signing" || phase === "submitting" || phase === "waiting";
+  const cancelledRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      cancelledRef.current = true;
+    };
+  }, []);
+
+  const confirm = async () => {
+    if (isLocked || !isQuoteValid(quote, Date.now())) return;
+    setInfo(null);
+    setError(null);
+
+    let underwriteTx = signedTransaction;
+    if (!underwriteTx) {
+      setPhase("signing");
+      try {
+        const transaction = getTransactionDecoder().decode(
+          getBase64Encoder().encode(quote.underwriteTx)
+        );
+        const signed = await signTransaction(transaction);
+        if (cancelledRef.current) return;
+        if (!isQuoteValid(quote, Date.now())) {
+          setPhase("review");
+          return;
+        }
+        underwriteTx = getBase64EncodedWireTransaction(signed);
+        setSignedTransaction(underwriteTx);
+      } catch (signingError: unknown) {
+        console.error("Could not sign underwrite transaction.", signingError);
+        setPhase("review");
+        if (isSignatureCancelled(signingError)) {
+          setInfo("Signature request cancelled.");
+        } else {
+          setError(
+            "Could not submit the transaction. Reload the page and try again."
+          );
+        }
+        return;
+      }
+    }
+
+    if (!isQuoteValid(quote, Date.now())) {
+      setPhase("review");
+      return;
+    }
+
+    setPhase("submitting");
+    try {
+      const result = await submitUnderwrite({
+        rfqId: quote.rfqId,
+        underwriteTx,
+      });
+      if (cancelledRef.current) return;
+      setPhase("waiting");
+      const confirmed = await waitForTransactionConfirmation(
+        result.txSignature,
+        () => !cancelledRef.current
+      );
+      if (!confirmed) return;
+      setPhase("success");
+    } catch (submissionError: unknown) {
+      if (cancelledRef.current) return;
+      console.error(
+        "Could not submit or confirm underwrite transaction.",
+        submissionError
+      );
+      setPhase("review");
+      setError(
+        "Could not submit the transaction. Reload the page and try again."
+      );
+    }
+  };
 
   return createPortal(
     <div
       aria-modal="true"
       className="dialog-backdrop"
-      onMouseDown={onClose}
+      onMouseDown={isLocked ? undefined : onClose}
       role="dialog"
     >
       <section
@@ -651,95 +783,222 @@ function ReviewDialog({
         <button
           aria-label="Close review"
           className="dialog-close"
+          disabled={isLocked}
           onClick={onClose}
           type="button"
         >
           <img alt="" src="/assets/close.svg" />
         </button>
-        <h2>
-          You’ll get {premiumText} {market.quoteTokenSymbol} upfront for
-          agreeing to {isSell ? "sell" : "buy"} {quantityText}{" "}
-          {market.baseTokenSymbol} if {market.baseTokenSymbol} is {condition}{" "}
-          {targetText} on {expiryText}
-        </h2>
-        <div className="review-today">
-          <span className="lime-label">Now</span>
-          <section>
-            <ul>
-              <li>
-                Receive {premiumText} {market.quoteTokenSymbol} upfront
-              </li>
-              <li>
-                Lock {collateralText} {collateralSymbol}
-              </li>
-            </ul>
-          </section>
-        </div>
-        <div className="review-outcomes outcome-flow">
-          <span className="lime-label">{expiryText}</span>
-          <p>2 possible outcomes</p>
-          <img
-            alt=""
-            className="outcome-connector"
-            src="/assets/outcome-connector.svg"
-          />
-          <div className="review-outcome-grid">
-            <section>
-              <h3>
-                → If {market.baseTokenSymbol} {comparison} {targetText}
-              </h3>
-              <ul>
-                <li>
-                  {isSell
-                    ? `Get your ${quantityText} ${market.baseTokenSymbol} back`
-                    : `Get your ${collateralText} ${collateralSymbol} back`}
-                </li>
-                <li>
-                  You keep the {market.quoteTokenSymbol} already received
-                  upfront
-                </li>
-              </ul>
-            </section>
-            <section>
-              <h3>
-                → If {market.baseTokenSymbol} {condition} {targetText}
-              </h3>
-              <ul>
-                <li>
-                  {isSell
-                    ? `Sell ${quantityText} ${market.baseTokenSymbol} and receive ${formatUsdE8(targetValue)} in your wallet`
-                    : `Buy ${quantityText} ${market.baseTokenSymbol} at the target price`}
-                </li>
-                <li>
-                  You keep the {market.quoteTokenSymbol} already received
-                  upfront
-                </li>
-              </ul>
-            </section>
+        {phase === "success" ? (
+          <div className="position-opened">
+            <div aria-hidden="true" className="position-opened-mark">
+              <span className="position-opened-stroke">
+                <img alt="" src="/assets/check.svg" />
+              </span>
+            </div>
+            <h2>Your trade is opened</h2>
+            <p className="position-opened-reward">
+              <strong>
+                {premiumText} {market.quoteTokenSymbol}
+              </strong>{" "}
+              has been sent to your wallet
+            </p>
+            <button
+              className="sign-in-button success-action-button"
+              onClick={() => {
+                onClose();
+                onViewOpenedTrade();
+              }}
+              type="button"
+            >
+              View opened trade
+            </button>
+            <button
+              className="sign-in-button success-action-button position-new-trade-button"
+              onClick={() => {
+                onClose();
+                onStartNewTrade();
+              }}
+              type="button"
+            >
+              Create new trade
+            </button>
           </div>
-        </div>
-        <button className="review-button" disabled type="button">
-          Confirm &amp; Earn {premiumText} {market.quoteTokenSymbol}
-        </button>
-        <button className="review-back-button" onClick={onClose} type="button">
-          <Icon className="back-arrow" name="arrow" />
-          Back
-        </button>
+        ) : (
+          <>
+            <h2>
+              You’ll get {premiumText} {market.quoteTokenSymbol} upfront for
+              agreeing to {isSell ? "sell" : "buy"} {quantityText}{" "}
+              {market.baseTokenSymbol} if {market.baseTokenSymbol} is{" "}
+              {condition} {targetText} on {expiryText}
+            </h2>
+            <div className="review-today">
+              <span className="lime-label">Now</span>
+              <section>
+                <ul>
+                  <li>
+                    Receive {premiumText} {market.quoteTokenSymbol} upfront
+                  </li>
+                  <li>
+                    Lock {collateralText} {collateralSymbol}
+                  </li>
+                </ul>
+              </section>
+            </div>
+            <div className="review-outcomes outcome-flow">
+              <span className="lime-label">{expiryText}</span>
+              <p>2 possible outcomes</p>
+              <img
+                alt=""
+                className="outcome-connector"
+                src="/assets/outcome-connector.svg"
+              />
+              <div className="review-outcome-grid">
+                <section>
+                  <h3>
+                    → If {market.baseTokenSymbol} {comparison} {targetText}
+                  </h3>
+                  <ul>
+                    <li>
+                      {isSell
+                        ? `Get your ${quantityText} ${market.baseTokenSymbol} back`
+                        : `Get your ${collateralText} ${collateralSymbol} back`}
+                    </li>
+                    <li>
+                      You keep the {market.quoteTokenSymbol} already received
+                      upfront
+                    </li>
+                  </ul>
+                </section>
+                <section>
+                  <h3>
+                    → If {market.baseTokenSymbol} {condition} {targetText}
+                  </h3>
+                  <ul>
+                    <li>
+                      {isSell
+                        ? `Sell ${quantityText} ${market.baseTokenSymbol} and receive ${formatUsdE8(targetValue)} in your wallet`
+                        : `Buy ${quantityText} ${market.baseTokenSymbol} at the target price`}
+                    </li>
+                    <li>
+                      You keep the {market.quoteTokenSymbol} already received
+                      upfront
+                    </li>
+                  </ul>
+                </section>
+              </div>
+            </div>
+            {info && <p className="review-info">{info}</p>}
+            {error && <p className="review-error">{error}</p>}
+            <button
+              className="review-button"
+              disabled={isLocked}
+              onClick={() => void confirm()}
+              type="button"
+            >
+              {phase === "waiting"
+                ? "Waiting for confirmation…"
+                : phase === "signing"
+                  ? "Waiting for wallet…"
+                  : phase === "submitting"
+                    ? "Submitting…"
+                    : `Confirm & Earn ${premiumText} ${market.quoteTokenSymbol}`}
+            </button>
+            <button
+              className="review-back-button"
+              disabled={isLocked}
+              onClick={onClose}
+              type="button"
+            >
+              <Icon className="back-arrow" name="arrow" />
+              Back
+            </button>
+          </>
+        )}
       </section>
     </div>,
     document.body
   );
 }
 
+type TakerTransactionSigner = (
+  transaction: VersionZeroTransaction
+) => Promise<VersionZeroTransaction>;
+
+async function waitForTransactionConfirmation(
+  signature: string,
+  shouldContinue: () => boolean
+): Promise<boolean> {
+  while (shouldContinue()) {
+    try {
+      const response = await fetch(requiredSolanaRpcUrl(), {
+        body: JSON.stringify({
+          id: crypto.randomUUID(),
+          jsonrpc: "2.0",
+          method: "getSignatureStatuses",
+          params: [[signature], { searchTransactionHistory: true }],
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      if (!response.ok) {
+        throw new Error(`Solana RPC returned ${response.status}.`);
+      }
+      if (hasConfirmedSignature(await response.json())) return true;
+    } catch (rpcError: unknown) {
+      console.error(
+        "Could not poll Solana transaction confirmation.",
+        rpcError
+      );
+    }
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 1_000));
+  }
+  return false;
+}
+
+function requiredSolanaRpcUrl(): string {
+  const value = import.meta.env.VITE_SOLANA_RPC_URL?.trim();
+  if (!value) throw new Error("VITE_SOLANA_RPC_URL must be configured.");
+  return value;
+}
+
+function hasConfirmedSignature(value: unknown): boolean {
+  if (
+    !isRecord(value) ||
+    !isRecord(value.result) ||
+    !Array.isArray(value.result.value)
+  ) {
+    return false;
+  }
+  const status = value.result.value[0];
+  return (
+    isRecord(status) &&
+    (status.confirmationStatus === "confirmed" ||
+      status.confirmationStatus === "finalized")
+  );
+}
+
+function isSignatureCancelled(error: unknown): boolean {
+  return (
+    error instanceof Error && /cancel|reject|declin|denied/i.test(error.message)
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function toTakerRfqTerms({
   direction,
   market,
   quantity,
+  sellerAccounts,
   terms,
 }: {
   readonly direction: Direction;
   readonly market: MarketChoice;
   readonly quantity: bigint;
+  readonly sellerAccounts: SellerAccounts | null;
   readonly terms: SelectedTerms;
 }): TakerRfqTerms | null {
   if (
@@ -750,18 +1009,123 @@ function toTakerRfqTerms({
     return null;
   }
   const isPut = direction === "buyLower";
+  if (!sellerAccounts) return null;
   return {
     market: market.marketAddress,
     expiry: Math.floor(terms.expiryUnixMs / 1_000),
     isPut,
     quantity: toQuantityE18(quantity, market.quantityDecimals),
     strike: terms.strike.toString(),
-    seller: PREVIEW_SELLER_ADDRESS,
-    sellerCollateralSource: PREVIEW_SELLER_ADDRESS,
-    ...(isPut ? {} : { sellerQuoteDestination: PREVIEW_SELLER_ADDRESS }),
+    seller: sellerAccounts.seller,
+    sellerCollateralSource: isPut
+      ? sellerAccounts.quoteAta
+      : sellerAccounts.baseAta,
+    ...(isPut ? {} : { sellerQuoteDestination: sellerAccounts.quoteAta }),
     premiumAsset: market.quoteMint,
     collateralAsset: isPut ? market.quoteMint : market.baseMint,
   };
+}
+
+type SellerAccounts = Readonly<{
+  seller: string;
+  baseAta: string;
+  quoteAta: string;
+}>;
+
+function useDevelopmentWalletFunding(activeEoa: string | null): boolean {
+  const [isFunding, setFunding] = useState(activeEoa !== null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (activeEoa === null) {
+      setFunding(false);
+      return;
+    }
+
+    setFunding(true);
+    void requestDevelopmentWalletFunding(activeEoa)
+      .catch((error: unknown) => {
+        // Mainnet has no faucet. A funded wallet can still underwrite there.
+        console.error(
+          "Could not prepare the connected wallet for underwriting.",
+          error
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setFunding(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeEoa]);
+
+  return isFunding;
+}
+
+function useSellerAccounts(
+  activeEoa: string | null,
+  market: MarketChoice
+): SellerAccounts | null {
+  const [sellerAccounts, setSellerAccounts] = useState<SellerAccounts | null>(
+    activeEoa === null
+      ? {
+          seller: PREVIEW_SELLER_ADDRESS,
+          baseAta: PREVIEW_SELLER_ADDRESS,
+          quoteAta: PREVIEW_SELLER_ADDRESS,
+        }
+      : null
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!activeEoa) {
+      setSellerAccounts({
+        seller: PREVIEW_SELLER_ADDRESS,
+        baseAta: PREVIEW_SELLER_ADDRESS,
+        quoteAta: PREVIEW_SELLER_ADDRESS,
+      });
+      return;
+    }
+
+    setSellerAccounts(null);
+    void Promise.all([
+      deriveAssociatedTokenAddress({
+        owner: address(activeEoa),
+        mint: address(market.baseMint),
+        tokenProgram: address(market.baseTokenProgram),
+      }),
+      deriveAssociatedTokenAddress({
+        owner: address(activeEoa),
+        mint: address(market.quoteMint),
+        tokenProgram: address(market.quoteTokenProgram),
+      }),
+    ])
+      .then(([baseAta, quoteAta]) => {
+        if (!cancelled) {
+          setSellerAccounts({
+            seller: activeEoa,
+            baseAta,
+            quoteAta,
+          });
+        }
+      })
+      .catch((error: unknown) => {
+        console.error("Could not derive seller token accounts.", error);
+        if (!cancelled) setSellerAccounts(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeEoa,
+    market.baseMint,
+    market.baseTokenProgram,
+    market.quoteMint,
+    market.quoteTokenProgram,
+  ]);
+
+  return sellerAccounts;
 }
 
 function toQuantityE18(quantity: bigint, quantityDecimals: number): string {

@@ -22,6 +22,16 @@ import type { TakerRfqTerms } from "sdk";
 type View = "earn" | "dashboard" | "trade-detail";
 type TradeTab = "active" | "settled";
 
+function currentNetwork() {
+  const rpcUrl = import.meta.env.VITE_SOLANA_RPC_URL?.toLowerCase() ?? "";
+  if (rpcUrl.includes("devnet")) return "Devnet";
+  if (rpcUrl.includes("testnet")) return "Testnet";
+  if (rpcUrl.includes("localhost") || rpcUrl.includes("127.0.0.1")) {
+    return "Localnet";
+  }
+  return "Mainnet";
+}
+
 function Icon({
   name,
   className = "",
@@ -425,7 +435,7 @@ export default function App() {
     string | null
   >(null);
   const [rfqTerms, setRfqTerms] = useState<TakerRfqTerms | null>(null);
-  const rfqState = useTakerRfq(rfqTerms);
+  const takerRfq = useTakerRfq(rfqTerms);
 
   const marketsQuery = useQuery<
     MarketsResponse,
@@ -489,7 +499,10 @@ export default function App() {
               <img alt="" src="/assets/x-logo.png" />
             </a>
           </nav>
-          <WalletConnectButton />
+          <div className="header-wallet-controls">
+            <span className="current-network">{currentNetwork()}</span>
+            <WalletConnectButton />
+          </div>
         </div>
       </header>
 
@@ -529,11 +542,17 @@ export default function App() {
             <MarketTradeForm
               markets={marketChoices}
               onRfqTermsChange={setRfqTerms}
+              onStartNewTrade={() => setView("earn")}
               onSelectMarket={(market) =>
                 setSelectedMarketAddress(market.marketAddress)
               }
-              rfqState={rfqState}
+              onViewOpenedTrade={() => {
+                setSelectedTrade(previewTrades[0] ?? null);
+                setView("trade-detail");
+              }}
+              rfqState={takerRfq.state}
               selectedMarket={selectedMarket}
+              takerRfq={takerRfq}
             />
           ) : marketsQuery.isError ? (
             <p className="market-load-notice">

@@ -6,7 +6,5 @@
     "directory": "./dist",
     "not_found_handling": "single-page-application",
   },
-  "routes": [
-    { "pattern": "beta.faven.markets", "custom_domain": true },
-  ],
+  "routes": [{ "pattern": "beta.faven.markets", "custom_domain": true }],
 }

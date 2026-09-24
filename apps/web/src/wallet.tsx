@@ -6,6 +6,7 @@ import {
   type WalletSession,
   watchWalletStandardConnectors,
 } from "@solana/client";
+import type { Transaction } from "@solana/kit";
 import {
   SolanaClientProvider,
   useWallet as useSolanaWallet,
@@ -30,10 +31,8 @@ export type FavenWallet = Readonly<{
   name: string;
 }>;
 
-type WalletSignTransaction = NonNullable<WalletSession["signTransaction"]>;
-
 /** A compiled version-0 transaction supplied by the caller. */
-export type VersionZeroTransaction = Parameters<WalletSignTransaction>[0];
+export type VersionZeroTransaction = Transaction;
 
 export type FavenWalletState = Readonly<{
   approvedWallets: readonly FavenWallet[];
@@ -205,7 +204,13 @@ function WalletStateProvider({
         throw new Error("This wallet cannot sign transactions with Faven.");
       }
 
-      return wallet.session.signTransaction(transaction);
+      // Wallet Standard accepts a partially signed v0 transaction here. The
+      // client package type currently models only fully signed transactions.
+      return wallet.session.signTransaction(
+        transaction as Parameters<
+          NonNullable<WalletSession["signTransaction"]>
+        >[0]
+      );
     },
     [wallet]
   );

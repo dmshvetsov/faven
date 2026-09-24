@@ -7,7 +7,9 @@ export type SeriesSide = "call" | "put";
 export type MarketChoice = {
   readonly marketAddress: string;
   readonly baseMint: string;
+  readonly baseTokenProgram: string;
   readonly quoteMint: string;
+  readonly quoteTokenProgram: string;
   readonly baseTokenSymbol: string;
   readonly quoteTokenSymbol: string;
   readonly assetKind: AssetKind;
@@ -40,7 +42,9 @@ export function toMarketChoices(
   return markets.map((market) => ({
     marketAddress: market.marketAddress,
     baseMint: market.baseMint,
+    baseTokenProgram: market.baseTokenProgram,
     quoteMint: market.quoteMint,
+    quoteTokenProgram: market.quoteTokenProgram,
     baseTokenSymbol: market.baseTokenSymbol,
     quoteTokenSymbol: market.quoteTokenSymbol,
     assetKind:

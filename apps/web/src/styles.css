@@ -114,6 +114,22 @@ a {
     box-shadow 160ms ease,
     transform 160ms ease;
 }
+.header-wallet-controls {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  margin-left: auto;
+}
+.header-wallet-controls .sign-in-button {
+  margin-left: 0;
+}
+.current-network {
+  color: #0d63ba;
+  font-family: "Geist Mono", monospace;
+  text-transform: uppercase;
+  font-size: 14px;
+  font-weight: 600;
+}
 .sign-in-button:hover,
 .primary-button:hover,
 .review-button:hover {
@@ -1207,6 +1223,20 @@ a:focus-visible {
 .review-dialog .review-button {
   margin: 24px auto 0;
   max-width: 346px;
+}
+.review-info,
+.review-error {
+  font-size: 14px;
+  line-height: 20px;
+  margin: 16px auto 0;
+  max-width: 346px;
+  text-align: center;
+}
+.review-info {
+  color: #55545a;
+}
+.review-error {
+  color: #b42318;
 }
 .review-button:disabled {
   background: #7f9dc0;

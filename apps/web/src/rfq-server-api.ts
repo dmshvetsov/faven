@@ -77,6 +77,26 @@ export function endpointFor(queryKey: RfqServerQueryKey): string {
   return `${serverUrl}/markets/${encodeURIComponent(queryKey[1])}/series`;
 }
 
+/**
+ * Localhost and devnet servers can prepare a connected wallet with the test
+ * SOL and tokens needed to underwrite. Production deliberately returns 404.
+ */
+export async function requestDevelopmentWalletFunding(
+  walletAddress: string
+): Promise<void> {
+  const response = await fetch(`${serverUrl}/wallet-fundings`, {
+    body: JSON.stringify({ walletAddress }),
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+  // Production has no faucet; a wallet funded in the preceding 24 hours does
+  // not need another one. Both cases may proceed with the normal RFQ flow.
+  if (response.ok || response.status === 404 || response.status === 429) return;
+  throw new Error(
+    `Wallet funding request failed with status ${response.status}.`
+  );
+}
+
 function requiredServerUrl(): string {
   const value = import.meta.env.VITE_RFQ_SERVER_URL?.trim();
   if (!value) throw new Error("VITE_RFQ_SERVER_URL must be configured.");
