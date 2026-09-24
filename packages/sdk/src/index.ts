@@ -35,3 +35,27 @@ export {
   type SettlementSellerAccounts,
   type SettlementTransactionInput,
 } from "./settlement-transaction.js";
+export {
+  createRfqRequest,
+  isQuoteValid,
+  parseTakerMessage,
+  PREVIEW_SELLER_ADDRESS,
+  quoteMatchesTerms,
+  takerWebSocketUrl,
+  type ActiveTakerRfqTerms,
+  type BestQuote,
+  type JsonRpcError,
+  type NoQuote,
+  type RfqCreateRequest,
+  type RfqCreateResponse,
+  type TakerRfqTerms,
+  type TakerMessage,
+  type QuoteBestNotification,
+} from "./rfq-taker.js";
+export {
+  calculateTotalPremiumE18,
+  CONTRACT_E18_SCALE,
+  isUnsignedDecimalInteger,
+  PREMIUM_E18_SCALE,
+  PRICE_E8_SCALE,
+} from "./rfq-amounts.js";
