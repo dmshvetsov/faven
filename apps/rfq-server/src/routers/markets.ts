@@ -77,6 +77,7 @@ export interface Market {
   readonly quoteTokenProgram: string;
   readonly baseMintDecimals: number;
   readonly quoteMintDecimals: number;
+  readonly quantityDecimals: 18;
   readonly baseMintCategory: "crypto" | "tokenized_stocks";
   readonly quantity: {
     readonly minimum: string;
@@ -98,6 +99,7 @@ export function publicMarket(market: MarketConfig): Market {
     quoteTokenProgram: market.quoteTokenProgram,
     baseMintDecimals: market.baseMintDecimals,
     quoteMintDecimals: market.quoteMintDecimals,
+    quantityDecimals: 18,
     baseMintCategory: market.baseMintCategory,
     quantity: {
       minimum: market.quantity.minimum.toString(),

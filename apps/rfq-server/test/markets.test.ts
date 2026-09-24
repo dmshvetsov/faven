@@ -15,6 +15,7 @@ const publicMarket = expect.objectContaining({
   quoteTokenProgram: expect.any(String),
   baseMintDecimals: expect.any(Number),
   quoteMintDecimals: expect.any(Number),
+  quantityDecimals: 18,
   baseMintCategory: expect.any(String),
   quantity: expect.objectContaining({
     minimum: expect.any(String),
