@@ -343,7 +343,7 @@ a:focus-visible {
 }
 .asset-badge {
   align-items: center;
-  background: #f7931a;
+  background: #111111;
   border-radius: 50%;
   color: white;
   display: inline-flex;
@@ -356,16 +356,16 @@ a:focus-visible {
   width: 24px;
 }
 .asset-eth {
-  background: #627eea;
+  background: #111111;
 }
 .asset-sol {
-  background: linear-gradient(145deg, #14f1d9, #8a5cff);
+  background: #111111;
 }
 .asset-aapl {
-  background: #15131b;
+  background: #111111;
 }
 .asset-nvda {
-  background: #76b900;
+  background: #111111;
 }
 .dropdown-menu {
   animation: menu-in 140ms ease-out;

@@ -167,6 +167,7 @@ function iconFor(
   category: ApiMarket["baseMintCategory"],
   symbol: string
 ): string {
+  if (symbol.toUpperCase() === "SPCX") return "/assets/spacex.svg";
   if (category === "tokenized_stocks") return "/assets/apple.svg";
   switch (symbol.toUpperCase()) {
     case "BTC":
@@ -175,6 +176,8 @@ function iconFor(
       return "/assets/ethereum.svg";
     case "SOL":
       return "/assets/solana.svg";
+    case "PUMP":
+      return "/assets/pump-fun.svg";
     default:
       return "/assets/solana.svg";
   }
