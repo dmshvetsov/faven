@@ -423,34 +423,95 @@ function MarketReviewPanel({
   readonly quantity: bigint;
   readonly terms: SelectedTerms | null;
 }) {
-  const verb = direction === "buyLower" ? "buy" : "sell";
-  const condition = direction === "buyLower" ? "at or below" : "above";
+  const isSell = direction === "sellHigher";
+  const verb = isSell ? "sell" : "buy";
+  const condition = isSell ? "above" : "at or below";
+  const comparison = isSell ? "at or below" : "above";
+  const quantityText = formatQuantity(quantity, market.quantityDecimals);
+  const targetText = terms ? formatUsdE8(terms.strike) : "—";
+  const expiryText = terms ? formatExpiryUtc(terms.expiryUnixMs) : "—";
+  const targetValue = terms
+    ? (quantity * terms.strike) / 10n ** BigInt(market.quantityDecimals)
+    : 0n;
+  // This preserves the former static preview layout. An RFQ will replace this
+  // illustrative premium when review data is available.
+  const premium = (targetValue * (isSell ? 1_442n : 1_180n)) / 1_000_000n;
+  const premiumText = formatUsdE8(premium);
+  const collateralText = isSell ? quantityText : formatUsdE8(targetValue);
+  const collateralSymbol = isSell
+    ? market.baseTokenSymbol
+    : market.quoteTokenSymbol;
   return (
     <aside className="trade-summary">
       <p className="summary-title">
-        You’ll {verb} {formatQuantity(quantity, market.quantityDecimals)}{" "}
-        {market.baseTokenSymbol}
-        {terms && (
-          <>
-            {" "}
-            if it is {condition} {formatUsdE8(terms.strike)} on{" "}
-            {formatExpiryUtc(terms.expiryUnixMs)}.
-          </>
-        )}
+        Receive {premiumText} {market.quoteTokenSymbol} upfront. On {expiryText}
+        , {verb} {quantityText} {market.baseTokenSymbol} at {targetText} each if{" "}
+        its price is {condition} {targetText}
       </p>
       <div className="summary-group">
-        <span className="lime-label">Market price</span>
+        <span className="lime-label">Now</span>
         <section className="summary-card today-card">
+          <ul>
+            <li>
+              Receive {premiumText} {market.quoteTokenSymbol} upfront
+            </li>
+            <li>
+              Lock {collateralText} {collateralSymbol}
+            </li>
+          </ul>
           <p>
-            {formatPrice(market.price)} {market.quoteTokenSymbol}
+            Market price: {formatPrice(market.price)} {market.quoteTokenSymbol}
           </p>
         </section>
       </div>
+
+      <div className="summary-group outcome-group">
+        <div className="outcome-label">
+          <span className="lime-label">{expiryText}</span>
+          <strong>2 possible outcomes</strong>
+        </div>
+        <section className="summary-card outcome-card">
+          <div>
+            <h4>
+              → If {market.baseTokenSymbol} {comparison} {targetText}
+            </h4>
+            <ul>
+              <li>
+                {isSell
+                  ? `Get your ${quantityText} ${market.baseTokenSymbol} back`
+                  : `Get your ${collateralText} ${collateralSymbol} back`}
+              </li>
+              <li>
+                You keep the {market.quoteTokenSymbol} already received upfront
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h4>
+              → If {market.baseTokenSymbol} {condition} {targetText}
+            </h4>
+            <ul>
+              <li>
+                {isSell
+                  ? `Sell ${quantityText} ${market.baseTokenSymbol} and receive ${targetText} in your wallet`
+                  : `Buy ${quantityText} ${market.baseTokenSymbol} at the target price`}
+              </li>
+              <li>
+                You keep the {market.quoteTokenSymbol} already received upfront
+              </li>
+            </ul>
+          </div>
+        </section>
+      </div>
+
       <button className="review-button" disabled type="button">
-        Trade review is not available yet
+        <span>
+          Review &amp; Earn {premiumText} {market.quoteTokenSymbol}
+        </span>
+        <Icon name="arrow" />
       </button>
       <p className="summary-footnote">
-        Transaction creation and signing are not part of this flow.
+        Preview only — trade review and confirmation are not available yet.
       </p>
     </aside>
   );
