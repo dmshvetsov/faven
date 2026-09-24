@@ -33,7 +33,8 @@
   ],
   "license": "UNLICENSED",
   "dependencies": {
-    "@solana/kit": "^5.1.0"
+    "@solana/kit": "^5.1.0",
+    "uuid": "^14.0.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",
