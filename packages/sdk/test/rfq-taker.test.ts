@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   createRfqRequest,
+  createUnderwriteSubmitRequest,
   parseTakerMessage,
   PREVIEW_SELLER_ADDRESS,
   quoteMatchesTerms,
@@ -88,6 +89,45 @@ describe("RFQ taker protocol", () => {
       result: {
         rfqId: "0193c3c5-1967-7000-8000-000000000043",
         requestDeadline: 1_774_000_000_000,
+      },
+    });
+  });
+
+  it("creates and parses an underwrite submission response", () => {
+    const request = createUnderwriteSubmitRequest({
+      rfqId: "0193c3c5-1967-7000-8000-000000000043",
+      underwriteTx: "signed-base64-transaction",
+    });
+
+    expect(request).toMatchObject({
+      jsonrpc: "2.0",
+      method: "underwrite.submit",
+      params: {
+        rfqId: "0193c3c5-1967-7000-8000-000000000043",
+        underwriteTx: "signed-base64-transaction",
+      },
+    });
+    expect(validateUuid(request.id)).toBe(true);
+    expect(uuidVersion(request.id)).toBe(7);
+    expect(
+      parseTakerMessage(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: request.id,
+          result: {
+            rfqId: request.params.rfqId,
+            txSignature: "4vJ9JU1bJJ1AAgWnY8kC2fB4uNHt2uVXiCjfMxs4YzkW",
+            status: "queued",
+          },
+        })
+      )
+    ).toEqual({
+      jsonrpc: "2.0",
+      id: request.id,
+      result: {
+        rfqId: request.params.rfqId,
+        txSignature: "4vJ9JU1bJJ1AAgWnY8kC2fB4uNHt2uVXiCjfMxs4YzkW",
+        status: "queued",
       },
     });
   });

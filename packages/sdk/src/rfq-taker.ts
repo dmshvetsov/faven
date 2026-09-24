@@ -52,6 +52,26 @@ export interface RfqCreateResponse {
   };
 }
 
+export interface UnderwriteSubmitRequest {
+  readonly jsonrpc: "2.0";
+  readonly id: string;
+  readonly method: "underwrite.submit";
+  readonly params: {
+    readonly rfqId: string;
+    readonly underwriteTx: string;
+  };
+}
+
+export interface UnderwriteSubmitResponse {
+  readonly jsonrpc: "2.0";
+  readonly id: string;
+  readonly result: {
+    readonly rfqId: string;
+    readonly txSignature: string;
+    readonly status: "queued";
+  };
+}
+
 export interface BestQuote {
   readonly rfqId: string;
   readonly assetAddress: string;
@@ -98,7 +118,10 @@ export interface JsonRpcError {
 }
 
 export type TakerMessage =
-  RfqCreateResponse | QuoteBestNotification | JsonRpcError;
+  | RfqCreateResponse
+  | UnderwriteSubmitResponse
+  | QuoteBestNotification
+  | JsonRpcError;
 
 export function createRfqRequest(terms: TakerRfqTerms): RfqCreateRequest {
   if (!isUnsignedDecimalInteger(terms.quantity)) {
@@ -125,6 +148,21 @@ export function createRfqRequest(terms: TakerRfqTerms): RfqCreateRequest {
         ? {}
         : { sellerQuoteDestination: terms.sellerQuoteDestination }),
     },
+  };
+}
+
+export function createUnderwriteSubmitRequest(input: {
+  readonly rfqId: string;
+  readonly underwriteTx: string;
+}): UnderwriteSubmitRequest {
+  if (!input.rfqId || !input.underwriteTx) {
+    throw new Error("invalid_underwrite_submission");
+  }
+  return {
+    jsonrpc: "2.0",
+    id: uuidv7(),
+    method: "underwrite.submit",
+    params: input,
   };
 }
 
@@ -158,9 +196,22 @@ export function parseTakerMessage(raw: string): TakerMessage {
   if (!isRecord(parsed) || parsed.jsonrpc !== "2.0") {
     throw new Error("invalid_taker_message");
   }
-  if ("result" in parsed) return parseRfqCreateResponse(parsed);
+  if ("result" in parsed) return parseTakerResult(parsed);
   if (parsed.method === "quote.best") return parseQuoteBestNotification(parsed);
   if ("error" in parsed) return parseJsonRpcError(parsed);
+  throw new Error("invalid_taker_message");
+}
+
+function parseTakerResult(
+  value: Record<string, unknown>
+): RfqCreateResponse | UnderwriteSubmitResponse {
+  if (!isRecord(value.result)) throw new Error("invalid_taker_message");
+  if ("requestDeadline" in value.result && !("status" in value.result)) {
+    return parseRfqCreateResponse(value);
+  }
+  if ("status" in value.result && !("requestDeadline" in value.result)) {
+    return parseUnderwriteSubmitResponse(value);
+  }
   throw new Error("invalid_taker_message");
 }
 
@@ -205,6 +256,34 @@ function parseRfqCreateResponse(
     result: {
       rfqId: value.result.rfqId,
       requestDeadline: value.result.requestDeadline,
+    },
+  };
+}
+
+function parseUnderwriteSubmitResponse(
+  value: Record<string, unknown>
+): UnderwriteSubmitResponse {
+  if (
+    typeof value.id !== "string" ||
+    !isRecord(value.result) ||
+    !value.result.rfqId ||
+    typeof value.result.rfqId !== "string" ||
+    !value.result.txSignature ||
+    typeof value.result.txSignature !== "string" ||
+    value.result.status !== "queued" ||
+    "error" in value ||
+    "method" in value
+  ) {
+    throw new Error("invalid_taker_message");
+  }
+
+  return {
+    jsonrpc: "2.0",
+    id: value.id,
+    result: {
+      rfqId: value.result.rfqId,
+      txSignature: value.result.txSignature,
+      status: "queued",
     },
   };
 }

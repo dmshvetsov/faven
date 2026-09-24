@@ -37,6 +37,7 @@ export {
 } from "./settlement-transaction.js";
 export {
   createRfqRequest,
+  createUnderwriteSubmitRequest,
   isQuoteValid,
   parseTakerMessage,
   PREVIEW_SELLER_ADDRESS,
@@ -51,6 +52,8 @@ export {
   type TakerRfqTerms,
   type TakerMessage,
   type QuoteBestNotification,
+  type UnderwriteSubmitRequest,
+  type UnderwriteSubmitResponse,
 } from "./rfq-taker.js";
 export {
   calculateTotalPremiumE18,
