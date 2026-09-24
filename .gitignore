@@ -38,6 +38,7 @@ lerna-debug.log*
 # env vars
 .env
 .dev.vars
+.env.*
 
 # Admin CLI durable sync queue
 /apps/admin-cli/.admin-cli-store/

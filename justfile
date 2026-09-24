@@ -44,6 +44,10 @@ rfq-deploy-staging: rfq-test
     pnpm -F rfq exec wrangler d1 migrations apply DB --remote --env staging-devnet
     pnpm -F rfq exec wrangler deploy --env staging-devnet
 
+web-deploy-staging:
+    pnpm -F web exec vite build --mode staging
+    pnpm -F web run deploy
+
 db-migrate-local:
     pnpm -F rfq run db:migrate:local
 

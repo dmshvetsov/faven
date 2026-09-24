@@ -6,6 +6,7 @@
   "scripts": {
     "build": "tsc -b && vite build",
     "dev": "vite",
+    "deploy": "wrangler deploy",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",
@@ -33,6 +34,7 @@
     "prettier": "^3.6.2",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.44.1",
-    "vite": "^7.1.7"
+    "vite": "^7.1.7",
+    "wrangler": "4.127.1"
   }
 }
