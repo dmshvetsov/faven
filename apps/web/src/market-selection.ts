@@ -7,12 +7,14 @@ export type SeriesSide = "call" | "put";
 export type MarketChoice = {
   readonly marketAddress: string;
   readonly baseMint: string;
+  readonly quoteMint: string;
   readonly baseTokenSymbol: string;
   readonly quoteTokenSymbol: string;
   readonly assetKind: AssetKind;
   readonly icon: string;
   readonly price: string;
   readonly quantityDecimals: number;
+  readonly quoteTokenDecimals: number;
   readonly quantity: QuantityTerms;
 };
 
@@ -38,6 +40,7 @@ export function toMarketChoices(
   return markets.map((market) => ({
     marketAddress: market.marketAddress,
     baseMint: market.baseMint,
+    quoteMint: market.quoteMint,
     baseTokenSymbol: market.baseTokenSymbol,
     quoteTokenSymbol: market.quoteTokenSymbol,
     assetKind:
@@ -45,6 +48,7 @@ export function toMarketChoices(
     icon: iconFor(market.baseMintCategory, market.baseTokenSymbol),
     price: market.price,
     quantityDecimals: market.quantityDecimals,
+    quoteTokenDecimals: market.quoteMintDecimals,
     quantity: {
       minimum: BigInt(market.quantity.minimum),
       step: BigInt(market.quantity.step),

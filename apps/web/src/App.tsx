@@ -15,17 +15,12 @@ import {
 import { MarketTradeForm } from "./MarketTradeForm";
 import { initialMarket, toMarketChoices } from "./market-selection";
 import type { MarketsResponse, RfqServerQueryKey } from "./rfq-server-api";
+import { useTakerRfq } from "./use-taker-rfq";
 import { detectWallets, getWalletPreview, type DetectedWallet } from "./wallet";
+import type { TakerRfqTerms } from "sdk";
 
 type View = "earn" | "dashboard" | "trade-detail";
 type TradeTab = "active" | "settled";
-
-const showOpenedReviewPreview =
-  new URLSearchParams(window.location.search).get("review") === "opened";
-
-// Keep wallet sign-in available for production, but leave it off while the
-// prototype is being tested end-to-end without a wallet extension.
-const requireWalletSignInForReview = false;
 
 function Icon({
   name,
@@ -153,7 +148,10 @@ function OutcomeFlow({ draft }: { draft: TradeDraft }) {
   );
 }
 
-function ReviewDialog({
+// Retained as a visual reference for the future execution flow. The live RFQ
+// preview does not render this mock or open positions.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function MockOpenedTradeDialog({
   draft,
   onClose,
   onConfirm,
@@ -224,50 +222,15 @@ function ReviewDialog({
               You’ll get {premium.toFixed(2)} USDC upfront for agreeing to{" "}
               {isSell ? "sell" : "buy"} {draft.amount} {draft.asset.symbol} if{" "}
               {draft.asset.symbol} is {isSell ? "above" : "at or below"} $
-              {formatPrice(draft.targetPrice)} on{" "}
-              {formatExpiry(draft.expiry).replace(
-                /^[A-Z]{3}/,
-                (month) => `${month[0]}${month.slice(1).toLowerCase()}`
-              )}
+              {formatPrice(draft.targetPrice)} on {formatExpiry(draft.expiry)}
             </h2>
-            <div className="review-today">
-              <span className="lime-label">Now</span>
-              <section>
-                <ul>
-                  <li>Receive {premium.toFixed(2)} USDC upfront</li>
-                  <li>
-                    Lock {draft.amount} {draft.asset.symbol}
-                  </li>
-                </ul>
-                <p className="review-yield">
-                  <span>0.54% over 11 days</span>
-                  <strong>14.77% APR</strong>
-                </p>
-              </section>
-            </div>
-            <OutcomeFlow draft={draft} />
             <button
               className="review-button"
               disabled={isSigningIn}
               onClick={onConfirm}
               type="button"
             >
-              {isSigningIn ? (
-                <>
-                  Sign in a Wallet
-                  <span aria-label="Signing in" className="button-spinner" />
-                </>
-              ) : (
-                <>Confirm &amp; Earn {premium.toFixed(2)} USDC</>
-              )}
-            </button>
-            <button
-              className="review-back-button"
-              onClick={onClose}
-              type="button"
-            >
-              <Icon className="back-arrow" name="arrow" />
-              Back
+              Confirm &amp; Earn {premium.toFixed(2)} USDC
             </button>
           </>
         )}
@@ -571,9 +534,8 @@ export default function App() {
   const [selectedMarketAddress, setSelectedMarketAddress] = useState<
     string | null
   >(null);
-  const [isReviewOpen, setReviewOpen] = useState(showOpenedReviewPreview);
-  const [isPositionOpen, setPositionOpen] = useState(showOpenedReviewPreview);
-  const [isReviewWalletSigning, setReviewWalletSigning] = useState(false);
+  const [rfqTerms, setRfqTerms] = useState<TakerRfqTerms | null>(null);
+  const rfqState = useTakerRfq(rfqTerms);
   const [connectedWallet, setConnectedWallet] = useState<DetectedWallet | null>(
     null
   );
@@ -582,19 +544,6 @@ export default function App() {
   >(null);
   const [isDisconnectOpen, setDisconnectOpen] = useState(false);
   const [walletNotice, setWalletNotice] = useState<string | null>(null);
-
-  useEffect(() => {
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setReviewOpen(false);
-        setPositionOpen(false);
-      }
-    };
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, []);
 
   const marketsQuery = useQuery<
     MarketsResponse,
@@ -627,11 +576,9 @@ export default function App() {
       await wallet.provider.connect();
       setConnectedWallet(wallet);
       setWalletsToChoose(null);
-      setReviewWalletSigning(false);
       setWalletNotice(`${wallet.name} connected`);
     } catch {
       setWalletsToChoose(null);
-      setReviewWalletSigning(false);
       setWalletNotice("Wallet connection was cancelled");
     }
   };
@@ -741,9 +688,11 @@ export default function App() {
           {selectedMarket ? (
             <MarketTradeForm
               markets={marketChoices}
+              onRfqTermsChange={setRfqTerms}
               onSelectMarket={(market) =>
                 setSelectedMarketAddress(market.marketAddress)
               }
+              rfqState={rfqState}
               selectedMarket={selectedMarket}
             />
           ) : marketsQuery.isError ? (
@@ -756,47 +705,10 @@ export default function App() {
         </main>
       )}
 
-      {isReviewOpen && (
-        <ReviewDialog
-          draft={draft}
-          isPositionOpen={isPositionOpen}
-          isSigningIn={isReviewWalletSigning}
-          onClose={() => {
-            setPositionOpen(false);
-            setReviewOpen(false);
-            setReviewWalletSigning(false);
-          }}
-          onConfirm={() => {
-            if (connectedWallet) {
-              setPositionOpen(true);
-              return;
-            }
-
-            if (!requireWalletSignInForReview) {
-              setPositionOpen(true);
-              return;
-            }
-
-            setReviewWalletSigning(true);
-            handleWalletButton();
-          }}
-          onViewTrade={() => {
-            setReviewOpen(false);
-            setPositionOpen(false);
-            setView("trade-detail");
-          }}
-          onStartNewTrade={() => {
-            setReviewOpen(false);
-            setPositionOpen(false);
-            setView("earn");
-          }}
-        />
-      )}
       {walletsToChoose && (
         <WalletDialog
           onClose={() => {
             setWalletsToChoose(null);
-            setReviewWalletSigning(false);
           }}
           onSelect={(wallet) => void connectWallet(wallet)}
           wallets={walletsToChoose}

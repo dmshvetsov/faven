@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  calculateTotalPremiumE18,
+  isQuoteValid,
+  PREVIEW_SELLER_ADDRESS,
+  type BestQuote,
+  type TakerRfqTerms,
+} from "sdk";
 
 import {
   availableExpiries,
@@ -18,6 +25,7 @@ import {
   uniqueStrikes,
 } from "./market-selection";
 import type { MarketSeriesResponse, RfqServerQueryKey } from "./rfq-server-api";
+import type { TakerRfqState } from "./use-taker-rfq";
 
 type OpenMenu = "asset" | "target" | "expiry" | null;
 
@@ -25,16 +33,21 @@ export function MarketTradeForm({
   markets,
   selectedMarket,
   onSelectMarket,
+  onRfqTermsChange,
+  rfqState,
 }: {
   readonly markets: readonly MarketChoice[];
   readonly selectedMarket: MarketChoice;
   readonly onSelectMarket: (market: MarketChoice) => void;
+  readonly onRfqTermsChange: (terms: TakerRfqTerms | null) => void;
+  readonly rfqState: TakerRfqState;
 }) {
   const queryClient = useQueryClient();
   const [direction, setDirection] = useState<Direction>("buyLower");
   const [terms, setTerms] = useState<SelectedTerms | null>(null);
   const [quantity, setQuantity] = useState<bigint | null>(null);
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
+  const [isReviewOpen, setReviewOpen] = useState(false);
   const wasUsable = useRef(false);
   const seriesQuery = useQuery<
     MarketSeriesResponse,
@@ -55,6 +68,30 @@ export function MarketTradeForm({
   const termsAvailable = selectedTerms !== null;
   const controlsDisabled =
     !termsAvailable || seriesQuery.isFetching || seriesQuery.isError;
+  const rfqTerms = useMemo(
+    () =>
+      selectedTerms
+        ? toTakerRfqTerms({
+            direction,
+            market: selectedMarket,
+            quantity: selectedQuantity,
+            terms: selectedTerms,
+          })
+        : null,
+    [direction, selectedMarket, selectedQuantity, selectedTerms]
+  );
+  const verifiedQuote =
+    rfqState.status === "quote" &&
+    rfqTerms !== null &&
+    quoteMatchesSelectedTerms(rfqState.quote, rfqTerms) &&
+    isQuoteValid(rfqState.quote, Date.now())
+      ? rfqState.quote
+      : null;
+
+  useEffect(() => {
+    onRfqTermsChange(rfqTerms);
+    return () => onRfqTermsChange(null);
+  }, [onRfqTermsChange, rfqTerms]);
 
   useEffect(() => {
     if (!series) return;
@@ -405,9 +442,26 @@ export function MarketTradeForm({
       <MarketReviewPanel
         direction={direction}
         market={selectedMarket}
+        onReview={() => {
+          if (verifiedQuote && isQuoteValid(verifiedQuote, Date.now())) {
+            setReviewOpen(true);
+          }
+        }}
         quantity={selectedQuantity}
+        quote={verifiedQuote}
+        rfqState={rfqState}
         terms={selectedTerms}
       />
+      {isReviewOpen && verifiedQuote && selectedTerms && (
+        <ReviewDialog
+          direction={direction}
+          market={selectedMarket}
+          onClose={() => setReviewOpen(false)}
+          quantity={selectedQuantity}
+          quote={verifiedQuote}
+          terms={selectedTerms}
+        />
+      )}
     </div>
   );
 }
@@ -415,12 +469,18 @@ export function MarketTradeForm({
 function MarketReviewPanel({
   direction,
   market,
+  onReview,
   quantity,
+  quote,
+  rfqState,
   terms,
 }: {
   readonly direction: Direction;
   readonly market: MarketChoice;
+  readonly onReview: () => void;
   readonly quantity: bigint;
+  readonly quote: BestQuote | null;
+  readonly rfqState: TakerRfqState;
   readonly terms: SelectedTerms | null;
 }) {
   const isSell = direction === "sellHigher";
@@ -433,10 +493,15 @@ function MarketReviewPanel({
   const targetValue = terms
     ? (quantity * terms.strike) / 10n ** BigInt(market.quantityDecimals)
     : 0n;
-  // This preserves the former static preview layout. An RFQ will replace this
-  // illustrative premium when review data is available.
-  const premium = (targetValue * (isSell ? 1_442n : 1_180n)) / 1_000_000n;
-  const premiumText = formatUsdE8(premium);
+  const premiumText = quote
+    ? formatPremiumE18(
+        calculateTotalPremiumE18({
+          premiumE18: quote.premium,
+          quantityE18: toQuantityE18(quantity, market.quantityDecimals),
+        }),
+        market.quoteTokenDecimals
+      )
+    : "—";
   const collateralText = isSell ? quantityText : formatUsdE8(targetValue);
   const collateralSymbol = isSell
     ? market.baseTokenSymbol
@@ -493,7 +558,7 @@ function MarketReviewPanel({
             <ul>
               <li>
                 {isSell
-                  ? `Sell ${quantityText} ${market.baseTokenSymbol} and receive ${targetText} in your wallet`
+                  ? `Sell ${quantityText} ${market.baseTokenSymbol} and receive ${formatUsdE8(targetValue)} in your wallet`
                   : `Buy ${quantityText} ${market.baseTokenSymbol} at the target price`}
               </li>
               <li>
@@ -504,17 +569,228 @@ function MarketReviewPanel({
         </section>
       </div>
 
-      <button className="review-button" disabled type="button">
+      <button
+        className="review-button"
+        disabled={quote === null}
+        onClick={onReview}
+        type="button"
+      >
         <span>
           Review &amp; Earn {premiumText} {market.quoteTokenSymbol}
         </span>
         <Icon name="arrow" />
       </button>
+      {rfqState.status === "loading" && (
+        <p className="quote-notice">
+          {rfqState.message ?? "Getting a live quote..."}
+        </p>
+      )}
+      {rfqState.status === "no-buyers" && (
+        <p className="quote-notice">
+          No quote, try change your terms or try current terms in 10-30 minutes.
+        </p>
+      )}
+      {rfqState.status === "error" && (
+        <p className="quote-notice">{rfqState.message}</p>
+      )}
       <p className="summary-footnote">
-        Preview only — trade review and confirmation are not available yet.
+        Preview only — confirmation is not available yet.
       </p>
     </aside>
   );
+}
+
+function ReviewDialog({
+  direction,
+  market,
+  onClose,
+  quantity,
+  quote,
+  terms,
+}: {
+  readonly direction: Direction;
+  readonly market: MarketChoice;
+  readonly onClose: () => void;
+  readonly quantity: bigint;
+  readonly quote: BestQuote;
+  readonly terms: SelectedTerms;
+}) {
+  const isSell = direction === "sellHigher";
+  const quantityText = formatQuantity(quantity, market.quantityDecimals);
+  const targetText = formatUsdE8(terms.strike);
+  const expiryText = formatExpiryUtc(terms.expiryUnixMs);
+  const condition = isSell ? "above" : "at or below";
+  const comparison = isSell ? "at or below" : "above";
+  const targetValue =
+    (quantity * terms.strike) / 10n ** BigInt(market.quantityDecimals);
+  const collateralText = isSell ? quantityText : formatUsdE8(targetValue);
+  const collateralSymbol = isSell
+    ? market.baseTokenSymbol
+    : market.quoteTokenSymbol;
+  const premiumText = formatPremiumE18(
+    calculateTotalPremiumE18({
+      premiumE18: quote.premium,
+      quantityE18: toQuantityE18(quantity, market.quantityDecimals),
+    }),
+    market.quoteTokenDecimals
+  );
+
+  return (
+    <div
+      aria-modal="true"
+      className="dialog-backdrop"
+      onMouseDown={onClose}
+      role="dialog"
+    >
+      <section
+        className="review-dialog"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <button
+          aria-label="Close review"
+          className="dialog-close"
+          onClick={onClose}
+          type="button"
+        >
+          <img alt="" src="/assets/close.svg" />
+        </button>
+        <h2>
+          You’ll get {premiumText} {market.quoteTokenSymbol} upfront for
+          agreeing to {isSell ? "sell" : "buy"} {quantityText}{" "}
+          {market.baseTokenSymbol} if {market.baseTokenSymbol} is {condition}{" "}
+          {targetText} on {expiryText}
+        </h2>
+        <div className="review-today">
+          <span className="lime-label">Now</span>
+          <section>
+            <ul>
+              <li>
+                Receive {premiumText} {market.quoteTokenSymbol} upfront
+              </li>
+              <li>
+                Lock {collateralText} {collateralSymbol}
+              </li>
+            </ul>
+          </section>
+        </div>
+        <div className="review-outcomes outcome-flow">
+          <span className="lime-label">{expiryText}</span>
+          <p>2 possible outcomes</p>
+          <img
+            alt=""
+            className="outcome-connector"
+            src="/assets/outcome-connector.svg"
+          />
+          <div className="review-outcome-grid">
+            <section>
+              <h3>
+                → If {market.baseTokenSymbol} {comparison} {targetText}
+              </h3>
+              <ul>
+                <li>
+                  {isSell
+                    ? `Get your ${quantityText} ${market.baseTokenSymbol} back`
+                    : `Get your ${collateralText} ${collateralSymbol} back`}
+                </li>
+                <li>
+                  You keep the {market.quoteTokenSymbol} already received
+                  upfront
+                </li>
+              </ul>
+            </section>
+            <section>
+              <h3>
+                → If {market.baseTokenSymbol} {condition} {targetText}
+              </h3>
+              <ul>
+                <li>
+                  {isSell
+                    ? `Sell ${quantityText} ${market.baseTokenSymbol} and receive ${formatUsdE8(targetValue)} in your wallet`
+                    : `Buy ${quantityText} ${market.baseTokenSymbol} at the target price`}
+                </li>
+                <li>
+                  You keep the {market.quoteTokenSymbol} already received
+                  upfront
+                </li>
+              </ul>
+            </section>
+          </div>
+        </div>
+        <button className="review-button" disabled type="button">
+          Confirm &amp; Earn {premiumText} {market.quoteTokenSymbol}
+        </button>
+        <button className="review-back-button" onClick={onClose} type="button">
+          <Icon className="back-arrow" name="arrow" />
+          Back
+        </button>
+      </section>
+    </div>
+  );
+}
+
+function toTakerRfqTerms({
+  direction,
+  market,
+  quantity,
+  terms,
+}: {
+  readonly direction: Direction;
+  readonly market: MarketChoice;
+  readonly quantity: bigint;
+  readonly terms: SelectedTerms;
+}): TakerRfqTerms | null {
+  if (
+    market.quantityDecimals > 18 ||
+    !Number.isSafeInteger(terms.expiryUnixMs) ||
+    terms.expiryUnixMs < 0
+  ) {
+    return null;
+  }
+  const isPut = direction === "buyLower";
+  return {
+    market: market.marketAddress,
+    expiry: Math.floor(terms.expiryUnixMs / 1_000),
+    isPut,
+    quantity: toQuantityE18(quantity, market.quantityDecimals),
+    strike: terms.strike.toString(),
+    seller: PREVIEW_SELLER_ADDRESS,
+    sellerCollateralSource: PREVIEW_SELLER_ADDRESS,
+    ...(isPut ? {} : { sellerQuoteDestination: PREVIEW_SELLER_ADDRESS }),
+    premiumAsset: market.quoteMint,
+    collateralAsset: isPut ? market.quoteMint : market.baseMint,
+  };
+}
+
+function toQuantityE18(quantity: bigint, quantityDecimals: number): string {
+  return (quantity * 10n ** BigInt(18 - quantityDecimals)).toString();
+}
+
+function quoteMatchesSelectedTerms(
+  quote: BestQuote,
+  terms: TakerRfqTerms
+): boolean {
+  return (
+    quote.expiry === terms.expiry &&
+    quote.isPut === terms.isPut &&
+    quote.quantity === terms.quantity &&
+    quote.strike === terms.strike &&
+    quote.premiumAsset === terms.premiumAsset &&
+    quote.collateralAsset === terms.collateralAsset
+  );
+}
+
+function formatPremiumE18(value: string, tokenDecimals: number): string {
+  const amount = BigInt(value);
+  const scale = 10n ** 18n;
+  const decimals = Math.min(tokenDecimals, 18);
+  const whole = amount / scale;
+  const fraction = (amount % scale)
+    .toString()
+    .padStart(18, "0")
+    .slice(0, decimals)
+    .replace(/0+$/, "");
+  const wholeText = whole.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `${wholeText}${fraction ? `.${fraction}` : ""}`;
 }
 
 function Dropdown({

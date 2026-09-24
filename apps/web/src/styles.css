@@ -617,6 +617,14 @@ a:focus-visible {
   max-width: 346px;
   text-align: center;
 }
+.quote-notice {
+  color: #55545a;
+  font-size: 14px;
+  line-height: 20px;
+  margin: 12px auto 0;
+  max-width: 346px;
+  text-align: center;
+}
 .dialog-backdrop {
   align-items: center;
   animation: backdrop-in 150ms ease-out;
@@ -1573,10 +1581,6 @@ a:focus-visible {
   max-width: none;
 }
 
-.position-opened h2 span {
-  display: block;
-}
-
 .position-opened-reward {
   font-size: 16px;
   line-height: 24px;
@@ -1619,33 +1623,6 @@ a:focus-visible {
   to {
     --success-ring-progress: 100%;
   }
-}
-
-.position-opened-card {
-  background: white;
-  border-radius: 8px;
-  margin: 28px auto 0;
-  max-width: 346px;
-  padding: 20px;
-  text-align: left;
-}
-
-.position-opened-card p {
-  font-size: 16px;
-  line-height: 24px;
-  margin: 0;
-}
-
-.position-opened-card strong {
-  font-weight: 700;
-}
-
-.position-opened-card p + p {
-  border-top: 1px solid #e5eef1;
-  font-size: 14px;
-  line-height: 20px;
-  margin-top: 16px;
-  padding-top: 16px;
 }
 
 .dashboard-heading {
