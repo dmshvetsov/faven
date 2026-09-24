@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   calculateTotalPremiumE18,
@@ -636,7 +637,7 @@ function ReviewDialog({
     market.quoteTokenDecimals
   );
 
-  return (
+  return createPortal(
     <div
       aria-modal="true"
       className="dialog-backdrop"
@@ -725,7 +726,8 @@ function ReviewDialog({
           Back
         </button>
       </section>
-    </div>
+    </div>,
+    document.body
   );
 }
 
