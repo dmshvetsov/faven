@@ -59,6 +59,14 @@ app.use("*", async (context, next) => {
     return context.json({ error: "Origin is not allowed." }, 403);
   }
 
+  if (origin !== undefined) {
+    context.header("Access-Control-Allow-Origin", origin);
+    context.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    context.header("Access-Control-Allow-Headers", "content-type");
+    context.header("Vary", "Origin");
+  }
+  if (context.req.method === "OPTIONS") return context.body(null, 204);
+
   await next();
 });
 

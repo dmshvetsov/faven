@@ -95,6 +95,35 @@ describe("market catalogue", () => {
 
     expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
+
+  it("accepts a wallet-funding preflight from the local web app", async () => {
+    const response = await worker.fetch(
+      new Request("https://example.com/wallet-fundings", {
+        headers: {
+          "Access-Control-Request-Headers": "content-type",
+          "Access-Control-Request-Method": "POST",
+          Origin: "http://localhost:5173",
+        },
+        method: "OPTIONS",
+      }),
+      {
+        ...env,
+        PRODUCT_ENVIRONMENT: "development:localhost",
+        SOLANA_CLUSTER: "localhost",
+      }
+    );
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+      "http://localhost:5173"
+    );
+    expect(response.headers.get("Access-Control-Allow-Methods")).toContain(
+      "POST"
+    );
+    expect(response.headers.get("Access-Control-Allow-Headers")).toContain(
+      "content-type"
+    );
+  });
 });
 
 beforeEach(() => vi.stubGlobal("WebSocket", MarketPricesSocket));
