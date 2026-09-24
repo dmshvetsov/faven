@@ -39,6 +39,9 @@ importers:
       eslint:
         specifier: ^9.35.0
         version: 9.39.5(jiti@2.7.0)
+      globals:
+        specifier: ^16.4.0
+        version: 16.5.0
       prettier:
         specifier: ^3.6.2
         version: 3.9.6
