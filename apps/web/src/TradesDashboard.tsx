@@ -116,11 +116,13 @@ export function TradePositionDetail({
   readonly position: ApiUnderwritePosition;
 }) {
   const quantity = formatQuantity(BigInt(position.quantity), 18);
-  const direction = position.isPut ? "buy" : "sell";
-  const condition = position.isPut ? "at or below" : "above";
-  const oppositeCondition = position.isPut ? "above" : "at or below";
+  const isSell = !position.isPut;
+  const condition = isSell ? "above" : "at or below";
+  const comparison = isSell ? "at or below" : "above";
+  const targetValue =
+    (BigInt(position.quantity) * BigInt(position.strike)) / 10n ** 18n;
   const collateral = position.isPut
-    ? `${formatUsdE8((BigInt(position.quantity) * BigInt(position.strike)) / 10n ** 18n)} ${position.quoteAsset}`
+    ? `${formatUsdE8(targetValue)} ${position.quoteAsset}`
     : `${quantity} ${position.baseAsset}`;
 
   return (
@@ -186,12 +188,14 @@ export function TradePositionDetail({
           <div className="review-outcome-grid">
             <section>
               <h3>
-                → If {position.baseAsset} is {oppositeCondition}{" "}
+                → If {position.baseAsset} is {comparison}{" "}
                 {formatStrike(position)}
               </h3>
               <ul>
                 <li>Get your {collateral} back</li>
-                <li>You keep the {position.quoteAsset} received upfront</li>
+                <li>
+                  You keep the {position.quoteAsset} already received upfront
+                </li>
               </ul>
             </section>
             <section>
@@ -201,9 +205,12 @@ export function TradePositionDetail({
               </h3>
               <ul>
                 <li>
-                  {direction === "sell"
-                    ? `Sell ${quantity} ${position.baseAsset}`
+                  {isSell
+                    ? `Sell ${quantity} ${position.baseAsset} and receive ${formatUsdE8(targetValue)} in your wallet`
                     : `Buy ${quantity} ${position.baseAsset} at the strike price`}
+                </li>
+                <li>
+                  You keep the {position.quoteAsset} already received upfront
                 </li>
               </ul>
             </section>
