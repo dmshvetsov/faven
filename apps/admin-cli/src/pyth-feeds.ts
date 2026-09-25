@@ -39,6 +39,10 @@ export const PYTH_SOLANA_FEEDS: readonly PythFeed[] = [
     id: "5f5193ed44dd1f4b0732dbffa2e27caf953e16a2d911854c8c3766d8bc609a47",
   },
   {
+    symbol: "Equity.US.QUBT/USD",
+    id: "35df6acc91ade17065f757233443edee7b5046a4cd65748641f48d1c78e031b3",
+  },
+  {
     symbol: "Equity.US.URA/USD",
     id: "c22a2dd9ebde1ca2658926fc2579e9e4086c14cb63c789337c86295f09e68de5",
   },
