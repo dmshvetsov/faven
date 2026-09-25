@@ -15,6 +15,7 @@ export type MarketChoice = {
   readonly assetKind: AssetKind;
   readonly icon: string;
   readonly lastPrice: string;
+  readonly baseTokenDecimals: number;
   readonly quantityDecimals: number;
   readonly quoteTokenDecimals: number;
   readonly quantity: QuantityTerms;
@@ -51,6 +52,7 @@ export function toMarketChoices(
       market.baseMintCategory === "tokenized_stocks" ? "stock" : "crypto",
     icon: iconFor(market.baseMintCategory, market.baseTokenSymbol),
     lastPrice: market.lastPrice,
+    baseTokenDecimals: market.baseMintDecimals,
     quantityDecimals: market.quantityDecimals,
     quoteTokenDecimals: market.quoteMintDecimals,
     quantity: {
@@ -162,6 +164,10 @@ export function formatUsdE8(value: bigint): string {
 
 export function formatQuantity(value: bigint, decimals: number): string {
   return formatFixedPoint(value, decimals, { grouping: false, prefix: "" });
+}
+
+export function formatBalance(value: bigint, decimals: number): string {
+  return formatFixedPoint(value, decimals, { grouping: true, prefix: "" });
 }
 
 function toTerm(item: ApiSeriesItem): SeriesTerm {

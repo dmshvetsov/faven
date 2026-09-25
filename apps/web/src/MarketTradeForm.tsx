@@ -21,6 +21,7 @@ import {
   defaultQuantity,
   defaultTerms,
   firstMarketForKind,
+  formatBalance,
   formatExpiryUtc,
   formatQuantity,
   formatUsdE8,
@@ -39,6 +40,10 @@ import {
 } from "./rfq-server-api";
 import type { TakerRfqController, TakerRfqState } from "./use-taker-rfq";
 import { useWallet, type VersionZeroTransaction } from "./wallet";
+import {
+  useWalletTokenBalances,
+  type WalletTokenBalances,
+} from "./wallet-token-balances";
 
 type OpenMenu = "asset" | "target" | "expiry" | null;
 
@@ -72,6 +77,10 @@ export function MarketTradeForm({
   const wasUsable = useRef(false);
   const isFundingWallet = useDevelopmentWalletFunding(wallet.activeEoa);
   const sellerAccounts = useSellerAccounts(wallet.activeEoa, selectedMarket);
+  const walletBalances = useWalletTokenBalances(
+    wallet.activeEoa,
+    selectedMarket
+  );
   const seriesQuery = useQuery<
     MarketSeriesResponse,
     Error,
@@ -350,7 +359,21 @@ export function MarketTradeForm({
         </div>
         <div className="form-section">
           <StepHeading
-            description={`Choose how much ${selectedMarket.baseTokenSymbol} to ${direction === "sellHigher" ? "sell" : "buy"} at the target price`}
+            description={
+              <>
+                Choose how much {selectedMarket.baseTokenSymbol} to{" "}
+                {direction === "sellHigher" ? "sell" : "buy"} at the target
+                price
+                <span className="available-balance">
+                  {formatAvailableBalance(
+                    wallet.activeEoa,
+                    walletBalances.data,
+                    walletBalances.isLoading,
+                    selectedMarket
+                  )}
+                </span>
+              </>
+            }
             index={4}
             title={
               direction === "sellHigher"
@@ -1031,6 +1054,19 @@ type SellerAccounts = Readonly<{
   baseAta: string;
   quoteAta: string;
 }>;
+
+function formatAvailableBalance(
+  activeEoa: string | null,
+  balances: WalletTokenBalances | undefined,
+  isLoading: boolean,
+  market: MarketChoice
+): string {
+  if (activeEoa === null || isLoading) {
+    return "Available balance: connect wallet";
+  }
+  if (balances === undefined) return "Available balance: unavailable";
+  return `Available balance: ${formatBalance(balances.base, market.baseTokenDecimals)} ${market.baseTokenSymbol} / ${formatBalance(balances.quote, market.quoteTokenDecimals)} ${market.quoteTokenSymbol}`;
+}
 
 function useDevelopmentWalletFunding(activeEoa: string | null): boolean {
   const [isFunding, setFunding] = useState(activeEoa !== null);
