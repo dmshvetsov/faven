@@ -53,6 +53,3 @@ db-migrate-local:
 
 install-admin-cli:
     pnpm --dir apps/admin-cli run build && npm install --global --prefix "$HOME/.local" "$PWD/apps/admin-cli"
-
-[parallel]
-dev: anchor-dev rfq-dev
