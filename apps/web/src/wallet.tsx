@@ -25,6 +25,11 @@ import {
 
 const APPROVED_WALLET_NAMES = ["Jupiter", "Backpack", "Phantom", "Solflare"];
 const SELECTED_WALLET_STORAGE_KEY = "faven.selected-wallet";
+type WalletStandardChain =
+  | "solana:devnet"
+  | "solana:localhost"
+  | "solana:mainnet-beta"
+  | "solana:testnet";
 
 export type FavenWallet = Readonly<{
   id: string;
@@ -55,8 +60,42 @@ function isApprovedConnector(connector: WalletConnector) {
   );
 }
 
+function configuredWalletStandardChain(): WalletStandardChain {
+  const configuredChain = import.meta.env.VITE_SOLANA_CHAIN?.trim();
+  if (configuredChain) {
+    if (
+      configuredChain === "solana:devnet" ||
+      configuredChain === "solana:localhost" ||
+      configuredChain === "solana:mainnet-beta" ||
+      configuredChain === "solana:testnet"
+    ) {
+      return configuredChain;
+    }
+    throw new Error("Unsupported network value in configuration");
+  }
+
+  const rpcUrl = import.meta.env.VITE_SOLANA_RPC_URL?.toLowerCase() ?? "";
+  if (rpcUrl.includes("localhost") || rpcUrl.includes("127.0.0.1")) {
+    return "solana:localhost";
+  }
+  if (rpcUrl.includes("devnet")) return "solana:devnet";
+  if (rpcUrl.includes("testnet")) return "solana:testnet";
+  if (rpcUrl.includes("mainnet")) return "solana:mainnet-beta";
+
+  throw new Error("Network configuration is missing");
+}
+
+const WALLET_STANDARD_CHAIN = configuredWalletStandardChain();
+
+function walletConnectorOverrides() {
+  return { defaultChain: WALLET_STANDARD_CHAIN };
+}
+
 function discoverApprovedWallets() {
-  return autoDiscover({ filter: filterByNames(...APPROVED_WALLET_NAMES) });
+  return autoDiscover({
+    filter: filterByNames(...APPROVED_WALLET_NAMES),
+    overrides: walletConnectorOverrides,
+  });
 }
 
 function sameWalletConnectors(
@@ -255,15 +294,18 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   useEffect(
     () =>
-      watchWalletStandardConnectors((discoveredConnectors) => {
-        const approvedConnectors =
-          discoveredConnectors.filter(isApprovedConnector);
-        setConnectors((current) =>
-          sameWalletConnectors(current, approvedConnectors)
-            ? current
-            : approvedConnectors
-        );
-      }),
+      watchWalletStandardConnectors(
+        (discoveredConnectors) => {
+          const approvedConnectors =
+            discoveredConnectors.filter(isApprovedConnector);
+          setConnectors((current) =>
+            sameWalletConnectors(current, approvedConnectors)
+              ? current
+              : approvedConnectors
+          );
+        },
+        { overrides: walletConnectorOverrides }
+      ),
     []
   );
 
