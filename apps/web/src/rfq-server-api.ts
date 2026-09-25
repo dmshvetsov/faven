@@ -38,8 +38,37 @@ export type MarketSeriesResponse = {
   readonly series: ApiSeries;
 };
 
+export type ApiUnderwritePosition = {
+  readonly txSignature: string;
+  readonly ixIndex: number;
+  readonly seriesAddress: string;
+  readonly marketAddress: string;
+  readonly isPut: boolean;
+  readonly confirmedAtMs: number;
+  readonly baseAsset: string;
+  readonly quoteAsset: string;
+  readonly expiryMs: number;
+  /** USD strike using 8 decimals. */
+  readonly strike: string;
+  /** Option contract quantity using 18 decimals. */
+  readonly quantity: string;
+  /** QuoteCoin premium per option contract using 18 decimals. */
+  readonly premium: string;
+  readonly seriesState: "open" | "expiration_price_finalized" | "closed";
+  readonly expiryPrice: string | null;
+  readonly positionState: "open" | "closed";
+  readonly closeReason:
+    "expired_worthless" | "expired_unexercised" | "exercised" | null;
+};
+
+export type TradesResponse = {
+  readonly positions: readonly ApiUnderwritePosition[];
+};
+
 export type RfqServerQueryKey =
-  readonly ["markets"] | readonly ["markets", string, "series"];
+  | readonly ["markets"]
+  | readonly ["markets", string, "series"]
+  | readonly ["trades", string];
 
 const serverUrl = requiredServerUrl();
 
@@ -47,7 +76,7 @@ export async function rfqServerQueryFn({
   queryKey,
 }: {
   readonly queryKey: readonly unknown[];
-}): Promise<MarketsResponse | MarketSeriesResponse> {
+}): Promise<MarketsResponse | MarketSeriesResponse | TradesResponse> {
   if (!isRfqServerQueryKey(queryKey)) {
     throw new Error("Unsupported RFQ server query key.");
   }
@@ -68,12 +97,18 @@ function isRfqServerQueryKey(
     (queryKey.length === 3 &&
       queryKey[0] === "markets" &&
       typeof queryKey[1] === "string" &&
-      queryKey[2] === "series")
+      queryKey[2] === "series") ||
+    (queryKey.length === 2 &&
+      queryKey[0] === "trades" &&
+      typeof queryKey[1] === "string")
   );
 }
 
 export function endpointFor(queryKey: RfqServerQueryKey): string {
   if (queryKey.length === 1) return `${serverUrl}/markets`;
+  if (queryKey[0] === "trades") {
+    return `${serverUrl}/trades/${encodeURIComponent(queryKey[1])}`;
+  }
   return `${serverUrl}/markets/${encodeURIComponent(queryKey[1])}/series`;
 }
 
@@ -106,14 +141,72 @@ function requiredServerUrl(): string {
 function parseResponse(
   queryKey: RfqServerQueryKey,
   value: unknown
-): MarketsResponse | MarketSeriesResponse {
+): MarketsResponse | MarketSeriesResponse | TradesResponse {
   const record = recordValue(value, "RFQ server response");
   if (queryKey.length === 1) {
     return { markets: arrayValue(record.markets, "markets").map(parseMarket) };
   }
+  if (queryKey[0] === "trades") {
+    return {
+      positions: arrayValue(record.positions, "positions").map(parsePosition),
+    };
+  }
   return {
     market: parseMarket(record.market),
     series: parseSeries(record.series),
+  };
+}
+
+function parsePosition(value: unknown): ApiUnderwritePosition {
+  const record = recordValue(value, "trade position");
+  const seriesState = stringValue(record.seriesState, "seriesState");
+  if (
+    seriesState !== "open" &&
+    seriesState !== "expiration_price_finalized" &&
+    seriesState !== "closed"
+  ) {
+    throw new Error("RFQ server returned an unknown trade series state.");
+  }
+  const positionState = stringValue(record.positionState, "positionState");
+  if (positionState !== "open" && positionState !== "closed") {
+    throw new Error("RFQ server returned an unknown trade position state.");
+  }
+  const closeReason = nullableCloseReason(record.closeReason);
+  const expiryPrice = nullableUnsignedInteger(
+    record.expiryPrice,
+    "expiryPrice"
+  );
+  if (
+    (positionState === "open" &&
+      ((seriesState === "open" && expiryPrice !== null) ||
+        (seriesState === "expiration_price_finalized" &&
+          expiryPrice === null) ||
+        (seriesState === "closed" &&
+          (expiryPrice === null || closeReason !== null)))) ||
+    (positionState === "closed" &&
+      (seriesState !== "closed" ||
+        expiryPrice === null ||
+        closeReason === null))
+  ) {
+    throw new Error("RFQ server returned inconsistent trade position state.");
+  }
+  return {
+    txSignature: stringValue(record.txSignature, "txSignature"),
+    ixIndex: nonNegativeInteger(record.ixIndex, "ixIndex"),
+    seriesAddress: stringValue(record.seriesAddress, "seriesAddress"),
+    marketAddress: stringValue(record.marketAddress, "marketAddress"),
+    isPut: booleanValue(record.isPut, "isPut"),
+    confirmedAtMs: nonNegativeInteger(record.confirmedAtMs, "confirmedAtMs"),
+    baseAsset: stringValue(record.baseAsset, "baseAsset"),
+    quoteAsset: stringValue(record.quoteAsset, "quoteAsset"),
+    expiryMs: nonNegativeInteger(record.expiryMs, "expiryMs"),
+    strike: unsignedInteger(record.strike, "strike"),
+    quantity: unsignedInteger(record.quantity, "quantity"),
+    premium: unsignedInteger(record.premium, "premium"),
+    seriesState,
+    expiryPrice,
+    positionState,
+    closeReason,
   };
 }
 
@@ -204,6 +297,13 @@ function stringValue(value: unknown, label: string): string {
   return value;
 }
 
+function booleanValue(value: unknown, label: string): boolean {
+  if (typeof value !== "boolean") {
+    throw new Error(`RFQ server returned invalid ${label}.`);
+  }
+  return value;
+}
+
 function nonNegativeInteger(value: unknown, label: string): number {
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
     throw new Error(`RFQ server returned invalid ${label}.`);
@@ -216,6 +316,24 @@ function unsignedInteger(value: unknown, label: string): string {
   if (!/^\d+$/.test(string))
     throw new Error(`RFQ server returned invalid ${label}.`);
   return string;
+}
+
+function nullableUnsignedInteger(value: unknown, label: string): string | null {
+  return value === null ? null : unsignedInteger(value, label);
+}
+
+function nullableCloseReason(
+  value: unknown
+): ApiUnderwritePosition["closeReason"] {
+  if (value === null) return null;
+  if (
+    value === "expired_worthless" ||
+    value === "expired_unexercised" ||
+    value === "exercised"
+  ) {
+    return value;
+  }
+  throw new Error("RFQ server returned an unknown trade close reason.");
 }
 
 function positiveInteger(value: unknown, label: string): string {
