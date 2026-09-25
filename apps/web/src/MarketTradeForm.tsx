@@ -187,7 +187,7 @@ export function MarketTradeForm({
       ? availableExpiries(series, direction, selectedTerms.strike)
       : [];
 
-  if (!seriesQuery.isLoading) {
+  if (seriesQuery.isLoading) {
     return <MarketDataLoadingNotice />;
   }
 
