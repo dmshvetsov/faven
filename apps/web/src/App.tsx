@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MarketTradeForm } from "./MarketTradeForm";
+import { MarketDataLoadingNotice } from "./MarketDataLoadingNotice";
 import { initialMarket, toMarketChoices } from "./market-selection";
 import {
   type ApiUnderwritePosition,
@@ -208,7 +209,9 @@ export default function App() {
             </p>
           ) : marketsQuery.isSuccess ? (
             <p className="market-terms-unavailable">Market terms unavailable</p>
-          ) : null}
+          ) : (
+            <MarketDataLoadingNotice />
+          )}
         </main>
       )}
 

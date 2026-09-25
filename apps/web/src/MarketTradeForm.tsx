@@ -33,6 +33,7 @@ import {
   type SelectedTerms,
   uniqueStrikes,
 } from "./market-selection";
+import { MarketDataLoadingNotice } from "./MarketDataLoadingNotice";
 import {
   requestDevelopmentWalletFunding,
   type MarketSeriesResponse,
@@ -186,6 +187,10 @@ export function MarketTradeForm({
       ? availableExpiries(series, direction, selectedTerms.strike)
       : [];
 
+  if (!seriesQuery.isLoading) {
+    return <MarketDataLoadingNotice />;
+  }
+
   if (!wasUsable.current && !termsAvailable) {
     if (seriesQuery.isError) {
       return (
@@ -194,7 +199,7 @@ export function MarketTradeForm({
         </p>
       );
     }
-    return null;
+    return <p className="market-terms-unavailable">Market terms unavailable</p>;
   }
 
   const chooseDirection = (nextDirection: Direction) => {

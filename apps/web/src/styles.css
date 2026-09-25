@@ -189,7 +189,8 @@ a:focus-visible {
   animation: page-in 220ms ease-out both;
 }
 .market-load-notice,
-.market-terms-unavailable {
+.market-terms-unavailable,
+.market-data-loading-notice {
   color: #55545a;
   font-size: 16px;
   line-height: 24px;
@@ -197,9 +198,27 @@ a:focus-visible {
   max-width: 394px;
   text-align: center;
 }
+.market-data-loading-notice {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  max-width: none;
+  white-space: nowrap;
+}
+.market-data-loading-notice svg {
+  animation: market-data-spin 1800ms linear infinite;
+  height: 20px;
+  width: 20px;
+}
 .market-terms-unavailable {
   margin: 12px 0 0;
   text-align: left;
+}
+@keyframes market-data-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 .terms-form > h2 {
   font-size: 28px;
@@ -903,6 +922,10 @@ a:focus-visible {
   }
 }
 @media (max-width: 620px) {
+  .market-data-loading-notice {
+    white-space: normal;
+  }
+
   .site-header,
   .header-content {
     height: auto;
