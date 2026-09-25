@@ -51,17 +51,15 @@ describe("market catalogue", () => {
   });
 
   it.each([
-    ["stagingdevelopment:devnet", "devnet"],
-    ["staging:devnet", "devnet"],
-    ["production:mainnetbeta", "mainnet-beta"],
+    ["stagingdevelopment:devnet", "devnet", 1],
+    ["staging:devnet", "devnet", 1],
+    ["production:mainnetbeta", "mainnet-beta", 1],
   ] as const)(
     "selects the correct market catalogue for %s",
-    (environment, cluster) => {
+    (environment, cluster, marketCount) => {
       const config = getEnvironmentConfig(environment);
       expect(config.cluster).toBe(cluster);
-      expect(config.markets).toHaveLength(
-        environment === "production:mainnetbeta" ? 0 : 1
-      );
+      expect(config.markets).toHaveLength(marketCount);
     }
   );
 

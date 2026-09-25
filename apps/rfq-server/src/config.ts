@@ -220,6 +220,29 @@ const DEVNET_WSOL_MARKET: MarketConfig = {
     maximum: baseUnits(200n, 18),
   },
 };
+const MAINNET_WSOL_MARKET: MarketConfig = {
+  optionsProgramId: OPTIONS_PROGRAM_ID,
+  marketAddress: "aXzusofq35owo8zRWoSAPD9L1wRqtdA7dTn9umNV2mQ",
+  oracleBase: "SOL", // Pyth SOLUSD
+  baseMintCategory: "crypto",
+  baseMint: "So11111111111111111111111111111111111111112",
+  baseTokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  baseMintDecimals: 9,
+  quoteMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  quoteTokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  quoteMintDecimals: 6,
+  baseTokenSymbol: "wSOL",
+  quoteTokenSymbol: "USDC",
+  feeRecipient: FAVEN_TREASURY,
+  operationalFeeBps: 500,
+  minFee: 750_000_000_000_000_000n, // 0.75 USDC e18
+  exerciseWindowMs: ONE_HOUR_MS,
+  quantity: {
+    minimum: baseUnits(1n, 18),
+    step: 250_000_000_000_000_000n,
+    maximum: baseUnits(5n, 18),
+  },
+};
 // const DEVNET_Tk22_MARKET: MarketConfig = {
 //   optionsProgramId: OPTIONS_PROGRAM_ID,
 //   marketAddress: "TBD",
@@ -268,7 +291,7 @@ const environmentConfig: Record<ProductEnvironment, EnvironmentConfig> = {
   "production:mainnetbeta": {
     cluster: "mainnet-beta",
     allowedOrigins: [PRODUCTION_ORIGIN],
-    markets: [],
+    markets: [MAINNET_WSOL_MARKET],
   },
 };
 

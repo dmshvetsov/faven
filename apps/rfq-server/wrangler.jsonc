@@ -142,6 +142,7 @@
           { "name": "RFQ_OBJECT", "class_name": "RfqDurableObject" },
         ],
       },
+      "routes": [{ "pattern": "api.faven.markets", "custom_domain": true }],
       "observability": {
         "enabled": true,
         "logs": { "enabled": true, "head_sampling_rate": 1 },
@@ -151,7 +152,7 @@
         {
           "binding": "DB",
           "database_name": "faven-db-production",
-          "database_id": "00000000-0000-0000-0000-000000000001",
+          "database_id": "3e36ae90-360b-4275-a8bd-146af9fb5f84",
         },
       ],
       "queues": {

@@ -4,10 +4,6 @@ The configured Wrangler targets are `localdevelopment`, `development`,
 `staging`, and `production`. They map respectively to `development:testnet`,
 `development:devnet`, `staging:devnet`, and `production:mainnet`.
 
-Before deploying a remote target, replace its placeholder D1 database ID in
-`wrangler.jsonc`, create the matching Cloudflare Queue, and set both Worker
-secrets:
-
 ```sh
 pnpm --dir apps/rfq-server exec wrangler secret put SOLANA_RPC_URL --env <cf env>
 pnpm --dir apps/rfq-server exec wrangler secret put FAUCET_PRIVATE_KEY --env <cf env>

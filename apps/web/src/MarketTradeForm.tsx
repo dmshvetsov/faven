@@ -674,11 +674,11 @@ function MarketReviewPanel({
       {rfqState.status === "error" && (
         <p className="quote-notice">{rfqState.message}</p>
       )}
-      {!isWalletConnected && (
-        <p className="summary-footnote">
-          Connect a wallet to underwrite a live quote.
-        </p>
-      )}
+      <p className="summary-footnote">
+        {isWalletConnected
+          ? "View the details and terms — the trade will only start after confirmation."
+          : "Connect a wallet to underwrite a live quote."}
+      </p>
     </aside>
   );
 }
