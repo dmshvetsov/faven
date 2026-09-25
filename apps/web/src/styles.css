@@ -1321,6 +1321,26 @@ a:focus-visible {
   margin-top: 24px;
 }
 
+.wallet-option-separator {
+  align-items: center;
+  color: #5d6373;
+  display: flex;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 10px;
+  letter-spacing: 0.04em;
+  margin: 8px 0;
+  text-transform: uppercase;
+}
+
+.wallet-option-separator::before,
+.wallet-option-separator::after {
+  background: #d8dce5;
+  content: "";
+  flex: 1;
+  height: 1px;
+}
+
 .wallet-options button {
   align-items: center;
   background: #e5eef1;
@@ -1345,6 +1365,19 @@ a:focus-visible {
   cursor: wait;
   opacity: 0.58;
   transform: none;
+}
+
+.burner-wallet-option {
+  align-items: start !important;
+}
+
+.burner-wallet-hint {
+  color: #5d6373;
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 17px;
+  margin-top: 3px;
 }
 
 .wallet-mark {
@@ -1388,6 +1421,10 @@ a:focus-visible {
 
 .wallet-backpack {
   background: #e33b32;
+}
+
+.wallet-burner {
+  background: #6257b5;
 }
 
 .dialog-actions {

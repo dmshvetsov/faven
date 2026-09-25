@@ -70,6 +70,11 @@ export type RfqServerQueryKey =
   | readonly ["markets", string, "series"]
   | readonly ["trades", string];
 
+export type DevelopmentWalletFundingResult =
+  | { readonly status: "funded" }
+  | { readonly status: "cooldown-active"; readonly retryAt: string | null }
+  | { readonly status: "unavailable" };
+
 const serverUrl = requiredServerUrl();
 
 export async function rfqServerQueryFn({
@@ -118,18 +123,37 @@ export function endpointFor(queryKey: RfqServerQueryKey): string {
  */
 export async function requestDevelopmentWalletFunding(
   walletAddress: string
-): Promise<void> {
+): Promise<DevelopmentWalletFundingResult> {
   const response = await fetch(`${serverUrl}/wallet-fundings`, {
     body: JSON.stringify({ walletAddress }),
     headers: { "content-type": "application/json" },
     method: "POST",
   });
-  // Production has no faucet; a wallet funded in the preceding 24 hours does
-  // not need another one. Both cases may proceed with the normal RFQ flow.
-  if (response.ok || response.status === 404 || response.status === 429) return;
+  if (response.ok) return { status: "funded" };
+  // Production has no faucet. Do not cache this result: the same wallet may be
+  // used against a development server later.
+  if (response.status === 404) return { status: "unavailable" };
+  if (response.status === 429) {
+    return {
+      status: "cooldown-active",
+      retryAt: retryAtFromResponse(await response.json()),
+    };
+  }
   throw new Error(
     `Wallet funding request failed with status ${response.status}.`
   );
+}
+
+function retryAtFromResponse(value: unknown): string | null {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "retryAt" in value &&
+    typeof value.retryAt === "string"
+  ) {
+    return value.retryAt;
+  }
+  return null;
 }
 
 function requiredServerUrl(): string {

@@ -721,6 +721,7 @@ function ReviewDialog({
   const cancelledRef = useRef(false);
 
   useEffect(() => {
+    cancelledRef.current = false;
     return () => {
       cancelledRef.current = true;
     };
@@ -1078,10 +1079,25 @@ function useDevelopmentWalletFunding(activeEoa: string | null): boolean {
       return;
     }
 
+    if (hasCachedDevelopmentWalletFunding(activeEoa)) {
+      setFunding(false);
+      return;
+    }
+
     setFunding(true);
     void requestDevelopmentWalletFunding(activeEoa)
+      .then((result) => {
+        if (result.status === "funded") {
+          cacheDevelopmentWalletFunding(activeEoa, Date.now() + 86_400_000);
+        }
+        if (result.status === "cooldown-active" && result.retryAt !== null) {
+          const retryAtMs = Date.parse(result.retryAt);
+          if (Number.isFinite(retryAtMs)) {
+            cacheDevelopmentWalletFunding(activeEoa, retryAtMs);
+          }
+        }
+      })
       .catch((error: unknown) => {
-        // Mainnet has no faucet. A funded wallet can still underwrite there.
         console.error(
           "Could not prepare the connected wallet for underwriting.",
           error
@@ -1096,6 +1112,44 @@ function useDevelopmentWalletFunding(activeEoa: string | null): boolean {
   }, [activeEoa]);
 
   return isFunding;
+}
+
+const DEVELOPMENT_WALLET_FUNDING_STORAGE_KEY = "faven.wallet-funding";
+
+function hasCachedDevelopmentWalletFunding(walletAddress: string): boolean {
+  try {
+    const value = window.localStorage.getItem(
+      developmentWalletFundingStorageKey(walletAddress)
+    );
+    const cachedUntil = value === null ? Number.NaN : Number(value);
+    if (cachedUntil > Date.now()) return true;
+    window.localStorage.removeItem(
+      developmentWalletFundingStorageKey(walletAddress)
+    );
+  } catch {
+    // Storage can be unavailable in private browsing. Funding still works.
+  }
+  return false;
+}
+
+function cacheDevelopmentWalletFunding(
+  walletAddress: string,
+  cachedUntil: number
+): void {
+  try {
+    window.localStorage.setItem(
+      developmentWalletFundingStorageKey(walletAddress),
+      String(cachedUntil)
+    );
+  } catch {
+    // Storage can be unavailable in private browsing. Funding still works.
+  }
+}
+
+function developmentWalletFundingStorageKey(walletAddress: string): string {
+  const chain = import.meta.env.VITE_SOLANA_CHAIN?.trim() ?? "unknown";
+  const serverUrl = import.meta.env.VITE_RFQ_SERVER_URL?.trim() ?? "unknown";
+  return `${DEVELOPMENT_WALLET_FUNDING_STORAGE_KEY}:${chain}:${serverUrl}:${walletAddress}`;
 }
 
 function useSellerAccounts(

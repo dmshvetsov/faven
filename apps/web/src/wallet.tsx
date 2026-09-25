@@ -6,12 +6,19 @@ import {
   type WalletSession,
   watchWalletStandardConnectors,
 } from "@solana/client";
-import type { Transaction } from "@solana/kit";
+import { partiallySignTransaction, type Transaction } from "@solana/kit";
 import {
   SolanaClientProvider,
   useWallet as useSolanaWallet,
   useWalletActions,
 } from "@solana/react-hooks";
+import {
+  clearBrowserSessionWallet,
+  getOrCreateBrowserSessionWallet,
+  hasBrowserSessionWallet,
+  loadBrowserSessionWallet,
+  type BrowserSessionWallet,
+} from "./browser-session-wallet";
 import {
   createContext,
   type ReactNode,
@@ -25,6 +32,7 @@ import {
 
 const APPROVED_WALLET_NAMES = ["Jupiter", "Backpack", "Phantom", "Solflare"];
 const SELECTED_WALLET_STORAGE_KEY = "faven.selected-wallet";
+const BURNER_WALLET_ID = "faven.browser-session-wallet";
 type WalletStandardChain =
   | "solana:devnet"
   | "solana:localhost"
@@ -33,14 +41,22 @@ type WalletStandardChain =
 
 export type FavenWallet = Readonly<{
   id: string;
+  kind: "browser-session" | "extension";
   name: string;
 }>;
+
+const BURNER_WALLET: FavenWallet = {
+  id: BURNER_WALLET_ID,
+  kind: "browser-session",
+  name: "Burner Temporary Wallet",
+};
 
 /** A compiled version-0 transaction supplied by the caller. */
 export type VersionZeroTransaction = Transaction;
 
 export type FavenWalletState = Readonly<{
   approvedWallets: readonly FavenWallet[];
+  burnerWallet: FavenWallet | null;
   selectedWallet: FavenWallet | null;
   activeEoa: string | null;
   isConnecting: boolean;
@@ -91,6 +107,14 @@ function walletConnectorOverrides() {
   return { defaultChain: WALLET_STANDARD_CHAIN };
 }
 
+function isBurnerWalletSupportedChain() {
+  return (
+    WALLET_STANDARD_CHAIN === "solana:localhost" ||
+    WALLET_STANDARD_CHAIN === "solana:devnet" ||
+    WALLET_STANDARD_CHAIN === "solana:testnet"
+  );
+}
+
 function discoverApprovedWallets() {
   return autoDiscover({
     filter: filterByNames(...APPROVED_WALLET_NAMES),
@@ -109,7 +133,17 @@ function sameWalletConnectors(
 }
 
 function toFavenWallet(connector: WalletConnector): FavenWallet {
-  return { id: connector.id, name: connector.name };
+  return { id: connector.id, kind: "extension", name: connector.name };
+}
+
+function getSessionStorage() {
+  try {
+    return window.sessionStorage;
+  } catch {
+    throw new Error(
+      "Browser session storage is unavailable. Temporary wallets cannot be used."
+    );
+  }
 }
 
 function loadSelectedWalletId() {
@@ -141,9 +175,26 @@ function WalletStateProvider({
 }) {
   const wallet = useSolanaWallet();
   const walletActions = useWalletActions();
+  const burnerWalletSupported = isBurnerWalletSupportedChain();
   const [preferredWalletId, setPreferredWalletId] =
     useState(loadSelectedWalletId);
-  const [activeEoa, setActiveEoa] = useState<string | null>(null);
+  const [extensionActiveEoa, setExtensionActiveEoa] = useState<string | null>(
+    null
+  );
+  const [burnerSessionWallet, setBurnerSessionWallet] =
+    useState<BrowserSessionWallet | null>(null);
+  const [hasStoredBurnerWallet, setHasStoredBurnerWallet] = useState(() => {
+    if (!burnerWalletSupported) return false;
+    try {
+      return hasBrowserSessionWallet(getSessionStorage());
+    } catch {
+      return false;
+    }
+  });
+  const [isRestoringBurnerWallet, setRestoringBurnerWallet] = useState(
+    burnerWalletSupported && hasStoredBurnerWallet
+  );
+  const [isBurnerConnecting, setBurnerConnecting] = useState(false);
   const accountChangeReconnect = useRef<Promise<unknown> | null>(null);
   const silentlyReconnectedWalletId = useRef<string | null>(null);
 
@@ -154,25 +205,49 @@ function WalletStateProvider({
   const connectedWalletId =
     wallet.status === "connected" ? wallet.connectorId : null;
   const selectedWalletId = connectedWalletId ?? preferredWalletId;
-  const selectedWallet =
-    approvedWallets.find(
-      (walletOption) => walletOption.id === selectedWalletId
-    ) ?? null;
+  const selectedWallet = burnerSessionWallet
+    ? BURNER_WALLET
+    : (approvedWallets.find(
+        (walletOption) => walletOption.id === selectedWalletId
+      ) ?? null);
+  const activeEoa = burnerSessionWallet?.address ?? extensionActiveEoa;
+
+  useEffect(() => {
+    if (!burnerWalletSupported || !hasStoredBurnerWallet) {
+      setRestoringBurnerWallet(false);
+      return;
+    }
+
+    void (async () => {
+      try {
+        const storedWallet =
+          await loadBrowserSessionWallet(getSessionStorage());
+        setBurnerSessionWallet(storedWallet);
+        setHasStoredBurnerWallet(storedWallet !== null);
+      } catch {
+        setHasStoredBurnerWallet(false);
+      } finally {
+        setRestoringBurnerWallet(false);
+      }
+    })();
+  }, [burnerWalletSupported, hasStoredBurnerWallet]);
 
   useEffect(() => {
     if (wallet.status === "connected") {
-      setActiveEoa(wallet.session.account.address.toString());
+      setExtensionActiveEoa(wallet.session.account.address.toString());
       return;
     }
 
     if (wallet.status !== "connecting") {
-      setActiveEoa(null);
+      setExtensionActiveEoa(null);
     }
   }, [wallet]);
 
   useEffect(() => {
     if (
       wallet.status !== "disconnected" ||
+      isRestoringBurnerWallet ||
+      hasStoredBurnerWallet ||
       !preferredWalletId ||
       !connectors.some((connector) => connector.id === preferredWalletId) ||
       silentlyReconnectedWalletId.current === preferredWalletId
@@ -187,7 +262,14 @@ function WalletStateProvider({
         autoConnect: true,
       })
       .catch(() => undefined);
-  }, [connectors, preferredWalletId, wallet.status, walletActions]);
+  }, [
+    connectors,
+    hasStoredBurnerWallet,
+    isRestoringBurnerWallet,
+    preferredWalletId,
+    wallet.status,
+    walletActions,
+  ]);
 
   useEffect(() => {
     if (wallet.status !== "connected" || !wallet.session.onAccountsChanged) {
@@ -197,11 +279,11 @@ function WalletStateProvider({
     return wallet.session.onAccountsChanged((accounts) => {
       const activeAccount = accounts[0];
       if (!activeAccount) {
-        setActiveEoa(null);
+        setExtensionActiveEoa(null);
         return;
       }
 
-      setActiveEoa(activeAccount.address.toString());
+      setExtensionActiveEoa(activeAccount.address.toString());
       if (accountChangeReconnect.current) return;
       accountChangeReconnect.current = walletActions
         .connectWallet(wallet.connectorId, {
@@ -217,25 +299,110 @@ function WalletStateProvider({
 
   const connect = useCallback(
     async (walletId: string) => {
-      if (wallet.status === "connecting") {
+      if (wallet.status === "connecting" || isBurnerConnecting) {
         throw new Error("A wallet connection is already in progress.");
+      }
+
+      if (walletId === BURNER_WALLET_ID) {
+        if (!burnerWalletSupported) {
+          throw new Error(
+            "Temporary wallets are only available on localhost, devnet, and testnet."
+          );
+        }
+
+        setBurnerConnecting(true);
+        try {
+          const sessionWallet =
+            await getOrCreateBrowserSessionWallet(getSessionStorage());
+          await walletActions.disconnectWallet();
+          setExtensionActiveEoa(null);
+          setPreferredWalletId(null);
+          saveSelectedWalletId(null);
+          setBurnerSessionWallet(sessionWallet);
+          setHasStoredBurnerWallet(true);
+          return;
+        } finally {
+          setBurnerConnecting(false);
+        }
       }
 
       await walletActions.connectWallet(walletId);
       setPreferredWalletId(walletId);
       saveSelectedWalletId(walletId);
     },
-    [wallet.status, walletActions]
+    [burnerWalletSupported, isBurnerConnecting, wallet.status, walletActions]
   );
 
   const disconnect = useCallback(async () => {
+    if (burnerSessionWallet) {
+      clearBrowserSessionWallet(getSessionStorage());
+      setBurnerSessionWallet(null);
+      setHasStoredBurnerWallet(false);
+      setPreferredWalletId(null);
+      saveSelectedWalletId(null);
+      return;
+    }
+
     await walletActions.disconnectWallet();
     setPreferredWalletId(null);
     saveSelectedWalletId(null);
-  }, [walletActions]);
+  }, [burnerSessionWallet, walletActions]);
 
   const signTransaction = useCallback(
     async (transaction: VersionZeroTransaction) => {
+      if (burnerSessionWallet) {
+        const signingStartedAt = performance.now();
+        const slowSigningWarning = window.setTimeout(() => {
+          console.warn({
+            event: "browser_session_wallet_transaction_sign_slow",
+            cluster: WALLET_STANDARD_CHAIN,
+            elapsedMs: Math.round(performance.now() - signingStartedAt),
+          });
+        }, 5_000);
+
+        console.info({
+          event: "browser_session_wallet_transaction_sign_started",
+          cluster: WALLET_STANDARD_CHAIN,
+          messageBytesLength: transaction.messageBytes.byteLength,
+        });
+
+        try {
+          const signedTransaction = await partiallySignTransaction(
+            [burnerSessionWallet.keyPair],
+            transaction
+          );
+          const signature =
+            signedTransaction.signatures[burnerSessionWallet.address];
+
+          if (!signature) {
+            console.warn({
+              event: "browser_session_wallet_transaction_signature_missing",
+              cluster: WALLET_STANDARD_CHAIN,
+              elapsedMs: Math.round(performance.now() - signingStartedAt),
+            });
+          } else {
+            console.info({
+              event: "browser_session_wallet_transaction_sign_succeeded",
+              cluster: WALLET_STANDARD_CHAIN,
+              elapsedMs: Math.round(performance.now() - signingStartedAt),
+            });
+          }
+
+          return signedTransaction;
+        } catch (error) {
+          console.error({
+            event: "browser_session_wallet_transaction_sign_failed",
+            cluster: WALLET_STANDARD_CHAIN,
+            errorName: error instanceof Error ? error.name : "UnknownError",
+            errorMessage:
+              error instanceof Error ? error.message : "Unknown signing error",
+            elapsedMs: Math.round(performance.now() - signingStartedAt),
+          });
+          throw error;
+        } finally {
+          window.clearTimeout(slowSigningWarning);
+        }
+      }
       if (wallet.status !== "connected") {
         throw new Error("Connect a wallet before signing a transaction.");
       }
@@ -251,24 +418,31 @@ function WalletStateProvider({
         >[0]
       );
     },
-    [wallet]
+    [burnerSessionWallet, wallet]
   );
 
   const value = useMemo<FavenWalletState>(
     () => ({
       activeEoa,
       approvedWallets,
+      burnerWallet: burnerWalletSupported ? BURNER_WALLET : null,
       connect,
       disconnect,
-      isConnecting: wallet.status === "connecting",
+      isConnecting:
+        wallet.status === "connecting" ||
+        isBurnerConnecting ||
+        isRestoringBurnerWallet,
       selectedWallet,
       signTransaction,
     }),
     [
       activeEoa,
       approvedWallets,
+      burnerWalletSupported,
       connect,
       disconnect,
+      isBurnerConnecting,
+      isRestoringBurnerWallet,
       selectedWallet,
       signTransaction,
       wallet.status,
@@ -333,7 +507,12 @@ function shortenEoa(eoa: string) {
 }
 
 function walletErrorMessage(error: unknown) {
-  if (error instanceof Error && error.message.includes("already in progress")) {
+  if (
+    error instanceof Error &&
+    (error.message.includes("already in progress") ||
+      error.message.includes("session storage") ||
+      error.message.includes("Temporary wallets"))
+  ) {
     return error.message;
   }
   return "Wallet connection was cancelled or failed. Please try again.";
@@ -351,14 +530,18 @@ function WalletDialog({
   isConnecting,
   onClose,
   onSelect,
+  burnerWallet,
   wallets,
 }: {
   error: string | null;
   isConnecting: boolean;
   onClose: () => void;
   onSelect: (wallet: FavenWallet) => void;
+  burnerWallet: FavenWallet | null;
   wallets: readonly FavenWallet[];
 }) {
+  const hasSupportedWallet = wallets.length > 0;
+
   return (
     <div
       aria-modal="true"
@@ -380,11 +563,9 @@ function WalletDialog({
           <img alt="" src="/assets/close.svg" />
         </button>
         <h2>
-          {wallets.length === 0
-            ? "No supported wallet found"
-            : "Choose a wallet"}
+          {hasSupportedWallet ? "Choose a wallet" : "No supported wallet found"}
         </h2>
-        {wallets.length === 0 ? (
+        {!hasSupportedWallet && (
           <>
             <p>
               Install Jupiter, Backpack, Phantom, or Solflare, then reopen this
@@ -417,9 +598,12 @@ function WalletDialog({
               </a>
             </p>
           </>
-        ) : (
+        )}
+        {(hasSupportedWallet || burnerWallet) && (
           <>
-            <p>Choose the wallet you’d like to use with Faven.</p>
+            {hasSupportedWallet && (
+              <p>Choose the wallet you’d like to use with Faven.</p>
+            )}
             <div className="wallet-options">
               {wallets.map((wallet) => (
                 <button
@@ -436,6 +620,32 @@ function WalletDialog({
                   <strong>{wallet.name}</strong>
                 </button>
               ))}
+              {burnerWallet && (
+                <>
+                  <div
+                    aria-label="Other options"
+                    className="wallet-option-separator"
+                    role="separator"
+                  >
+                    <span>Other options</span>
+                  </div>
+                  <button
+                    className="burner-wallet-option"
+                    disabled={isConnecting}
+                    onClick={() => onSelect(burnerWallet)}
+                    type="button"
+                  >
+                    <span className="wallet-mark wallet-burner">−</span>
+                    <span>
+                      <strong>{burnerWallet.name}</strong>
+                      <span className="burner-wallet-hint">
+                        Stored only for this browser session; closing it
+                        permanently loses access to its funds.
+                      </span>
+                    </span>
+                  </button>
+                </>
+              )}
             </div>
             {isConnecting && (
               <p className="wallet-dialog-status">Connecting…</p>
@@ -452,11 +662,13 @@ function DisconnectDialog({
   eoa,
   onClose,
   onConfirm,
+  isBurnerWallet,
   walletName,
 }: {
   eoa: string;
   onClose: () => void;
   onConfirm: () => void;
+  isBurnerWallet: boolean;
   walletName: string;
 }) {
   return (
@@ -482,7 +694,11 @@ function DisconnectDialog({
         <h2>
           Disconnect {walletName} · {shortenEoa(eoa)}?
         </h2>
-        <p>You can reconnect this wallet at any time.</p>
+        <p>
+          {isBurnerWallet
+            ? "Disconnecting permanently removes this session wallet. Any remaining funds will be inaccessible."
+            : "You can reconnect this wallet at any time."}
+        </p>
         <div className="dialog-actions">
           <button className="secondary-button" onClick={onClose} type="button">
             Cancel
@@ -518,6 +734,7 @@ export function WalletConnectButton() {
   const {
     activeEoa,
     approvedWallets,
+    burnerWallet,
     connect,
     disconnect,
     isConnecting,
@@ -583,12 +800,14 @@ export function WalletConnectButton() {
           isConnecting={isConnecting}
           onClose={() => setWalletDialogOpen(false)}
           onSelect={handleWalletSelect}
+          burnerWallet={burnerWallet}
           wallets={approvedWallets}
         />
       )}
       {isDisconnectDialogOpen && selectedWallet && activeEoa && (
         <DisconnectDialog
           eoa={activeEoa}
+          isBurnerWallet={selectedWallet.kind === "browser-session"}
           onClose={() => setDisconnectDialogOpen(false)}
           onConfirm={handleDisconnect}
           walletName={selectedWallet.name}
