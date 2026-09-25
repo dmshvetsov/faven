@@ -14,7 +14,7 @@ const INITIAL_CONNECTION_DELAY_MS = 100;
 const MAX_RETRY_DELAY_MS = 30_000;
 const SNAPSHOT_INTERVAL_MS = 10_000;
 const PRICE_FEED_SOCKET_TAG = "price-feed";
-const PRICE_WAIT_TIMEOUT_MS = 10_000;
+const PRICE_WAIT_TIMEOUT_MS = 15_000;
 
 interface PendingPrice {
   readonly promise: Promise<ObservedPrice>;
