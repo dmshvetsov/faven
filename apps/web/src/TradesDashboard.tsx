@@ -159,6 +159,18 @@ export function TradePositionDetail({
           <span>Locked</span>
           <strong>{collateral}</strong>
         </div>
+        <div>
+          <span>Transaction</span>
+          <strong>
+            <a
+              href={`https://explorer.solana.com/tx/${position.txSignature}`}
+              rel="noreferrer"
+              target="_blank"
+            >
+              {position.txSignature.slice(0, 6)}
+            </a>
+          </strong>
+        </div>
       </section>
       <section className="detail-outcomes">
         <div className="review-outcomes outcome-flow">
