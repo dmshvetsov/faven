@@ -31,6 +31,18 @@ export const PYTH_SOLANA_FEEDS: readonly PythFeed[] = [
     id: "df3320ef0f4617337b8dbb924f2aaa4f9db08f522a5435b44f9066c1ac4c7f95",
   },
   {
+    symbol: "Crypto.SPCXX/USD",
+    id: "e8e2234a06b288fedde43ae9450cb288886ecb3259ad2f41d0067f02244a0101",
+  },
+  {
+    symbol: "Crypto.STRCX/USD",
+    id: "5f5193ed44dd1f4b0732dbffa2e27caf953e16a2d911854c8c3766d8bc609a47",
+  },
+  {
+    symbol: "Equity.US.URA/USD",
+    id: "c22a2dd9ebde1ca2658926fc2579e9e4086c14cb63c789337c86295f09e68de5",
+  },
+  {
     symbol: "ETH/USD",
     id: "ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
   },
