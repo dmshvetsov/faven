@@ -506,6 +506,7 @@ export function MarketTradeForm({
       </section>
       <MarketReviewPanel
         direction={direction}
+        isWalletConnected={wallet.activeEoa !== null}
         market={selectedMarket}
         onReview={() => {
           if (verifiedQuote && isQuoteValid(verifiedQuote, Date.now())) {
@@ -538,6 +539,7 @@ export function MarketTradeForm({
 
 function MarketReviewPanel({
   direction,
+  isWalletConnected,
   market,
   onReview,
   quantity,
@@ -546,6 +548,7 @@ function MarketReviewPanel({
   terms,
 }: {
   readonly direction: Direction;
+  readonly isWalletConnected: boolean;
   readonly market: MarketChoice;
   readonly onReview: () => void;
   readonly quantity: bigint;
@@ -576,12 +579,22 @@ function MarketReviewPanel({
   const collateralSymbol = isSell
     ? market.baseTokenSymbol
     : market.quoteTokenSymbol;
+  const quoteLoadingText =
+    rfqState.status === "loading"
+      ? rfqState.kind === "expired"
+        ? "Quote expired, getting a new one..."
+        : "Getting quote..."
+      : null;
   return (
     <aside className="trade-summary">
       <p className="summary-title">
-        Receive {premiumText} {market.quoteTokenSymbol} upfront. On {expiryText}
-        , {verb} {quantityText} {market.baseTokenSymbol} at {targetText} each if{" "}
-        its price is {condition} {targetText}
+        {quoteLoadingText ?? (
+          <>
+            Receive {premiumText} {market.quoteTokenSymbol} upfront. On{" "}
+            {expiryText}, {verb} {quantityText} {market.baseTokenSymbol} at{" "}
+            {targetText} each if its price is {condition} {targetText}
+          </>
+        )}
       </p>
       <div className="summary-group">
         <span className="lime-label">Now</span>
@@ -647,15 +660,12 @@ function MarketReviewPanel({
         type="button"
       >
         <span>
-          Review &amp; Earn {premiumText} {market.quoteTokenSymbol}
+          {quoteLoadingText
+            ? "Getting quote..."
+            : `Review & Earn ${premiumText} ${market.quoteTokenSymbol}`}
         </span>
-        <Icon name="arrow" />
+        {!quoteLoadingText && <Icon name="arrow" />}
       </button>
-      {rfqState.status === "loading" && (
-        <p className="quote-notice">
-          {rfqState.message ?? "Getting a live quote..."}
-        </p>
-      )}
       {rfqState.status === "no-buyers" && (
         <p className="quote-notice">
           No quote, try change your terms or try current terms in 10-30 minutes.
@@ -664,9 +674,11 @@ function MarketReviewPanel({
       {rfqState.status === "error" && (
         <p className="quote-notice">{rfqState.message}</p>
       )}
-      <p className="summary-footnote">
-        Connect a wallet to underwrite a live quote.
-      </p>
+      {!isWalletConnected && (
+        <p className="summary-footnote">
+          Connect a wallet to underwrite a live quote.
+        </p>
+      )}
     </aside>
   );
 }

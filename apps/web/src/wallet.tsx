@@ -33,6 +33,7 @@ import {
 const APPROVED_WALLET_NAMES = ["Jupiter", "Backpack", "Phantom", "Solflare"];
 const SELECTED_WALLET_STORAGE_KEY = "faven.selected-wallet";
 const BURNER_WALLET_ID = "faven.browser-session-wallet";
+const SHOW_WALLET_NOTIFICATIONS = false;
 type WalletStandardChain =
   | "solana:devnet"
   | "solana:localhost"
@@ -813,7 +814,7 @@ export function WalletConnectButton() {
           walletName={selectedWallet.name}
         />
       )}
-      {notice && (
+      {SHOW_WALLET_NOTIFICATIONS && notice && (
         <WalletNotice message={notice} onClose={() => setNotice(null)} />
       )}
     </>

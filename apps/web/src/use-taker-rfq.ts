@@ -18,7 +18,7 @@ const RECONNECT_DELAYS_MS = [1_000, 2_000, 4_000] as const;
 
 export type TakerRfqState =
   | { readonly status: "idle" }
-  | { readonly status: "loading"; readonly message?: string }
+  | { readonly status: "loading"; readonly kind: "initial" | "expired" }
   | { readonly status: "quote"; readonly quote: BestQuote }
   | { readonly status: "no-buyers" }
   | { readonly status: "error"; readonly message: string };
@@ -57,7 +57,7 @@ export function useTakerRfq(terms: TakerRfqTerms | null): TakerRfqController {
   const requestReadyRef = useRef(false);
   const quoteExpiryTimerRef = useRef<number | null>(null);
   const requestTermsRef = useRef<
-    (nextTerms: TakerRfqTerms, loadingMessage?: string) => void
+    (nextTerms: TakerRfqTerms, loadingKind?: "initial" | "expired") => void
   >(() => {});
 
   termsRef.current = terms;
@@ -94,12 +94,9 @@ export function useTakerRfq(terms: TakerRfqTerms | null): TakerRfqController {
     if (activeRequestRef.current?.terms.rfqId !== request.terms.rfqId) return;
     setState({
       status: "loading",
-      message: "Quote expired, getting a new one...",
+      kind: "expired",
     });
-    requestTermsRef.current(
-      request.terms,
-      "Quote expired, getting a new one..."
-    );
+    requestTermsRef.current(request.terms, "expired");
   }, []);
 
   const scheduleQuoteExpiry = useCallback(
@@ -121,7 +118,7 @@ export function useTakerRfq(terms: TakerRfqTerms | null): TakerRfqController {
 
     const requestTerms = (
       nextTerms: TakerRfqTerms,
-      loadingMessage?: string
+      loadingKind: "initial" | "expired" = "initial"
     ) => {
       const socket = socketRef.current;
       if (socket?.readyState !== WebSocket.OPEN) return;
@@ -133,11 +130,7 @@ export function useTakerRfq(terms: TakerRfqTerms | null): TakerRfqController {
           requestId: request.id,
           terms: { ...nextTerms, rfqId: request.params.rfqId },
         };
-        setState(
-          loadingMessage
-            ? { status: "loading", message: loadingMessage }
-            : { status: "loading" }
-        );
+        setState({ status: "loading", kind: loadingKind });
         socket.send(JSON.stringify(request));
       } catch {
         setGenericError();
@@ -311,7 +304,7 @@ export function useTakerRfq(terms: TakerRfqTerms | null): TakerRfqController {
       return;
     }
 
-    setState({ status: "loading" });
+    setState({ status: "loading", kind: "initial" });
     const debounceTimer = window.setTimeout(() => {
       requestReadyRef.current = true;
       requestTermsRef.current(terms);
