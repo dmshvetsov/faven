@@ -122,6 +122,7 @@ function expectedPosition(
     seriesAddress: underwrite.seriesAddress,
     marketAddress: underwrite.marketAddress,
     isPut: underwrite.isPut,
+    confirmedAtMs: 2,
     baseAsset: underwrite.baseAsset,
     quoteAsset: underwrite.quoteAsset,
     expiryMs: underwrite.expiryMs,

@@ -58,6 +58,8 @@ export interface UnderwritePosition {
   readonly seriesAddress: string;
   readonly marketAddress: string;
   readonly isPut: boolean;
+  /** When the underwrite transaction was confirmed. */
+  readonly confirmedAtMs: number;
   readonly baseAsset: string;
   readonly quoteAsset: string;
   readonly expiryMs: number;
@@ -76,7 +78,7 @@ async function positionFor(
   underwrite: StoredUnderwrite
 ): Promise<UnderwritePosition | null> {
   const series = await repository.getSeries(underwrite.seriesAddress);
-  if (series === null) return null;
+  if (series === null || underwrite.confirmedAtMs === null) return null;
 
   return {
     txSignature: underwrite.txSignature,
@@ -84,6 +86,7 @@ async function positionFor(
     seriesAddress: underwrite.seriesAddress,
     marketAddress: underwrite.marketAddress,
     isPut: underwrite.isPut,
+    confirmedAtMs: underwrite.confirmedAtMs,
     baseAsset: underwrite.baseAsset,
     quoteAsset: underwrite.quoteAsset,
     expiryMs: underwrite.expiryMs,
