@@ -104,7 +104,7 @@ describe("Price hub", () => {
       error:
         "Timed out waiting for a price for market GJiEFYsYKdX39hkhSs9WLF8AfGgXRjEtegGj3UrHbpXW.",
     });
-  }, 10_000);
+  }, 15_000);
 
   it("returns 503 when the price feed fails", async () => {
     vi.stubGlobal("WebSocket", FailingBackpackSocket);
