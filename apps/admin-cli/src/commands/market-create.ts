@@ -37,6 +37,7 @@ import {
 import type { CliCommand } from "../command-types.js";
 
 const OPTIONS_PROGRAM = address("FAVENgBXzD9K9qYHKRF5RFRJeT4Qa2EV4EoTycki5gGT");
+const USDC_MINT = address("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 const SYSTEM_PROGRAM = address("11111111111111111111111111111111");
 const CREATE_MARKET_DISCRIMINATOR = new Uint8Array([
   103, 226, 97, 235, 200, 188, 251, 254,
@@ -77,11 +78,6 @@ export const createMarketCommand: CliCommand = {
 
     const feedIdInput = await promptPythFeedId();
     if (feedIdInput === null) return { outcome: "cancelled" };
-    const quoteMintInput = await promptText({
-      message: "Quote mint public address",
-      validate: validateAddress,
-    });
-    if (quoteMintInput === null) return { outcome: "cancelled" };
     const baseMintInput = await promptText({
       message: "Base mint public address",
       validate: validateAddress,
@@ -107,7 +103,7 @@ export const createMarketCommand: CliCommand = {
     if (maxOperationalFeeInput === null) return { outcome: "cancelled" };
 
     const feedId = parseFeedId(feedIdInput);
-    const quoteMint = parseAddress(quoteMintInput, "Quote mint");
+    const quoteMint = USDC_MINT;
     const baseMint = parseAddress(baseMintInput, "Base mint");
     const minOperationalFeeBps = parseBps(minOperationalFeeInput);
     const maxOperationalFeeBps = parseBps(maxOperationalFeeInput);
@@ -153,9 +149,9 @@ export const createMarketCommand: CliCommand = {
         `RPC endpoint: ${rpc.label}`,
         `Admin public address: ${admin.address}`,
         `Oracle feed ID: ${preparedMarket.feedIdHex}`,
-        `Quote mint: ${quoteMint}`,
+        `Quote mint: USDC (${quoteMint})`,
         `Base mint: ${baseMint}`,
-        `Minimum fee: ${formatQuoteAmount(minFee, quoteMintDetails.decimals)} quote token (${minFee} raw units)`,
+        `Minimum fee: ${formatQuoteAmount(minFee, quoteMintDetails.decimals)} USDC (${minFee} raw units)`,
         `Minimum operational fee: ${minOperationalFeeBps} bps (${formatBps(minOperationalFeeBps)}%)`,
         `Maximum operational fee: ${maxOperationalFeeBps} bps (${formatBps(maxOperationalFeeBps)}%)`,
         `Expected Market PDA: ${market}`,
