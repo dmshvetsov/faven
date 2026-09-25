@@ -5,6 +5,8 @@ export const BACKPACK_TICKER_BY_ORACLE_BASE: Readonly<Record<string, string>> =
     SOL: "SOL_USDC",
     PUMP: "PUMP_USDC",
     SPCXX: "SPCX.US_USDC",
+    QUBT: "QUBT.US_USDC",
+    URA: "URA.US_USDC",
   };
 
 export interface ObservedPrice {

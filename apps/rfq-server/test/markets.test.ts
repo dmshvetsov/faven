@@ -53,7 +53,7 @@ describe("market catalogue", () => {
   it.each([
     ["stagingdevelopment:devnet", "devnet", 1],
     ["staging:devnet", "devnet", 1],
-    ["production:mainnetbeta", "mainnet-beta", 1],
+    ["production:mainnetbeta", "mainnet-beta", 4],
   ] as const)(
     "selects the correct market catalogue for %s",
     (environment, cluster, marketCount) => {

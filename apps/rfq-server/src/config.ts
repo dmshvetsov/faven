@@ -243,6 +243,75 @@ const MAINNET_WSOL_MARKET: MarketConfig = {
     maximum: baseUnits(5n, 18),
   },
 };
+const MAINNET_SPCX_MARKET: MarketConfig = {
+  optionsProgramId: OPTIONS_PROGRAM_ID,
+  marketAddress: "BGuVF4TUfCsgLKfMTsdvbP6y9voFpY3uYjcgwHLvwDZm",
+  oracleBase: "SPCXX", // Crypto.SPCXX/USD
+  baseMintCategory: "tokenized_stocks",
+  baseMint: "SPCXxcqXj6e5dJDVNovHN8744zkbhM2bYudU45BimGb",
+  baseTokenProgram: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+  baseMintDecimals: 6,
+  quoteMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  quoteTokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  quoteMintDecimals: 6,
+  baseTokenSymbol: "SPCX",
+  quoteTokenSymbol: "USDC",
+  feeRecipient: FAVEN_TREASURY,
+  operationalFeeBps: 500,
+  minFee: 750_000_000_000_000_000n, // 0.75 USDC e18
+  exerciseWindowMs: ONE_HOUR_MS,
+  quantity: {
+    minimum: baseUnits(1n, 18),
+    step: baseUnits(1n, 18),
+    maximum: baseUnits(10n, 18),
+  },
+};
+const MAINNET_QUBT_MARKET: MarketConfig = {
+  optionsProgramId: OPTIONS_PROGRAM_ID,
+  marketAddress: "BSgY2pyXmN3B3eCaDVciPZEDJA6Q7uH3a2nohi58jCYY",
+  oracleBase: "QUBT", // Equity.US.QUBT/USD
+  baseMintCategory: "tokenized_stocks",
+  baseMint: "QUBTAD8C9bMU9LvmMNgKPhrmBGbHvxpu6vfWQtThxxw",
+  baseTokenProgram: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+  baseMintDecimals: 6,
+  quoteMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  quoteTokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  quoteMintDecimals: 6,
+  baseTokenSymbol: "QUBT",
+  quoteTokenSymbol: "USDC",
+  feeRecipient: FAVEN_TREASURY,
+  operationalFeeBps: 500,
+  minFee: 750_000_000_000_000_000n, // 0.75 USDC e18
+  exerciseWindowMs: ONE_HOUR_MS,
+  quantity: {
+    minimum: baseUnits(10n, 18),
+    step: baseUnits(10n, 18),
+    maximum: baseUnits(250n, 18),
+  },
+};
+const MAINNET_URA_MARKET: MarketConfig = {
+  optionsProgramId: OPTIONS_PROGRAM_ID,
+  marketAddress: "7FdmveiaYgwhHdD2S7BjZPHJQ3gc7eeEqHPZhkXBXaKq",
+  oracleBase: "URA", // Equity.US.URA/USD
+  baseMintCategory: "tokenized_stocks",
+  baseMint: "URARfsinxCRw4JpvQhuT4CxavdZXZEMjv9ZwWmWpwag",
+  baseTokenProgram: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+  baseMintDecimals: 6,
+  quoteMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  quoteTokenProgram: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  quoteMintDecimals: 6,
+  baseTokenSymbol: "URA",
+  quoteTokenSymbol: "USDC",
+  feeRecipient: FAVEN_TREASURY,
+  operationalFeeBps: 500,
+  minFee: 750_000_000_000_000_000n, // 0.75 USDC e18
+  exerciseWindowMs: ONE_HOUR_MS,
+  quantity: {
+    minimum: baseUnits(10n, 18),
+    step: baseUnits(10n, 18),
+    maximum: baseUnits(250n, 18),
+  },
+};
 // const DEVNET_Tk22_MARKET: MarketConfig = {
 //   optionsProgramId: OPTIONS_PROGRAM_ID,
 //   marketAddress: "TBD",
@@ -291,7 +360,12 @@ const environmentConfig: Record<ProductEnvironment, EnvironmentConfig> = {
   "production:mainnetbeta": {
     cluster: "mainnet-beta",
     allowedOrigins: [PRODUCTION_ORIGIN, BETA_ORIGIN],
-    markets: [MAINNET_WSOL_MARKET],
+    markets: [
+      MAINNET_WSOL_MARKET,
+      MAINNET_SPCX_MARKET,
+      MAINNET_QUBT_MARKET,
+      MAINNET_URA_MARKET,
+    ],
   },
 };
 
