@@ -182,7 +182,9 @@ function iconFor(
   symbol: string
 ): string {
   if (symbol.toUpperCase() === "SPCX") return "/assets/spacex.svg";
-  if (category === "tokenized_stocks") return "/assets/apple.svg";
+  if (category === "tokenized_stocks") {
+    return symbol.toUpperCase() === "QUBT" ? "QBT" : symbol.toUpperCase();
+  }
   switch (symbol.toUpperCase()) {
     case "BTC":
       return "/assets/bitcoin.svg";

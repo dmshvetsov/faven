@@ -37,7 +37,7 @@ const SHOW_WALLET_NOTIFICATIONS = false;
 type WalletStandardChain =
   | "solana:devnet"
   | "solana:localhost"
-  | "solana:mainnet-beta"
+  | "solana:mainnet"
   | "solana:testnet";
 
 export type FavenWallet = Readonly<{
@@ -83,7 +83,7 @@ function configuredWalletStandardChain(): WalletStandardChain {
     if (
       configuredChain === "solana:devnet" ||
       configuredChain === "solana:localhost" ||
-      configuredChain === "solana:mainnet-beta" ||
+      configuredChain === "solana:mainnet" ||
       configuredChain === "solana:testnet"
     ) {
       return configuredChain;
@@ -97,7 +97,7 @@ function configuredWalletStandardChain(): WalletStandardChain {
   }
   if (rpcUrl.includes("devnet")) return "solana:devnet";
   if (rpcUrl.includes("testnet")) return "solana:testnet";
-  if (rpcUrl.includes("mainnet")) return "solana:mainnet-beta";
+  if (rpcUrl.includes("mainnet")) return "solana:mainnet";
 
   throw new Error("Network configuration is missing");
 }

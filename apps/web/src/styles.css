@@ -1558,6 +1558,10 @@ a:focus-visible {
   width: 16px;
 }
 
+.ticker-icon {
+  font-size: 10px;
+}
+
 .asset-badge.asset-aapl img {
   transform: translateY(-1px) scale(0.86);
 }

@@ -1390,9 +1390,15 @@ function AssetChoice({ market }: { readonly market: MarketChoice }) {
 }
 
 function AssetBadge({ market }: { readonly market: MarketChoice }) {
+  const isTickerIcon = !market.icon.startsWith("/");
+
   return (
     <span className="asset-badge">
-      <img alt="" src={market.icon} />
+      {isTickerIcon ? (
+        <span className="ticker-icon">{market.icon}</span>
+      ) : (
+        <img alt="" src={market.icon} />
+      )}
     </span>
   );
 }
