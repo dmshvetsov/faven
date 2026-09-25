@@ -5,16 +5,26 @@
   "compatibility_date": "2026-08-27",
   "preview_urls": false,
   "workers_dev": false,
-
   "durable_objects": {
     "bindings": [
-      { "name": "ASSET_HUB", "class_name": "AssetHub" },
-      { "name": "CONNECTION_HUB", "class_name": "ConnectionHub" },
-      { "name": "PRICE_HUB", "class_name": "PriceHub" },
-      { "name": "RFQ_OBJECT", "class_name": "RfqDurableObject" },
+      {
+        "name": "ASSET_HUB",
+        "class_name": "AssetHub",
+      },
+      {
+        "name": "CONNECTION_HUB",
+        "class_name": "ConnectionHub",
+      },
+      {
+        "name": "PRICE_HUB",
+        "class_name": "PriceHub",
+      },
+      {
+        "name": "RFQ_OBJECT",
+        "class_name": "RfqDurableObject",
+      },
     ],
   },
-
   "migrations": [
     {
       "tag": "v2",
@@ -25,39 +35,53 @@
       "new_sqlite_classes": ["PriceHub"],
     },
   ],
-
   "d1_databases": [
     {
       "remote": false,
       "binding": "DB",
-      "database_name": "faven-db-local",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_name": "faven-db-production",
+      "database_id": "3e36ae90-360b-4275-a8bd-146af9fb5f84",
     },
   ],
-
   "queues": {
     "producers": [
-      { "binding": "BROADCAST_QUEUE", "queue": "faven-solana-broadcast-local" },
+      {
+        "binding": "BROADCAST_QUEUE",
+        "queue": "faven-solana-broadcast-production",
+      },
     ],
     "consumers": [
-      { "queue": "faven-solana-broadcast-local", "max_concurrency": 1 },
+      {
+        "queue": "faven-solana-broadcast-local",
+        "max_concurrency": 1,
+      },
     ],
   },
-
   "vars": {
     "PRODUCT_ENVIRONMENT": "development:localhost",
     "SOLANA_CLUSTER": "localhost",
   },
-
   "env": {
     "stagingdevelopment-devnet": {
       "name": "faven-rfq-server-development",
       "durable_objects": {
         "bindings": [
-          { "name": "ASSET_HUB", "class_name": "AssetHub" },
-          { "name": "CONNECTION_HUB", "class_name": "ConnectionHub" },
-          { "name": "PRICE_HUB", "class_name": "PriceHub" },
-          { "name": "RFQ_OBJECT", "class_name": "RfqDurableObject" },
+          {
+            "name": "ASSET_HUB",
+            "class_name": "AssetHub",
+          },
+          {
+            "name": "CONNECTION_HUB",
+            "class_name": "ConnectionHub",
+          },
+          {
+            "name": "PRICE_HUB",
+            "class_name": "PriceHub",
+          },
+          {
+            "name": "RFQ_OBJECT",
+            "class_name": "RfqDurableObject",
+          },
         ],
       },
       "d1_databases": [
@@ -89,24 +113,44 @@
         "SOLANA_CLUSTER": "devnet",
       },
     },
-
     "staging-devnet": {
       "name": "faven-rfq-server-staging",
       "durable_objects": {
         "bindings": [
-          { "name": "ASSET_HUB", "class_name": "AssetHub" },
-          { "name": "CONNECTION_HUB", "class_name": "ConnectionHub" },
-          { "name": "PRICE_HUB", "class_name": "PriceHub" },
-          { "name": "RFQ_OBJECT", "class_name": "RfqDurableObject" },
+          {
+            "name": "ASSET_HUB",
+            "class_name": "AssetHub",
+          },
+          {
+            "name": "CONNECTION_HUB",
+            "class_name": "ConnectionHub",
+          },
+          {
+            "name": "PRICE_HUB",
+            "class_name": "PriceHub",
+          },
+          {
+            "name": "RFQ_OBJECT",
+            "class_name": "RfqDurableObject",
+          },
         ],
       },
       "routes": [
-        { "pattern": "devnet-api.faven.markets", "custom_domain": true },
+        {
+          "pattern": "devnet-api.faven.markets",
+          "custom_domain": true,
+        },
       ],
       "observability": {
         "enabled": true,
-        "logs": { "enabled": true, "head_sampling_rate": 1 },
-        "traces": { "enabled": true, "head_sampling_rate": 1 },
+        "logs": {
+          "enabled": true,
+          "head_sampling_rate": 1,
+        },
+        "traces": {
+          "enabled": true,
+          "head_sampling_rate": 1,
+        },
       },
       "d1_databases": [
         {
@@ -123,7 +167,10 @@
           },
         ],
         "consumers": [
-          { "queue": "faven-solana-broadcast-staging", "max_concurrency": 1 },
+          {
+            "queue": "faven-solana-broadcast-staging",
+            "max_concurrency": 1,
+          },
         ],
       },
       "vars": {
@@ -131,22 +178,44 @@
         "SOLANA_CLUSTER": "devnet",
       },
     },
-
     "production-mainnetbeta": {
       "name": "faven-rfq-server-production",
       "durable_objects": {
         "bindings": [
-          { "name": "ASSET_HUB", "class_name": "AssetHub" },
-          { "name": "CONNECTION_HUB", "class_name": "ConnectionHub" },
-          { "name": "PRICE_HUB", "class_name": "PriceHub" },
-          { "name": "RFQ_OBJECT", "class_name": "RfqDurableObject" },
+          {
+            "name": "ASSET_HUB",
+            "class_name": "AssetHub",
+          },
+          {
+            "name": "CONNECTION_HUB",
+            "class_name": "ConnectionHub",
+          },
+          {
+            "name": "PRICE_HUB",
+            "class_name": "PriceHub",
+          },
+          {
+            "name": "RFQ_OBJECT",
+            "class_name": "RfqDurableObject",
+          },
         ],
       },
-      "routes": [{ "pattern": "api.faven.markets", "custom_domain": true }],
+      "routes": [
+        {
+          "pattern": "api.faven.markets",
+          "custom_domain": true,
+        },
+      ],
       "observability": {
         "enabled": true,
-        "logs": { "enabled": true, "head_sampling_rate": 1 },
-        "traces": { "enabled": true, "head_sampling_rate": 1 },
+        "logs": {
+          "enabled": true,
+          "head_sampling_rate": 1,
+        },
+        "traces": {
+          "enabled": true,
+          "head_sampling_rate": 1,
+        },
       },
       "d1_databases": [
         {

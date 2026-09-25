@@ -290,7 +290,7 @@ const environmentConfig: Record<ProductEnvironment, EnvironmentConfig> = {
   },
   "production:mainnetbeta": {
     cluster: "mainnet-beta",
-    allowedOrigins: [PRODUCTION_ORIGIN],
+    allowedOrigins: [PRODUCTION_ORIGIN, BETA_ORIGIN],
     markets: [MAINNET_WSOL_MARKET],
   },
 };

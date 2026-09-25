@@ -67,6 +67,7 @@ describe("market catalogue", () => {
     ["http://localhost:5173", "development:localhost", "localhost"],
     ["https://beta.faven.markets", "staging:devnet", "devnet"],
     ["https://faven.markets", "production:mainnetbeta", "mainnet-beta"],
+    ["https://beta.faven.markets", "production:mainnetbeta", "mainnet-beta"],
   ] as const)("allows CORS for %s", async (origin, environment, cluster) => {
     const response = await worker.fetch(
       new Request("https://example.com/markets", {
