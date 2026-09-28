@@ -25,7 +25,7 @@ Mainnet Transactions:
 
 ## On-chain Settlement and Exercise
 
-Each option call or put is fully collateralized on-chain, physically settled, 
+Each option call or put is fully collateralized on-chain, physically settled, European-style option. Seller position is represented as on-chain accounting, buyer gets SPL fungible Long token.
 
 ## Development Setup
 
