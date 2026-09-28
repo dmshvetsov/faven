@@ -1,5 +1,15 @@
 # Faven
 
+Set a price to buy or sell crypto or Backpack Securities tokenized stocks. Choose the end date. Open trade. Get paid upfront.
+
+On the selected date, you trade is executed only if the market reaches your price, like a limit order. If it does not, your collateral is returned. Either way, you keep the upfront payment.
+
+Everything is known before you open a trade: payment, collateral, end date, and the only 2 possible outcomes. Nothing to monitor or rebalance. No hidden fees, no slippage, no spread traps, no leverage, no liquidation.
+
+https://beta.faven.markets
+
+## How it Works
+
 On-chain option protocol handles collateralization, settlement, and exercise logic.
 
 Off-chain server matches sellers and buyers via fast request for quote system (RFQ).
@@ -7,12 +17,6 @@ Off-chain server matches sellers and buyers via fast request for quote system (R
 Web app serves as a easy to understand wrapper for 2 options selling/income strategies cash-secured puts (buy lower) and covered-calls (sell higher).
 
 Sellers use Faven web app. Buyer are connected to the RFQ server via web-sockets.
-
-## Mainnet
-
-Solana mainnet program [FAVENgBXzD9K9qYHKRF5RFRJeT4Qa2EV4EoTycki5gGT](https://explorer.solana.com/address/FAVENgBXzD9K9qYHKRF5RFRJeT4Qa2EV4EoTycki5gGT)
-
-Mainnet web app https://beta.faven.markets
 
 ## Product demo
 
@@ -28,6 +32,8 @@ Mainnet Transactions:
 ## On-chain Settlement and Exercise
 
 Each option call or put is fully collateralized on-chain, physically settled, European-style option. Seller position is represented as on-chain accounting, buyer gets SPL fungible Long token.
+
+Solana mainnet program [FAVENgBXzD9K9qYHKRF5RFRJeT4Qa2EV4EoTycki5gGT](https://explorer.solana.com/address/FAVENgBXzD9K9qYHKRF5RFRJeT4Qa2EV4EoTycki5gGT)
 
 ## Development Setup
 
