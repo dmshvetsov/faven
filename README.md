@@ -2,6 +2,8 @@
 
 Solana mainnet program [FAVENgBXzD9K9qYHKRF5RFRJeT4Qa2EV4EoTycki5gGT](https://explorer.solana.com/address/FAVENgBXzD9K9qYHKRF5RFRJeT4Qa2EV4EoTycki5gGT)
 
+Mainnet web app https://beta.faven.markets
+
 ## Product demo
 
 - Video [Sell 1 SPCX tokenized stock at higher price in the future and receive a premium for this commitment (2 mins long)](https://youtu.be/Lp1-KoChD1w?si=wsb2c_f7WGcqhyj2)
