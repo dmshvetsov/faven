@@ -6,6 +6,8 @@ Off-chain server matches sellers and buyers via fast request for quote system (R
 
 Web app serves as a easy to understand wrapper for 2 options selling/income strategies cash-secured puts (buy lower) and covered-calls (sell higher).
 
+Sellers use Faven web app. Buyer are connected to the RFQ server via web-sockets.
+
 ## Mainnet
 
 Solana mainnet program [FAVENgBXzD9K9qYHKRF5RFRJeT4Qa2EV4EoTycki5gGT](https://explorer.solana.com/address/FAVENgBXzD9K9qYHKRF5RFRJeT4Qa2EV4EoTycki5gGT)
