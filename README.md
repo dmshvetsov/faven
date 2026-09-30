@@ -8,6 +8,10 @@ Everything is known before you open a trade: payment, collateral, end date, and 
 
 https://beta.faven.markets
 
+Team:
+- Dima [github](https://githug.com/dmshvetsov) | [linkedin](https://www.linkedin.com/in/dmshvetsov/) | [X](https://x.com/dmshevetsov)
+- Timur [website](timurakiev.com) | [linkedin](https://www.linkedin.com/in/timur-akiev/)
+
 ## How it Works
 
 On-chain option protocol handles collateralization, settlement, and exercise logic.
