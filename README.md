@@ -9,8 +9,8 @@ Everything is known before you open a trade: payment, collateral, end date, and 
 https://beta.faven.markets
 
 Team:
-- Dima [github](https://githug.com/dmshvetsov) | [linkedin](https://www.linkedin.com/in/dmshvetsov/) | [X](https://x.com/dmshevetsov)
-- Timur [website](timurakiev.com) | [linkedin](https://www.linkedin.com/in/timur-akiev/)
+- Dima [github](https://github.com/dmshvetsov) | [linkedin](https://www.linkedin.com/in/dmshvetsov/) | [X](https://x.com/dmshvetsov)
+- Timur [website](https://timurakiev.com) | [linkedin](https://www.linkedin.com/in/timur-akiev/)
 
 ## How it Works
 
